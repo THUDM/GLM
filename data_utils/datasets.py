@@ -461,7 +461,10 @@ class GPT2Dataset(data.Dataset):
                  weighted=True,
                  sample_across_doc=True,
                  random_across_doc_sampling=True,
-                 sentence_start=False, **kwargs):
+                 sentence_start=False, use_tokenizer=True, **kwargs):
+        """
+        sentence_start: the stripped article must start with a complete sentence
+        """
         self.ds = ds
         self.ds_len = len(self.ds)
         self.num_samples = num_samples
@@ -474,6 +477,7 @@ class GPT2Dataset(data.Dataset):
         self.sample_across_doc = sample_across_doc
         self.random_across_doc_sampling = random_across_doc_sampling
         self.sentence_start = sentence_start
+        self.use_tokenizer = use_tokenizer
         self.init_weighting()
 
     def init_weighting(self):
@@ -511,6 +515,7 @@ class GPT2Dataset(data.Dataset):
         # truncate or pad tokens
         num_tokens = len(tokens)
         tokens_to_strip = num_tokens - self.max_seq_len - 1
+        # randomly choose a position for start
         if tokens_to_strip > 0:
             strip_left_tokens = rng.randint(tokens_to_strip + 1)
             tokens = tokens[strip_left_tokens:]
@@ -525,7 +530,7 @@ class GPT2Dataset(data.Dataset):
             strip_right_rokens = len(tokens) - self.max_seq_len - 1
             if strip_right_rokens > 0:
                 tokens = tokens[:-strip_right_rokens]
-
+        # Sample multiple documents
         if self.sample_across_doc:
             while (len(tokens) < (self.max_seq_len + 1)):
                 if self.random_across_doc_sampling:
@@ -543,9 +548,12 @@ class GPT2Dataset(data.Dataset):
         if isinstance(data, dict):
             data = data['text']
         # tokenize
-        tokenization = self.tokenizer.EncodeAsIds(data)
-        tokenization.append(self.tokenizer.get_command('eos'))
-        tokens = tokenization.tokenization
+        if self.use_tokenizer:
+            tokenization = self.tokenizer.EncodeAsIds(data)
+            tokens = tokenization.tokenization
+        else:
+            tokens = data
+        tokens.append(self.tokenizer.get_command('eos').Id)
         return tokens
 
     def pad_seq(self, seq):
@@ -554,6 +562,7 @@ class GPT2Dataset(data.Dataset):
         seq += [self.tokenizer.get_command('pad').Id]*(num_pad_tokens)
         return seq
 
+    # TODO: rewrite this function for chinese
     def contains_sentence_end(self, tok):
         tok = self.tokenizer.IdToToken(tok)
         if '.' in tok:
