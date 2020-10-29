@@ -36,10 +36,10 @@ from .file_utils import cached_path
 logger = logging.getLogger(__name__)
 
 PRETRAINED_VOCAB_ARCHIVE_MAP = {
-    'gpt2': "https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-vocab.json",
+    'gpt2': "/mnt/.pytorch_pretrained_bert/gpt2-vocab.json",
 }
 PRETRAINED_MERGES_ARCHIVE_MAP = {
-    'gpt2': "https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-merges.txt",
+    'gpt2': "/mnt/.pytorch_pretrained_bert/gpt2-merges.txt",
 }
 PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP = {
     'gpt2': 1024,
@@ -107,27 +107,31 @@ class GPT2Tokenizer(object):
             else:
                 logger.info("loading special tokens file {}".format(special_tokens_file))
         # redirect to the cache, if necessary
-        try:
-            resolved_vocab_file = cached_path(vocab_file, cache_dir=cache_dir)
-            resolved_merges_file = cached_path(merges_file, cache_dir=cache_dir)
-        except EnvironmentError:
-            logger.error(
-                "Model name '{}' was not found in model name list ({}). "
-                "We assumed '{}' was a path or url but couldn't find files {} and {} "
-                "at this path or url.".format(
-                    pretrained_model_name_or_path,
-                    ', '.join(PRETRAINED_VOCAB_ARCHIVE_MAP.keys()),
-                    pretrained_model_name_or_path,
-                    vocab_file, merges_file))
-            return None
-        if resolved_vocab_file == vocab_file and resolved_merges_file == merges_file:
-            logger.info("loading vocabulary file {}".format(vocab_file))
-            logger.info("loading merges file {}".format(merges_file))
-        else:
-            logger.info("loading vocabulary file {} from cache at {}".format(
-                vocab_file, resolved_vocab_file))
-            logger.info("loading merges file {} from cache at {}".format(
-                merges_file, resolved_merges_file))
+        # try:
+        #     resolved_vocab_file = cached_path(vocab_file, cache_dir=cache_dir)
+        #     resolved_merges_file = cached_path(merges_file, cache_dir=cache_dir)
+        # except EnvironmentError:
+        #     logger.error(
+        #         "Model name '{}' was not found in model name list ({}). "
+        #         "We assumed '{}' was a path or url but couldn't find files {} and {} "
+        #         "at this path or url.".format(
+        #             pretrained_model_name_or_path,
+        #             ', '.join(PRETRAINED_VOCAB_ARCHIVE_MAP.keys()),
+        #             pretrained_model_name_or_path,
+        #             vocab_file, merges_file))
+        #     return None
+        # if resolved_vocab_file == vocab_file and resolved_merges_file == merges_file:
+        #     logger.info("loading vocabulary file {}".format(vocab_file))
+        #     logger.info("loading merges file {}".format(merges_file))
+        # else:
+        #     logger.info("loading vocabulary file {} from cache at {}".format(
+        #         vocab_file, resolved_vocab_file))
+        #     logger.info("loading merges file {} from cache at {}".format(
+        #         merges_file, resolved_merges_file))
+        resolved_vocab_file = vocab_file
+        resolved_merges_file = merges_file
+        logger.info("loading vocabulary file {}".format(vocab_file))
+        logger.info("loading merges file {}".format(merges_file))
         if pretrained_model_name_or_path in PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP:
             # if we're using a pretrained model, ensure the tokenizer wont index sequences longer
             # than the number of positional embeddings
