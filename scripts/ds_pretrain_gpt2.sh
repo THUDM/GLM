@@ -1,21 +1,19 @@
 #! /bin/bash
 
 # Change for multinode config
-MP_SIZE=4
 
-NUM_WORKERS=1
+NUM_WORKERS=2
 NUM_GPUS_PER_WORKER=8
 
 script_path=$(realpath $0)
 script_dir=$(dirname $script_path)
 
-config_json="$script_dir/ds_zero2_config.json"
+config_json="$script_dir/ds_config.json"
 gpt_options=" \
-       --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
        --hidden-size 1024 \
        --num-attention-heads 16 \
-       --batch-size 32 \
+       --batch-size 8 \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
        --train-iters 100000 \
@@ -41,7 +39,7 @@ gpt_options="${gpt_options}
 "
 
 
-run_cmd="deepspeed --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} pretrain_gpt2.py $@ ${gpt_options}"
+run_cmd="deepspeed --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile /mnt/config/hostfile pretrain_gpt2.py $@ ${gpt_options}"
 echo ${run_cmd}
 eval ${run_cmd}
 
