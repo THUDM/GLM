@@ -25,6 +25,16 @@ from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from fp16 import FP16_Optimizer
 import mpu
 import model
+from tensorboardX import SummaryWriter
+
+SUMMARY_WRITER_DIR_NAME = 'runs'
+
+
+def get_sample_writer(name, base=".."):
+    """Returns a tensorboard summary writer
+    """
+    return SummaryWriter(
+        log_dir=os.path.join(base, SUMMARY_WRITER_DIR_NAME, name))
 
 
 def print_rank_0(message):
@@ -125,7 +135,7 @@ class Timers:
         string = 'time (ms)'
         for name in names:
             elapsed_time = self.timers[name].elapsed(
-                reset=reset) * 1000.0/ normalizer
+                reset=reset) * 1000.0 / normalizer
             string += ' | {}: {:.2f}'.format(name, elapsed_time)
         print_rank_0(string)
 
@@ -141,7 +151,7 @@ def report_memory(name):
         torch.cuda.max_memory_allocated() / mega_bytes)
     string += ' | cached: {}'.format(torch.cuda.memory_cached() / mega_bytes)
     string += ' | max cached: {}'.format(
-        torch.cuda.max_memory_cached()/ mega_bytes)
+        torch.cuda.max_memory_cached() / mega_bytes)
     print_rank_0(string)
 
 
@@ -176,6 +186,7 @@ def save_zero_checkpoint(args, iteration, optimizer):
     torch.save(zero_sd, zero_checkpoint_name)
     print('  successfully saved {}'.format(zero_checkpoint_name))
 
+
 def save_checkpoint(iteration, model, optimizer,
                     lr_scheduler, args):
     """Save a model checkpoint."""
@@ -189,7 +200,7 @@ def save_checkpoint(iteration, model, optimizer,
         if mpu.get_data_parallel_rank() == 0:
             checkpoint_name = get_checkpoint_name(args.save, iteration)
             print('global rank {} is saving checkpoint at iteration {:7d} to {}'.
-                format(torch.distributed.get_rank(), iteration, checkpoint_name))
+                  format(torch.distributed.get_rank(), iteration, checkpoint_name))
 
             sd = {}
             sd['iteration'] = iteration
@@ -210,7 +221,6 @@ def save_checkpoint(iteration, model, optimizer,
                 sd['cuda_rng_state'] = torch.cuda.get_rng_state()
                 sd['rng_tracker_states'] = mpu.get_cuda_rng_tracker().get_states()
 
-
             ensure_directory_exists(checkpoint_name)
             torch.save(sd, checkpoint_name)
             print('  successfully saved {}'.format(checkpoint_name))
@@ -225,6 +235,7 @@ def save_checkpoint(iteration, model, optimizer,
     # Wait so everyone is done (not necessary)
     torch.distributed.barrier()
 
+
 def save_ds_checkpoint(iteration, model, args):
     """Save a model checkpoint."""
 
@@ -237,8 +248,8 @@ def save_ds_checkpoint(iteration, model, args):
         sd['torch_rng_state'] = torch.get_rng_state()
         sd['cuda_rng_state'] = torch.cuda.get_rng_state()
         sd['rng_tracker_states'] = mpu.get_cuda_rng_tracker().get_states()
-        
-    model.save_checkpoint(args.save, iteration, client_state = sd)
+
+    model.save_checkpoint(args.save, iteration, client_state=sd)
 
 
 def get_checkpoint_iteration(args):
@@ -265,20 +276,21 @@ def get_checkpoint_iteration(args):
 
     assert iteration > 0 or release, 'error parsing metadata file {}'.format(
         tracker_filename)
-    
+
     return iteration, release, True
 
-def load_checkpoint(model, optimizer, lr_scheduler, args):
+
+def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=True):
     """Load a model checkpoint."""
 
     iteration, release, success = get_checkpoint_iteration(args)
 
     if not success:
         return 0
-        
+
     if args.deepspeed:
 
-        checkpoint_name, sd = model.load_checkpoint(args.load, iteration)
+        checkpoint_name, sd = model.load_checkpoint(args.load, iteration, load_optimizer_states=load_optimizer_states)
 
         if checkpoint_name is None:
             if mpu.get_data_parallel_rank() == 0:
@@ -286,10 +298,10 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
             return iteration
 
     else:
-        
+
         # Checkpoint.
         checkpoint_name = get_checkpoint_name(args.load, iteration, release)
-        
+
         if mpu.get_data_parallel_rank() == 0:
             print('global rank {} is loading checkpoint {}'.format(
                 torch.distributed.get_rank(), checkpoint_name))
@@ -299,27 +311,27 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
 
         if isinstance(model, torchDDP):
             model = model.module
-        
+
         # Model.
         try:
             model.load_state_dict(sd['model'])
         except KeyError:
             print_rank_0('A metadata file exists but unable to load model '
-                        'from checkpoint {}, exiting'.format(checkpoint_name))
+                         'from checkpoint {}, exiting'.format(checkpoint_name))
             exit()
 
         # Optimizer.
         if not release and not args.finetune and not args.no_load_optim:
             try:
-                if optimizer is not None:
+                if optimizer is not None and load_optimizer_states:
                     optimizer.load_state_dict(sd['optimizer'])
                 if lr_scheduler is not None:
                     lr_scheduler.load_state_dict(sd['lr_scheduler'])
             except KeyError:
                 print_rank_0('Unable to load optimizer from checkpoint {}, exiting. '
-                            'Specify --no-load-optim or --finetune to prevent '
-                            'attempting to load the optimizer '
-                            'state.'.format(checkpoint_name))
+                             'Specify --no-load-optim or --finetune to prevent '
+                             'attempting to load the optimizer '
+                             'state.'.format(checkpoint_name))
                 exit()
 
     # Iterations.
@@ -329,13 +341,13 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
         try:
             iteration = sd['iteration']
         except KeyError:
-            try: # Backward compatible with older checkpoints
+            try:  # Backward compatible with older checkpoints
                 iteration = sd['total_iters']
             except KeyError:
                 print_rank_0('A metadata file exists but Unable to load iteration '
                              ' from checkpoint {}, exiting'.format(checkpoint_name))
                 exit()
-                
+
     # rng states.
     if not release and not args.finetune and not args.no_load_rng:
         try:
@@ -365,7 +377,7 @@ def load_weights(src, dst, dst2src=False):
     dst2src=True loads parameters from our models into huggingface's.
     ^dst2src is still untested
     """
-    conv_layer = 'Conv1D' in  str(type(src))
+    conv_layer = 'Conv1D' in str(type(src))
     for n, p in src.named_parameters():
         if dst2src:
             data = dst._parameters[n].data
@@ -376,21 +388,26 @@ def load_weights(src, dst, dst2src=False):
         if conv_layer and 'weight' in n:
             data = data.t().contiguous()
         load.copy_(data)
+
+
 #        dst._parameters[n].data.copy_(data)
 
 def load_mlp(our, oai, dst2src=False):
     load_weights(oai.c_fc, our.dense_h_to_4h, dst2src)
     load_weights(oai.c_proj, our.dense_4h_to_h, dst2src)
 
+
 def load_attention(our, oai, dst2src=False):
     load_weights(oai.c_attn, our.query_key_value, dst2src)
     load_weights(oai.c_proj, our.dense, dst2src)
+
 
 def load_transformer_layer(our, oai, dst2src=False):
     load_weights(oai.ln_1, our.input_layernorm, dst2src)
     load_weights(oai.ln_2, our.post_attention_layernorm, dst2src)
     load_mlp(our.mlp, oai.mlp, dst2src)
     load_attention(our.attention, oai.attn, dst2src)
+
 
 def move_weights(our, oai, dst2src=False):
     """
@@ -399,8 +416,8 @@ def move_weights(our, oai, dst2src=False):
     dst2src=True loads parameters from our models into huggingface's.
     ^dst2src=True is still untested
     """
-#    while isinstance(our, (torchDDP, model.distributed.DistributedDataParallel, FP16_Module)):
-#        our=our.module
+    #    while isinstance(our, (torchDDP, model.distributed.DistributedDataParallel, FP16_Module)):
+    #        our=our.module
     transformer_model = oai.transformer
     load_weights(transformer_model.ln_f, our.transformer.final_layernorm, dst2src)
     load_weights(transformer_model.wte, our.word_embeddings, dst2src)

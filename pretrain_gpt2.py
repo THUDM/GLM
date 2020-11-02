@@ -48,6 +48,7 @@ from utils import report_memory
 from utils import print_args
 from utils import print_params_min_max_norm
 from utils import print_rank_0
+from utils import get_sample_writer
 import torch.distributed as dist
 
 from gpt2_data_loader import make_gpt2_dataloaders
@@ -96,9 +97,7 @@ def get_model(args):
     return model
 
 
-def get_optimizer(model, args):
-    """Set up the optimizer."""
-
+def get_optimizer_param_groups(model):
     # Build parameter groups (weight decay and non-decay).
     while isinstance(model, (DDP, FP16_Module)):
         model = model.module
@@ -110,6 +109,11 @@ def get_optimizer(model, args):
             if not hasattr(param, 'model_parallel'):
                 param.model_parallel = False
 
+    return param_groups
+
+
+def get_optimizer(param_groups, args):
+    """Set up the optimizer."""
     if args.cpu_optimizer:
         #Apex FusedAdam uses decoupled weight decay so use the same here
         if args.cpu_torch_adam:
@@ -127,8 +131,9 @@ def get_optimizer(model, args):
 
     print(f'Optimizer = {optimizer.__class__.__name__}')
     if args.deepspeed:
+        raise NotImplementedError
         # fp16 wrapper is not required for DeepSpeed.
-        return optimizer
+        # return optimizer
 
     # Wrap into fp16 optimizer.
     if args.fp16:
@@ -168,21 +173,22 @@ def setup_model_and_optimizer(args):
     """Setup model and optimizer."""
 
     model = get_model(args)
-    optimizer = get_optimizer(model, args)
-    lr_scheduler = get_learning_rate_scheduler(optimizer, args)
+    param_groups = get_optimizer_param_groups(model)
 
     if args.deepspeed:
         print_rank_0("DeepSpeed is enabled.")
 
-        model, optimizer, _, lr_scheduler = deepspeed.initialize(
+        model, optimizer, _, _ = deepspeed.initialize(
             model=model,
-            optimizer=optimizer,
+            model_parameters=param_groups,
             args=args,
-            lr_scheduler=lr_scheduler,
             mpu=mpu,
             dist_init_required=False
         )
+    else:
+        optimizer = get_optimizer(param_groups, args)
 
+    lr_scheduler = get_learning_rate_scheduler(optimizer, args)
     if args.load is not None:
         args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
     else:
@@ -357,6 +363,7 @@ def backward_step(optimizer, model, lm_loss, args, timers):
 
     return lm_loss_reduced
 
+
 def see_memory_usage(message, force=False):
     if not force:
         return
@@ -369,6 +376,7 @@ def see_memory_usage(message, force=False):
         print("Max cache Allocated ", torch.cuda.max_memory_cached()/(1024*1024*1024), "GigaBytes")
         print(" ")
         #input("Press Any Key To Continue ..")
+
 
 def train_step(data_iterator, model, optimizer, lr_scheduler,
                args, timers):
@@ -391,6 +399,8 @@ def train_step(data_iterator, model, optimizer, lr_scheduler,
     timers('optimizer').start()
     if args.deepspeed:
         model.step()
+        if not (args.fp16 and optimizer.overflow):
+            lr_scheduler.step()
     else:
         optimizer.step()
 
@@ -404,8 +414,37 @@ def train_step(data_iterator, model, optimizer, lr_scheduler,
     return lm_loss_reduced, skipped_iter
 
 
+def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
+    log_string = ' iteration {:8d}/{:8d} |'.format(step, total_step)
+    log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time)
+    log_string += ' learning rate {:.3E} |'.format(lr)
+    log_string += ' lm loss {:.6E} |'.format(loss)
+    if args.fp16:
+        log_string += ' loss scale {:.1f} |'.format(
+            optimizer.cur_scale if args.deepspeed else optimizer.loss_scale)
+    print_rank_0(log_string)
+    if summary_writer is not None:
+        summary_writer.add_scalar(f'Train/lr', lr, step)
+        summary_writer.add_scalar(f'Train/train_loss', loss, step)
+        summary_writer.add_scalar(f'Train/elapsed_time', elapsed_time, step)
+
+
+def report_evaluate_metrics(summary_writer, prefix, loss, ppl, step):
+    string = ' validation loss at {} | '.format(prefix)
+    string += 'LM loss: {:.6E} | '.format(loss)
+    string += 'LM PPL: {:.6E}'.format(ppl)
+    length = len(string) + 1
+    print_rank_0('-' * 100)
+    print_rank_0('-' * length)
+    print_rank_0(string)
+    print_rank_0('-' * length)
+    if summary_writer is not None:
+        summary_writer.add_scalar(f'Train/valid_ppl', ppl, step)
+        summary_writer.add_scalar(f'Train/valid_loss', loss, step)
+
+
 def train(model, optimizer, lr_scheduler,
-          train_data_iterator, val_data_iterator, timers, args):
+          train_data_iterator, val_data_iterator, timers, args, summary_writer=None):
     """Train the model."""
 
     # Turn on training mode which enables dropout.
@@ -438,16 +477,8 @@ def train(model, optimizer, lr_scheduler,
             learning_rate = optimizer.param_groups[0]['lr']
             avg_lm_loss = total_lm_loss.item() / args.log_interval
             elapsed_time = timers('interval time').elapsed()
-            log_string = ' iteration {:8d}/{:8d} |'.format(iteration,
-                                                            args.train_iters)
-            log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
-                elapsed_time * 1000.0 / args.log_interval)
-            log_string += ' learning rate {:.3E} |'.format(learning_rate)
-            log_string += ' lm loss {:.6E} |'.format(avg_lm_loss)
-            if args.fp16:
-                log_string += ' loss scale {:.1f} |'.format(
-                    optimizer.cur_scale if args.deepspeed else optimizer.loss_scale)
-            print_rank_0(log_string)
+            report_iteration_metrics(summary_writer, optimizer, learning_rate, avg_lm_loss,
+                                     elapsed_time * 1000.0 / args.log_interval, iteration, args.train_iters, args)
             total_lm_loss = 0.0
             if report_memory_flag:
                 report_memory('after {} iterations'.format(iteration))
@@ -468,7 +499,7 @@ def train(model, optimizer, lr_scheduler,
         if args.eval_interval and iteration % args.eval_interval == 0 and args.do_valid:
             prefix = 'iteration {}'.format(iteration)
             evaluate_and_print_results(
-                prefix, val_data_iterator, model, args, timers, False)
+                prefix, val_data_iterator, model, args, timers, False, step=iteration, summary_writer=summary_writer)
 
         if args.exit_interval and iteration % args.exit_interval == 0:
             torch.distributed.barrier()
@@ -520,20 +551,14 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
 
 
 def evaluate_and_print_results(prefix, data_iterator, model,
-                               args, timers, verbose=False):
+                               args, timers, verbose=False, step=None, summary_writer=None):
     """Helper function to evaluate and dump results on screen."""
     lm_loss = evaluate(data_iterator, model, args, timers, verbose)
     lm_ppl = math.exp(min(20, lm_loss))
-    print_rank_0('-' * 100)
-    string = ' validation loss at {} | '.format(prefix)
-    string += 'LM loss: {:.6E} | '.format(lm_loss)
-    string += 'LM PPL: {:.6E}'.format(lm_ppl)
-    length = len(string) + 1
-    print_rank_0('-' * length)
-    print_rank_0(string)
-    print_rank_0('-' * length)
+    report_evaluate_metrics(summary_writer, prefix, lm_loss, lm_ppl, step)
 
     return lm_loss
+
 
 '''
     Optional DeepSpeed Activation Checkpointing features
@@ -549,12 +574,14 @@ def evaluate_and_print_results(prefix, data_iterator, model,
 
     This must be done before all the calls to mpu.model_parallel_cuda_manual_seed
     '''
-def set_deepspeed_activation_checkpointing(args):
 
+
+def set_deepspeed_activation_checkpointing(args):
     deepspeed.checkpointing.configure(mpu, deepspeed_config=args.deepspeed_config, num_checkpoints=args.num_layers)
     mpu.checkpoint = deepspeed.checkpointing.checkpoint
     mpu.get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
     mpu.model_parallel_cuda_manual_seed = deepspeed.checkpointing.model_parallel_cuda_manual_seed
+
 
 def initialize_distributed(args):
     """Initialize torch.distributed."""
@@ -621,7 +648,8 @@ def get_train_val_test_data(args):
                      'tokens (new size: {})'.format(
                          before, after - before, after))
         print_rank_0('> found end-of-document token: {}'.format(eod_token))
-        token_counts = torch.cuda.LongTensor([after, eod_token, int(args.do_train), int(args.do_valid), int(args.do_test)])
+        token_counts = torch.cuda.LongTensor(
+            [after, eod_token, int(args.do_train), int(args.do_valid), int(args.do_test)])
     else:
         token_counts = torch.cuda.LongTensor([0, 0, 0, 0, 0])
 
@@ -643,7 +671,6 @@ def main():
 
     # Disable CuDNN.
     torch.backends.cudnn.enabled = False
-
     # Timer.
     timers = Timers()
 
@@ -652,9 +679,11 @@ def main():
 
     # Pytorch distributed.
     initialize_distributed(args)
+    summary_writer = None
     if torch.distributed.get_rank() == 0:
         print('Pretrain GPT2 model')
         print_args(args)
+        summary_writer = get_sample_writer(base="", name="gpt-345M")
 
     # Random seeds for reproducability.
     set_random_seed(args.seed)
@@ -693,7 +722,7 @@ def main():
                                        lr_scheduler,
                                        train_data_iterator,
                                        val_data_iterator,
-                                       timers, args)
+                                       timers, args, summary_writer=summary_writer)
 
         if args.do_valid:
             prefix = 'the end of training for val data'

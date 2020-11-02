@@ -16,6 +16,7 @@ gpt_options=" \
        --batch-size 8 \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
+       --save checkpoints/gpt2_345m \
        --train-iters 100000 \
        --resume-dataloader \
        --train-data wikipedia \
@@ -23,11 +24,8 @@ gpt_options=" \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
-       --lr 0.00015 \
        --no-load-optim \
        --lr-decay-style cosine \
-       --weight-decay 1e-2 \
-       --clip-grad 1.0 \
        --warmup .01 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
@@ -39,7 +37,8 @@ gpt_options="${gpt_options}
 "
 
 
-run_cmd="deepspeed --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile /mnt/config/hostfile pretrain_gpt2.py $@ ${gpt_options}"
+run_cmd="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_GID_INDEX=3 NCCL_NET_GDR_LEVEL=0
+ deepspeed --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile /mnt/config/hostfile pretrain_gpt2.py $@ ${gpt_options}"
 echo ${run_cmd}
 eval ${run_cmd}
 

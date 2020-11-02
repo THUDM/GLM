@@ -19,6 +19,7 @@ import argparse
 import os
 import torch
 import deepspeed
+import json
 
 
 def add_model_config_args(parser):
@@ -320,7 +321,6 @@ def get_args():
     parser = deepspeed.add_config_arguments(parser)
 
     args = parser.parse_args()
-
     if not args.train_data and not args.train_data_path:
         print('WARNING: No training data specified')
 
@@ -361,4 +361,11 @@ def get_args():
         args.fp32_tokentypes = False
         args.fp32_layernorm = False
 
+    if args.deepspeed_config is not None:
+        with open(args.deepspeed_config) as file:
+            deepspeed_config = json.load(file)
+        if "optimizer" in deepspeed_config:
+            optimizer_params_config = deepspeed_config["optimizer"].get("params", {})
+            args.lr = optimizer_params_config.get("lr", args.lr)
+            args.weight_decay = optimizer_params_config.get("weight_decay", args.weight_decay)
     return args
