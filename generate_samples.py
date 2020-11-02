@@ -28,10 +28,11 @@ from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
 from pretrain_gpt2 import get_train_val_test_data
 from pretrain_gpt2 import get_masks_and_position_ids
-from utils import load_checkpoint
+from utils import load_checkpoint, get_checkpoint_iteration
 from data_utils import make_tokenizer
 from configure_data import configure_data
 import mpu
+import deepspeed
 
 from fp16 import FP16_Module
 from model import GPT2Model
@@ -76,9 +77,27 @@ def setup_model(args):
 
     model = get_model(args)
 
+    # if args.deepspeed:
+    #     print_rank_0("DeepSpeed is enabled.")
+    #
+    #     model, _, _, _ = deepspeed.initialize(
+    #         model=model,
+    #         model_parameters=model.parameters(),
+    #         args=args,
+    #         mpu=mpu,
+    #         dist_init_required=False
+    #     )
     if args.load is not None:
-        _ = load_checkpoint(
-            model, None, None, args)
+        if args.deepspeed:
+            iteration, release, success = get_checkpoint_iteration(args)
+            path = os.path.join(args.load, str(iteration), "mp_rank_00_model_states.pt")
+            checkpoint = torch.load(path)
+            model.load_state_dict(checkpoint["module"])
+        else:
+            _ = load_checkpoint(
+                model, None, None, args, load_optimizer_states=False)
+    # if args.deepspeed:
+    #     model = model.module
 
     return model
 
@@ -146,7 +165,7 @@ def generate_samples(model, tokenizer, args, device):
                     context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
                     context_length = len(context_tokens)
 
-                    if context_length >=args.seq_length//2:
+                    if context_length >=args.out_seq_length//2:
                         print("\nContext length", context_length, \
                             "\nPlease give smaller context (half of the sequence length)!")
                         continue
@@ -162,8 +181,8 @@ def generate_samples(model, tokenizer, args, device):
                 return
 
             pad_id = tokenizer.get_command('pad').Id
-            if context_length < args.seq_length:
-                context_tokens.extend([pad_id] * (args.seq_length - context_length))
+            if context_length < args.out_seq_length:
+                context_tokens.extend([pad_id] * (args.out_seq_length - context_length))
 
             context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
             context_length_tensor = torch.cuda.LongTensor([context_length])
@@ -179,7 +198,7 @@ def generate_samples(model, tokenizer, args, device):
             counter = 0
             org_context_length = context_length
 
-            while counter < (org_context_length + args.out_seq_length):
+            while counter < (args.out_seq_length - org_context_length):
                 logits = model(tokens, position_ids, attention_mask)
                 logits = logits[:, context_length - 1, :] / args.temperature
                 logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)            
@@ -193,14 +212,14 @@ def generate_samples(model, tokenizer, args, device):
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
                 token_end = decode_tokens.find("<|endoftext|>")
 
-
-                if mpu.get_model_parallel_rank() == 0 and (counter % 16 == 0 or token_end != -1):
+                is_end = prev[0] == args.eod_token
+                if mpu.get_model_parallel_rank() == 0 and (counter % 16 == 0 or is_end):
                    os.system('clear')
                    print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
                    print("\nContext:", raw_text, flush=True)
                    trim_decode_tokens = decode_tokens[len(raw_text):decode_tokens.find("<|endoftext|>")]
                    print("\nGPT2:", trim_decode_tokens, flush=True)
-                if token_end != -1:
+                if is_end:
                    break
                 
             if mpu.get_model_parallel_rank() == 0:
@@ -217,7 +236,6 @@ def generate_samples(model, tokenizer, args, device):
             context_count += 1
 
 def prepare_tokenizer(args):
-
     tokenizer_args = {
         'tokenizer_type': args.tokenizer_type,
         'corpus': None,
@@ -227,13 +245,24 @@ def prepare_tokenizer(args):
         'cache_dir': args.cache_dir}
     tokenizer = make_tokenizer(**tokenizer_args)
 
-    args.tokenizer_num_tokens = tokenizer.num_tokens
+    num_tokens = tokenizer.num_tokens
+    before = num_tokens
+    after = before
+    multiple = args.make_vocab_size_divisible_by * \
+               mpu.get_model_parallel_world_size()
+    while (after % multiple) != 0:
+        after += 1
+    print_rank_0('> padded vocab (size: {}) with {} dummy '
+                 'tokens (new size: {})'.format(
+        before, after - before, after))
+
+    args.tokenizer_num_tokens = after
     args.tokenizer_num_type_tokens = tokenizer.num_type_tokens
     args.eod_token = tokenizer.get_command('eos').Id
 
-    after = tokenizer.num_tokens
-    while after % mpu.get_model_parallel_world_size() != 0:
-        after += 1
+    # after = tokenizer.num_tokens
+    # while after % mpu.get_model_parallel_world_size() != 0:
+    #     after += 1
 
     args.vocab_size = after
     print("prepare tokenizer done", flush=True)

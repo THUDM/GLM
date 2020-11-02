@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/path/to/checkpoint
+CHECKPOINT_PATH=checkpoints/gpt2_345m
 MPSIZE=1
 NLAYERS=24
 NHIDDEN=1024
@@ -13,8 +13,15 @@ TEMP=0.9
 TOPK=0
 TOPP=0
 
-python generate_samples.py \
+script_path=$(realpath $0)
+script_dir=$(dirname $script_path)
+
+config_json="$script_dir/ds_config.json"
+
+deepspeed --num_nodes 1 --num_gpus 1 generate_samples.py \
+       --deepspeed \
        --model-parallel-size $MPSIZE \
+       --deepspeed_config ${config_json} \
        --num-layers $NLAYERS \
        --hidden-size $NHIDDEN \
        --load $CHECKPOINT_PATH \
