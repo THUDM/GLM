@@ -455,7 +455,7 @@ class json_dataset(data.Dataset):
 
 class GPT2Dataset(data.Dataset):
 
-    def __init__(self, ds,
+    def __init__(self, ds, tokenizer,
                  max_seq_len=1024,
                  num_samples=None,
                  weighted=True,
@@ -471,8 +471,7 @@ class GPT2Dataset(data.Dataset):
         if num_samples is None:
             self.num_samples = 1000 * self.ds_len
         self.max_seq_len = max_seq_len
-        self.tokenizer = self.ds.GetTokenizer()
-        self.ds.SetTokenizer(None)
+        self.tokenizer = tokenizer
         self.weighted = weighted
         self.sample_across_doc = sample_across_doc
         self.random_across_doc_sampling = random_across_doc_sampling

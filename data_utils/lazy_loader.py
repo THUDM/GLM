@@ -58,6 +58,8 @@ def make_lazy(path, strs, data_type='data'):
             for s in strs:
                 if isinstance(s, dict):
                     s = s['text']
+                elif isinstance(s, list) or isinstance(s, tuple):
+                    s = " ".join(map(str, s))
                 encoded = s.encode('utf-8')
                 f.write(encoded)
                 str_cnt = len(encoded)

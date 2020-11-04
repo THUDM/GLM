@@ -61,13 +61,18 @@ class ChineseDataset(data.Dataset):
     PATH = None
     assert_str = None
 
-    def __init__(self):
-        assert os.path.exists(self.PATH), self.assert_str
-        self.prompts, self.texts = [], []
-        with open(self.PATH) as file:
-            for row in file:
-                data = json.loads(row)
-                self.process_line(data)
+    def __init__(self, prompt_loader=None, text_loader=None, **kwargs):
+        if prompt_loader is None:
+            assert os.path.exists(self.PATH), self.assert_str
+            self.prompts, self.texts = [], []
+            with open(self.PATH) as file:
+                for row in file:
+                    data = json.loads(row)
+                    self.process_line(data)
+        else:
+            assert text_loader is not None
+            self.prompts = prompt_loader
+            self.texts = text_loader
 
     def process_line(self, data):
         raise NotImplementedError
