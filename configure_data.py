@@ -56,7 +56,7 @@ def make_data_loader(dataset, batch_size, args):
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
     distributed = world_size > 1
     drop_last = distributed
-
+    # the GPUs in the same model parallel group receive the same data
     if distributed:
         batch_sampler = data_utils.samplers.DistributedBatchSampler(sampler,
                                                                     batch_size,
