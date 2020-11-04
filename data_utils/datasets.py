@@ -514,6 +514,7 @@ class GPT2Dataset(data.Dataset):
         # truncate or pad tokens
         num_tokens = len(tokens)
         tokens_to_strip = num_tokens - self.max_seq_len - 1
+
         # randomly choose a position for start
         if tokens_to_strip > 0:
             strip_left_tokens = rng.randint(tokens_to_strip + 1)
@@ -551,13 +552,15 @@ class GPT2Dataset(data.Dataset):
     def getidx(self, data_idx):
         data = self.ds[data_idx]
         if isinstance(data, dict):
-            data = data['prompt'] + data['text']
+            text = data['prompt'] + data['text']
+        else:
+            text = data
         # tokenize
         if self.use_tokenizer:
-            tokenization = self.tokenizer.EncodeAsIds(data)
+            tokenization = self.tokenizer.EncodeAsIds(text)
             tokens = tokenization.tokenization
         else:
-            tokens = data
+            tokens = text
         tokens.append(self.tokenizer.get_command('eos').Id)
         loss_masks = [0] * len(data['prompt']) + [1] * (len(tokens) - len(data['prompt']))
         return tokens, loss_masks

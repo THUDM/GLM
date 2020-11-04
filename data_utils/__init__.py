@@ -89,9 +89,9 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, split=[1.],
                                    delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
                 make_lazy(path_, text.prompts, data_type='prompt')
                 make_lazy(path_, text.texts, data_type='text')
-            prompts = lazy_array_loader(path_, data_type='prompt', map_fn=lambda x: map(int, x.split()))
-            texts = lazy_array_loader(path_, data_type='text', map_fn=lambda x: map(int, x.split()))
-            text = corpora.NAMED_CORPORA[path_](prompt_loader=prompts, text_loader=texts)
+            prompts = lazy_array_loader(path_, data_type='prompt', map_fn=lambda x: list(map(int, x.split())))
+            texts = lazy_array_loader(path_, data_type='text', map_fn=lambda x: list(map(int, x.split())))
+            text = corpora.NAMED_CORPORA[name](prompt_loader=prompts, text_loader=texts)
         else:
             # get dataset
             text = get_dataset(path_, text_key=text_key, label_key=label_key, binarize_sent=binarize_sent,
@@ -123,11 +123,11 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, split=[1.],
                                             presplit_sentences=presplit_sentences) if d is not None else None for d in
                   ds]
         elif ds_type.lower() == 'gpt2':
-            ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length) if d is not None else None for d in ds]
+            ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=False) if d is not None else None for d in ds]
     else:
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             ds = bert_sentencepair_dataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
         elif ds_type.lower() == 'gpt2':
-            ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length)
+            ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length, use_tokenizer=False)
     return ds, tokenizer

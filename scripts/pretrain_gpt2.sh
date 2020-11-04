@@ -16,7 +16,7 @@ python pretrain_gpt2.py \
        --save checkpoints/gpt2_345m \
        --load checkpoints/gpt2_345m \
        --resume-dataloader \
-       --train-data wikipedia \
+       --train-data zhihu \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --cache-dir cache \

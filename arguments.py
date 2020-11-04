@@ -363,7 +363,7 @@ def get_args():
         args.fp32_tokentypes = False
         args.fp32_layernorm = False
 
-    if args.deepspeed and args.deepspeed_config is not None:
+    if hasattr(args, "deepspeed") and args.deepspeed and args.deepspeed_config is not None:
         with open(args.deepspeed_config) as file:
             deepspeed_config = json.load(file)
         if "train_micro_batch_size_per_gpu" in deepspeed_config:

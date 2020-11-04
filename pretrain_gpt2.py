@@ -266,7 +266,7 @@ def get_batch(data_iterator, args, timers):
     shard reset mask of the same dimensions is also returned.
     '''
     # Items and their type.
-    keys = ['text']
+    keys = ['text', 'loss_mask']
     datatype = torch.int64
 
     # Broadcast data.
@@ -611,7 +611,7 @@ def initialize_distributed(args):
 
     # Optional DeepSpeed Activation Checkpointing Features
     #
-    if args.deepspeed and args.deepspeed_activation_checkpointing:
+    if hasattr(args, "deepspeed") and args.deepspeed and args.deepspeed_activation_checkpointing:
         set_deepspeed_activation_checkpointing(args)
 
 
