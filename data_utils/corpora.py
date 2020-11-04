@@ -15,6 +15,9 @@
 """several datasets with preset arguments"""
 from .datasets import json_dataset, csv_dataset
 import os
+import json
+from torch.utils import data
+
 
 class wikipedia(json_dataset):
     """
@@ -24,9 +27,10 @@ class wikipedia(json_dataset):
     """
     PATH = 'data/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
+
     def __init__(self, **kwargs):
         assert os.path.exists(wikipedia.PATH), \
-                        wikipedia.assert_str
+            wikipedia.assert_str
         if not kwargs:
             kwargs = {}
         kwargs['text_key'] = 'text'
@@ -42,9 +46,10 @@ class webtext(json_dataset):
     """
     PATH = 'data/webtext/data.json'
     assert_str = "make sure to set PATH for webtext data_utils/corpora.py"
+
     def __init__(self, **kwargs):
         assert os.path.exists(webtext.PATH), \
-                        webtext.assert_str
+            webtext.assert_str
         if not kwargs:
             kwargs = {}
         kwargs['text_key'] = 'text'
@@ -52,7 +57,81 @@ class webtext(json_dataset):
         super(webtext, self).__init__(webtext.PATH, **kwargs)
 
 
+class ChineseDataset(data.Dataset):
+    PATH = None
+    assert_str = None
+
+    def __init__(self):
+        assert os.path.exists(self.PATH), self.assert_str
+        self.prompts, self.texts = [], []
+        with open(self.PATH) as file:
+            for row in file:
+                data = json.loads(row)
+                self.process_line(data)
+
+    def process_line(self, data):
+        raise NotImplementedError
+
+    def __getitem__(self, index):
+        return {"prompt": self.prompts[index], "text": self.texts[index]}
+
+    def __len__(self):
+        return len(self.prompts)
+
+
+class zhihu(ChineseDataset):
+    PATH = "data/zhihu/data.json"
+    assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
+    qtitle_prefix = []
+    qcontent_prefix = []
+    user_prefix = []
+    answer_prefix = []
+
+    def process_line(self, data):
+        if data.get("ans-content", []):
+            prompt = zhihu.qtitle_prefix + data["q_title"] + zhihu.qcontent_prefix + data[
+                "q-content"] + zhihu.user_prefix + data.get("user-signature", []) + zhihu.answer_prefix
+            text = data["ans-content"]
+            self.prompts.append(prompt)
+            self.texts.append(text)
+
+
+class zhidao(ChineseDataset):
+    PATH = "data/zhidao/data.json"
+    assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
+    qtitle_prefix = []
+    qcontent_prefix = []
+    answer_prefix = []
+
+    def process_line(self, data):
+        prompt = self.qtitle_prefix + data["title"] + self.qcontent_prefix + data[
+            "content"] + self.answer_prefix
+        if "best_answer" in data:
+            text = data["best_answer"]["content"]
+            self.prompts.append(prompt)
+            self.texts.append(text)
+        for answer in data.get("other_answers", []):
+            text = answer["content"]
+            self.prompts.append(prompt)
+            self.texts.append(text)
+
+
+class baike(ChineseDataset):
+    PATH = "data/baike/data.json"
+    assert_str = "make sure to set PATH for baike data_utils/corpora.py"
+
+    def process_line(self, data):
+        self.prompts.append([])
+        text = data.get("title", []) + data.get("abstract", []) + data.get("content", [])
+        if text:
+            self.prompts.append([])
+            self.texts.append(text)
+
+
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
-        'webtext': webtext,
+    'webtext': webtext,
+    "zhihu": zhihu,
+    "zhidao": zhidao,
+    "baike": baike
 }

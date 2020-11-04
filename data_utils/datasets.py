@@ -510,7 +510,7 @@ class GPT2Dataset(data.Dataset):
         # get possibly weighted random index from dataset
         data_idx = self.get_weighted_samples(rng)
 #        data_idx = rng.choice(self.ds_len, p=self.weighting)
-        tokens = self.getidx(data_idx)
+        tokens, loss_mask = self.getidx(data_idx)
 
         # truncate or pad tokens
         num_tokens = len(tokens)
@@ -519,17 +519,19 @@ class GPT2Dataset(data.Dataset):
         if tokens_to_strip > 0:
             strip_left_tokens = rng.randint(tokens_to_strip + 1)
             tokens = tokens[strip_left_tokens:]
-            if self.sentence_start:
-                token_copy = list(tokens)
-                not_done = True
-                while (len(token_copy) > 0) and not_done:
-                    tok = token_copy.pop(0)
-                    if self.contains_sentence_end(tok):
-                        tokens = token_copy
-                        not_done = False
+            loss_mask = loss_mask[strip_left_tokens:]
+            # if self.sentence_start:
+            #     token_copy = list(tokens)
+            #     not_done = True
+            #     while (len(token_copy) > 0) and not_done:
+            #         tok = token_copy.pop(0)
+            #         if self.contains_sentence_end(tok):
+            #             tokens = token_copy
+            #             not_done = False
             strip_right_rokens = len(tokens) - self.max_seq_len - 1
             if strip_right_rokens > 0:
                 tokens = tokens[:-strip_right_rokens]
+                loss_mask = loss_mask[:-strip_right_rokens]
         # Sample multiple documents
         if self.sample_across_doc:
             while (len(tokens) < (self.max_seq_len + 1)):
@@ -537,16 +539,20 @@ class GPT2Dataset(data.Dataset):
                     data_idx = self.get_weighted_samples(rng)
                 else:
                     data_idx = (data_idx + 1) % self.ds_len
-                tokens += self.getidx(data_idx)
+                new_tokens, new_loss_mask = self.getidx(data_idx)
+                tokens += new_tokens
+                loss_mask += new_loss_mask
             tokens = tokens[:(self.max_seq_len+1)]
+            loss_mask = loss_mask[:(self.max_seq_len + 1)]
 
         tokens = self.pad_seq(tokens)
-        return {'text': np.array(tokens),}
+        loss_mask = self.pad_seq(loss_mask, pad_id=0)
+        return {'text': np.array(tokens), "loss_mask": np.array(loss_mask)}
 
     def getidx(self, data_idx):
         data = self.ds[data_idx]
         if isinstance(data, dict):
-            data = data['text']
+            data = data['prompt'] + data['text']
         # tokenize
         if self.use_tokenizer:
             tokenization = self.tokenizer.EncodeAsIds(data)
@@ -554,12 +560,13 @@ class GPT2Dataset(data.Dataset):
         else:
             tokens = data
         tokens.append(self.tokenizer.get_command('eos').Id)
-        return tokens
+        loss_masks = [0] * len(data['prompt']) + [1] * (len(tokens) - len(data['prompt']))
+        return tokens, loss_masks
 
-    def pad_seq(self, seq):
+    def pad_seq(self, seq, pad_id=None):
         total_tokens = self.max_seq_len + 1
         num_pad_tokens = max(0, total_tokens - len(seq))
-        seq += [self.tokenizer.get_command('pad').Id]*(num_pad_tokens)
+        seq += [self.tokenizer.get_command('pad').Id if pad_id is None else pad_id]*(num_pad_tokens)
         return seq
 
     # TODO: rewrite this function for chinese

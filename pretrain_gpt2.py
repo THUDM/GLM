@@ -200,7 +200,8 @@ def setup_model_and_optimizer(args):
 def get_masks_and_position_ids(data,
                                eod_token,
                                reset_position_ids,
-                               reset_attention_mask):
+                               reset_attention_mask,
+                               loss_mask=None):
     # Extract batch size and sequence length.
     batch_size, seq_length = data.size()
 
@@ -214,7 +215,8 @@ def get_masks_and_position_ids(data,
             att_mask_batch, 1, seq_length, seq_length)
 
     # Loss mask.
-    loss_mask = torch.ones(data.size(), dtype=torch.float, device=data.device)
+    if loss_mask is None:
+        loss_mask = torch.ones(data.size(), dtype=torch.float, device=data.device)
     loss_mask[data == eod_token] = 0.0
 
     # Position ids.
@@ -278,7 +280,9 @@ def get_batch(data_iterator, args, timers):
 
     # Unpack.
     tokens_ = data_b['text'].long()
+    loss_mask = data_b['loss_mask'].float()
     labels = tokens_[:, 1:].contiguous()
+    loss_mask = loss_mask[:, 1:].contiguous()
     tokens = tokens_[:, :-1].contiguous()
 
     # Get the masks and postition ids.
@@ -286,7 +290,8 @@ def get_batch(data_iterator, args, timers):
         tokens,
         args.eod_token,
         args.reset_position_ids,
-        args.reset_attention_mask)
+        args.reset_attention_mask,
+        loss_mask=loss_mask)
     # Convert
     if args.fp16:
         attention_mask = attention_mask.half()
