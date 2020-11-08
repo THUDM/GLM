@@ -68,7 +68,8 @@ def get_model(args):
                       max_sequence_length=args.max_position_embeddings,
                       checkpoint_activations=args.checkpoint_activations,
                       checkpoint_num_layers=args.checkpoint_num_layers,
-                      parallel_output=True)
+                      parallel_output=True,
+                      transformer_xl=args.transformer_xl)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(
@@ -201,18 +202,26 @@ def get_masks_and_position_ids(data,
                                eod_token,
                                reset_position_ids,
                                reset_attention_mask,
-                               loss_mask=None):
+                               loss_mask=None,
+                               attention_mask=None,
+                               transformer_xl=False):
     # Extract batch size and sequence length.
     batch_size, seq_length = data.size()
 
     # Attention mask (lower triangular).
-    if reset_attention_mask:
-        att_mask_batch = batch_size
+    if transformer_xl:
+        if attention_mask is None:
+            attention_mask = torch.ones((1, seq_length, 2 * seq_length), device=data.device)
+        attention_mask = torch.tril(torch.triu(attention_mask, 1), seq_length)
     else:
-        att_mask_batch = 1
-    attention_mask = torch.tril(torch.ones(
-        (att_mask_batch, seq_length, seq_length), device=data.device)).view(
-            att_mask_batch, 1, seq_length, seq_length)
+        if reset_attention_mask:
+            att_mask_batch = batch_size
+        else:
+            att_mask_batch = 1
+        if attention_mask is None:
+            attention_mask = torch.ones((att_mask_batch, seq_length, seq_length), device=data.device)
+        attention_mask = torch.tril(attention_mask)
+    attention_mask = attention_mask.unsqueeze(1)
 
     # Loss mask.
     if loss_mask is None:
@@ -223,31 +232,32 @@ def get_masks_and_position_ids(data,
     position_ids = torch.arange(seq_length, dtype=torch.long,
                                 device=data.device)
     position_ids = position_ids.unsqueeze(0).expand_as(data)
-    # We need to clone as the ids will be modifed based on batch index.
-    if reset_position_ids:
-        position_ids = position_ids.clone()
+    if not transformer_xl:
+        # We need to clone as the ids will be modifed based on batch index.
+        if reset_position_ids:
+            position_ids = position_ids.clone()
 
-    if reset_position_ids or reset_attention_mask:
-        # Loop through the batches:
-        for b in range(batch_size):
+        if reset_position_ids or reset_attention_mask:
+            # Loop through the batches:
+            for b in range(batch_size):
 
-            # Find indecies where EOD token is.
-            eod_index = position_ids[b, data[b] == eod_token]
-            # Detach indecies from positions if going to modify positions.
-            if reset_position_ids:
-                eod_index = eod_index.clone()
-
-            # Loop through EOD indecies:
-            prev_index = 0
-            for j in range(eod_index.size()[0]):
-                i = eod_index[j]
-                # Mask attention loss.
-                if reset_attention_mask:
-                    attention_mask[b, 0, (i+1):, :(i+1)] = 0
-                # Reset positions.
+                # Find indecies where EOD token is.
+                eod_index = position_ids[b, data[b] == eod_token]
+                # Detach indecies from positions if going to modify positions.
                 if reset_position_ids:
-                    position_ids[b, (i+1):] -= (i + 1 - prev_index)
-                    prev_index = i + 1
+                    eod_index = eod_index.clone()
+
+                # Loop through EOD indecies:
+                prev_index = 0
+                for j in range(eod_index.size()[0]):
+                    i = eod_index[j]
+                    # Mask attention loss.
+                    if reset_attention_mask:
+                        attention_mask[b, 0, (i+1):, :(i+1)] = 0
+                    # Reset positions.
+                    if reset_position_ids:
+                        position_ids[b, (i+1):] -= (i + 1 - prev_index)
+                        prev_index = i + 1
 
     return attention_mask, loss_mask, position_ids
 
@@ -266,7 +276,7 @@ def get_batch(data_iterator, args, timers):
     shard reset mask of the same dimensions is also returned.
     '''
     # Items and their type.
-    keys = ['text', 'loss_mask']
+    keys = ['text', 'target', 'loss_mask', 'attention_mask'] if args.transformer_xl else ['text', 'loss_mask']
     datatype = torch.int64
 
     # Broadcast data.
@@ -277,13 +287,19 @@ def get_batch(data_iterator, args, timers):
         data = None
     timers('data loader').stop()
     data_b = mpu.broadcast_data(keys, data, datatype)
-
     # Unpack.
-    tokens_ = data_b['text'].long()
-    loss_mask = data_b['loss_mask'].float()
-    labels = tokens_[:, 1:].contiguous()
-    loss_mask = loss_mask[:, 1:].contiguous()
-    tokens = tokens_[:, :-1].contiguous()
+    if args.transformer_xl:
+        tokens = data_b['text'].long()
+        labels = data_b['target'].long()
+        attention_mask = data_b['attention_mask'].float()
+        loss_mask = data_b['loss_mask'].float()
+    else:
+        tokens_ = data_b['text'].long()
+        loss_mask = data_b['loss_mask'].float()
+        labels = tokens_[:, 1:].contiguous()
+        loss_mask = loss_mask[:, 1:].contiguous()
+        tokens = tokens_[:, :-1].contiguous()
+        attention_mask = None
 
     # Get the masks and postition ids.
     attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
@@ -291,7 +307,9 @@ def get_batch(data_iterator, args, timers):
         args.eod_token,
         args.reset_position_ids,
         args.reset_attention_mask,
-        loss_mask=loss_mask)
+        loss_mask=loss_mask,
+        attention_mask=attention_mask,
+        transformer_xl=args.transformer_xl)
     # Convert
     if args.fp16:
         attention_mask = attention_mask.half()
@@ -299,7 +317,7 @@ def get_batch(data_iterator, args, timers):
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
-def forward_step(data_iterator, model, args, timers):
+def forward_step(data_iterator, model, args, timers, mems):
     """Forward step."""
 
     # Get the batch.
@@ -309,13 +327,13 @@ def forward_step(data_iterator, model, args, timers):
     timers('batch generator').stop()
 
     # Forward model.
-    output = model(tokens, position_ids, attention_mask)
-    losses = mpu.vocab_parallel_cross_entropy(output.contiguous().float(),
+    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                               labels)
     loss_mask = loss_mask.view(-1)
     loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
 
-    return loss
+    return loss, mems
 
 
 def backward_step(optimizer, model, lm_loss, args, timers):
@@ -384,12 +402,12 @@ def see_memory_usage(message, force=False):
 
 
 def train_step(data_iterator, model, optimizer, lr_scheduler,
-               args, timers):
+               args, timers, mems):
     """Single training step."""
 
     # Forward model for one step.
     timers('forward').start()
-    lm_loss = forward_step(data_iterator, model, args, timers)
+    lm_loss, mems = forward_step(data_iterator, model, args, timers, mems)
     timers('forward').stop()
 
     #print_rank_0("loss is {}".format(lm_loss))
@@ -416,7 +434,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler,
             skipped_iter = 1
     timers('optimizer').stop()
 
-    return lm_loss_reduced, skipped_iter
+    return lm_loss_reduced, skipped_iter, mems
 
 
 def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
@@ -464,13 +482,14 @@ def train(model, optimizer, lr_scheduler,
 
     timers('interval time').start()
     report_memory_flag = True
+    mems = []
     while iteration < args.train_iters:
 
-        lm_loss, skipped_iter = train_step(train_data_iterator,
+        lm_loss, skipped_iter, mems = train_step(train_data_iterator,
                                            model,
                                            optimizer,
                                            lr_scheduler,
-                                           args, timers)
+                                           args, timers, mems)
         skipped_iters += skipped_iter
         iteration += 1
 
@@ -524,7 +543,7 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
     model.eval()
 
     total_lm_loss = 0
-
+    mems = []
     with torch.no_grad():
         iteration = 0
         while iteration < args.eval_iters:
@@ -532,7 +551,7 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
             if verbose and iteration % args.log_interval == 0:
                 print_rank_0('Evaluating iter {}/{}'.format(iteration, args.eval_iters))
             # Forward evaluation.
-            lm_loss = forward_step(data_iterator, model, args, timers)
+            lm_loss, mems = forward_step(data_iterator, model, args, timers, mems=mems)
 
             '''when contiguous memory optimizations are enabled, the buffers
             allocated by the optimizations are deallocated during backward pass

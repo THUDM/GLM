@@ -16,7 +16,9 @@
 from .datasets import json_dataset, csv_dataset
 import os
 import json
+import random
 from torch.utils import data
+from .lazy_loader import lazy_array_loader
 
 
 class wikipedia(json_dataset):
@@ -58,21 +60,13 @@ class webtext(json_dataset):
 
 
 class ChineseDataset(data.Dataset):
-    PATH = None
-    assert_str = None
-
-    def __init__(self, prompt_loader=None, text_loader=None, **kwargs):
-        if prompt_loader is None:
-            assert os.path.exists(self.PATH), self.assert_str
-            self.prompts, self.texts = [], []
-            with open(self.PATH) as file:
-                for row in file:
-                    data = json.loads(row)
-                    self.process_line(data)
-        else:
-            assert text_loader is not None
-            self.prompts = prompt_loader
-            self.texts = text_loader
+    def __init__(self, prompt_loader, text_loader, **kwargs):
+        self.prompts = prompt_loader
+        self.texts = text_loader
+        if isinstance(self.prompts, lazy_array_loader) and isinstance(self.texts, lazy_array_loader):
+            self.prompt_lens = self.prompts.lens
+            self.text_lens = self.texts.lens
+            self.is_lazy = True
 
     def process_line(self, data):
         raise NotImplementedError
@@ -84,7 +78,28 @@ class ChineseDataset(data.Dataset):
         return len(self.prompts)
 
 
-class zhihu(ChineseDataset):
+class DataReader:
+    PATH = None
+    assert_str = None
+
+    def __init__(self, shuffle=False, **kwargs):
+        assert os.path.exists(self.PATH), self.assert_str
+        self.prompts, self.texts = [], []
+        with open(self.PATH) as file:
+            for row in file:
+                data = json.loads(row)
+                self.process_line(data)
+        if shuffle:
+            shuffle_idx = list(range(len(self.prompts)))
+            random.shuffle(shuffle_idx)
+            self.prompts = [self.prompts[idx] for idx in shuffle_idx]
+            self.texts = [self.texts[idx] for idx in shuffle_idx]
+
+    def process_line(self, data):
+        raise NotImplementedError
+
+
+class zhihu(DataReader):
     PATH = "data/zhihu/data.json"
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
     qtitle_prefix = []
@@ -101,7 +116,7 @@ class zhihu(ChineseDataset):
             self.texts.append(text)
 
 
-class zhidao(ChineseDataset):
+class zhidao(DataReader):
     PATH = "data/zhidao/data.json"
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
     qtitle_prefix = []
@@ -121,7 +136,7 @@ class zhidao(ChineseDataset):
             self.texts.append(text)
 
 
-class baike(ChineseDataset):
+class baike(DataReader):
     PATH = "data/baike/data.json"
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 

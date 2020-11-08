@@ -72,6 +72,37 @@ class RandomSampler(data.sampler.Sampler):
     def set_epoch(self, epoch):
         self.epoch = epoch
 
+
+class DistributedSequentialSampler(data.sampler.Sampler):
+    def __init__(self, num_samples, train_iters, batch_size, rank=-1, world_size=2):
+        super().__init__(num_samples)
+        if rank == -1:
+            rank = 0
+            world_size = 1
+        self.num_samples = num_samples
+        self.rank = rank
+        self.world_size = world_size
+        self.start_iter = 0
+        self.train_iters = train_iters
+        self.batch_size = batch_size
+        self.batch_bias = [i * (num_samples // batch_size) for i in range(batch_size)]
+
+    def __iter__(self):
+        for idx in range(self.start_iter, self.train_iters * 10):
+            batch = [(idx + bias) % self.num_samples for bias in self.batch_bias]
+            tbatch = self._batch(batch)
+            yield tbatch
+
+    def __len__(self):
+        return self.train_iters
+
+    def _batch(self, batch):
+        """extracts samples only pertaining to this worker's batch"""
+        start = self.rank*self.batch_size//self.world_size
+        end = (self.rank+1)*self.batch_size//self.world_size
+        return batch[start:end]
+
+
 class DistributedBatchSampler(data.sampler.BatchSampler):
     """
     similar to normal implementation of distributed sampler, except implementation is at the

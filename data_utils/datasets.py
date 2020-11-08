@@ -34,6 +34,24 @@ from nltk import tokenize
 from .lazy_loader import lazy_array_loader, exists_lazy, make_lazy
 from .tokenization import Tokenization
 
+
+class ShuffleDataset(data.Dataset):
+    def __init__(self, ds):
+        self.ds = ds
+        self.shuffle_ids = list(range(len(self.ds)))
+        random.shuffle(self.shuffle_ids)
+        self.is_lazy = hasattr(ds, 'is_lazy') and ds.is_lazy
+        if self.is_lazy:
+            self.prompt_lens = [self.ds.prompt_lens[idx] for idx in self.shuffle_ids]
+            self.text_lens = [self.ds.text_lens[idx] for idx in self.shuffle_ids]
+
+    def __getitem__(self, idx):
+        return self.ds[self.shuffle_ids[idx]]
+
+    def __len__(self):
+        return len(self.ds)
+
+
 class ConcatDataset(data.Dataset):
     """
     Dataset to concatenate multiple datasets.
@@ -57,7 +75,13 @@ class ConcatDataset(data.Dataset):
         super(ConcatDataset, self).__init__()
         assert len(datasets) > 0, 'datasets should not be an empty iterable'
         self.datasets = list(datasets)
-        self.is_lazy = sum([isinstance(ds, lazy_array_loader) for ds in self.datasets]) == len(self.datasets)
+        self.is_lazy = sum([isinstance(ds, lazy_array_loader) or (hasattr(ds, 'is_lazy') and ds.is_lazy) for ds in
+                            self.datasets]) == len(self.datasets)
+        if self.is_lazy:
+            self.prompt_lens, self.text_lens = [], []
+            for ds in self.datasets:
+                self.prompt_lens += ds.prompt_lens
+                self.text_lens += ds.text_lens
         self.cumulative_sizes = self.cumsum(self.datasets)
         self._X = None
         self._Y = None
@@ -110,11 +134,6 @@ class ConcatDataset(data.Dataset):
             self._Y = np.array(self._Y)
         return self._Y
 
-    @property
-    def cummulative_sizes(self):
-        warnings.warn("cummulative_sizes attribute is renamed to "
-                      "cumulative_sizes", DeprecationWarning, stacklevel=2)
-        return self.cumulative_sizes
 
 class SplitDataset(data.Dataset):
     """
@@ -131,7 +150,8 @@ class SplitDataset(data.Dataset):
         self.wrapped_data = ds
         self.is_lazy = isinstance(ds, lazy_array_loader) or (hasattr(ds, 'is_lazy') and ds.is_lazy)
         if self.is_lazy:
-            self.lens = itemgetter(*self.split_inds)(list(self.wrapped_data.lens))
+            self.text_lens = [self.wrapped_data.text_lens[idx] for idx in self.split_inds]
+            self.prompt_lens = [self.wrapped_data.prompt_lens[idx] for idx in self.split_inds]
         self._X = None
         self._Y = None
 
@@ -453,6 +473,78 @@ class json_dataset(data.Dataset):
                 j[self.label_key] = -1
             yield j
 
+
+class XLDataset(data.Dataset):
+    def __init__(self, ds, tokenizer, max_seq_len=1024, sample_across_doc=True, use_tokenizer=True, **kwargs):
+        self.ds = ds
+        self.tokenizer = tokenizer
+        self.max_seq_len = max_seq_len
+        self.sample_across_doc = sample_across_doc
+        self.use_tokenizer = use_tokenizer
+        self.indices, self.num_samples = None, None
+        if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
+            self.is_lazy = True
+        self.init_indices()
+
+    def init_indices(self):
+        if self.is_lazy:
+            lens = np.array(self.ds.text_lens) + np.array(self.ds.prompt_lens)
+        else:
+            lens = [len(d['prompt']) + len(d['text']) for d in self.ds]
+        self.indices = []
+        index, acc_length = [], 0
+        for idx in range(len(self.ds)):
+            data_length = lens[idx]
+            start = 0
+            while start < data_length:
+                index.append((idx, start))
+                length = min(self.max_seq_len, data_length - start, self.max_seq_len - acc_length)
+                acc_length += length
+                if not self.sample_across_doc or acc_length == self.max_seq_len:
+                    self.indices.append(index)
+                    index, acc_length = [], 0
+                start += length
+        self.num_samples = len(self.indices)
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        data_idx = self.indices[idx]
+        tokens, targets, loss_mask, attention_mask = self.getidx(data_idx)
+        tokens = self.pad_seq(tokens)
+        targets = self.pad_seq(targets)
+        loss_mask = self.pad_seq(loss_mask, pad_id=0)
+        return {'text': np.array(tokens), "target": np.array(targets), "loss_mask": np.array(loss_mask),
+                "attention_mask": np.array(attention_mask)}
+
+    def getidx(self, data_idx):
+        tokens, targets, loss_masks = [], [], []
+        attention_mask = np.concatenate((np.zeros((self.max_seq_len, self.max_seq_len), dtype=np.long),
+                                         np.ones((self.max_seq_len, self.max_seq_len), dtype=np.long)), axis=1)
+        if data_idx[0][1] != 0:
+            history = min(self.max_seq_len, data_idx[0][1])
+            attention_mask[:, -self.max_seq_len-history:-self.max_seq_len] = 1
+        for i, (idx, start) in enumerate(data_idx):
+            item = self.ds[idx]
+            text = item['prompt'] + item['text'] + [self.tokenizer.get_command('eos').Id]
+            end = min(len(text) - 1, start + self.max_seq_len - len(tokens))
+            masks = [0] * len(item['prompt']) + [1] * (len(item['text']) + 1)
+            if i > 0:
+                current = len(tokens)
+                attention_mask[current:, :current + self.max_seq_len] = 0
+            tokens += text[start: end]
+            targets += text[start + 1: end + 1]
+            loss_masks += masks[start + 1: end + 1]
+        return tokens, targets, loss_masks, attention_mask
+
+    def pad_seq(self, seq, pad_id=None):
+        total_tokens = self.max_seq_len
+        num_pad_tokens = max(0, total_tokens - len(seq))
+        seq += [self.tokenizer.get_command('pad').Id if pad_id is None else pad_id]*(num_pad_tokens)
+        return seq
+
+
 class GPT2Dataset(data.Dataset):
 
     def __init__(self, ds, tokenizer,
@@ -477,12 +569,16 @@ class GPT2Dataset(data.Dataset):
         self.random_across_doc_sampling = random_across_doc_sampling
         self.sentence_start = sentence_start
         self.use_tokenizer = use_tokenizer
+        self.weighting, self.total_len = None, None
+        self.is_lazy = False
+        if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
+            self.is_lazy = True
         self.init_weighting()
 
     def init_weighting(self):
         if self.weighted:
-            if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
-                lens = np.array(self.ds.lens)
+            if self.is_lazy:
+                lens = np.array(self.ds.text_lens)
             else:
                 lens = np.array([len(d['text']) if isinstance(d, dict)
                                  else len(d) for d in self.ds])

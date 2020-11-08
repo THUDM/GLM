@@ -45,29 +45,34 @@ class DataConfig:
 
 
 def make_data_loader(dataset, batch_size, args):
-
-    shuffle = args.shuffle
-    if shuffle:
-        sampler = data_utils.samplers.RandomSampler(dataset, replacement=True, num_samples=batch_size*args.train_iters)
-    else:
-        sampler = torch.utils.data.SequentialSampler(dataset)
     world_size = torch.distributed.get_world_size(
         group=mpu.get_data_parallel_group())
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
     distributed = world_size > 1
-    drop_last = distributed
-    # the GPUs in the same model parallel group receive the same data
-    if distributed:
-        batch_sampler = data_utils.samplers.DistributedBatchSampler(sampler,
-                                                                    batch_size,
-                                                                    drop_last,
-                                                                    rank,
-                                                                    world_size)
+    if args.transformer_xl:
+        batch_sampler = data_utils.samplers.DistributedSequentialSampler(len(dataset),
+                                                                         args.train_iters,
+                                                                         batch_size,
+                                                                         rank,
+                                                                         world_size)
     else:
-        batch_sampler = torch.utils.data.BatchSampler(sampler,
-                                                      batch_size,
-                                                      drop_last)
-
+        shuffle = args.shuffle
+        if shuffle:
+            sampler = data_utils.samplers.RandomSampler(dataset, replacement=True, num_samples=batch_size*args.train_iters)
+        else:
+            sampler = torch.utils.data.SequentialSampler(dataset)
+        drop_last = distributed
+        # the GPUs in the same model parallel group receive the same data
+        if distributed:
+            batch_sampler = data_utils.samplers.DistributedBatchSampler(sampler,
+                                                                        batch_size,
+                                                                        drop_last,
+                                                                        rank,
+                                                                        world_size)
+        else:
+            batch_sampler = torch.utils.data.BatchSampler(sampler,
+                                                          batch_size,
+                                                          drop_last)
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,
                                               num_workers=args.num_workers,
@@ -135,6 +140,7 @@ def make_loaders(args):
         'path': args.train_data,
         'seq_length': seq_length,
         'lazy': args.lazy_loader,
+        'xl_style': args.transformer_xl,
         'delim': args.delim,
         'text_key': args.text_key,
         'label_key': 'label',
@@ -148,7 +154,8 @@ def make_loaders(args):
         'model_type': args.tokenizer_model_type,
         'cache_dir': args.cache_dir,
         'max_preds_per_seq': args.max_preds_per_seq,
-        'presplit_sentences': args.presplit_sentences}
+        'presplit_sentences': args.presplit_sentences,
+        'sample_one_document': args.sample_one_document}
 
     eval_set_args = copy.copy(data_set_args)
     eval_set_args['split'] = [1.]
@@ -224,6 +231,7 @@ def get_split(args):
         splits[2] = 0.
     final_sum = sum(splits)
     return [s/final_sum for s in splits]
+
 
 def configure_data():
 

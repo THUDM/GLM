@@ -50,7 +50,8 @@ class GPT2Model(torch.nn.Module):
                  max_sequence_length,
                  checkpoint_activations,
                  checkpoint_num_layers=1,
-                 parallel_output=True):
+                 parallel_output=True,
+                 transformer_xl=False):
 
         super(GPT2Model, self).__init__()
 
@@ -62,47 +63,37 @@ class GPT2Model(torch.nn.Module):
         self.word_embeddings = mpu.VocabParallelEmbedding(
             vocab_size, hidden_size, init_method=init_method)
 
-        # Position embedding (serial).
-        self.position_embeddings = torch.nn.Embedding(max_sequence_length,
-                                                      hidden_size)
-        # Initialize the position embeddings.
-        init_method(self.position_embeddings.weight)
-
-        # Embeddings dropout
-        self.embedding_dropout = torch.nn.Dropout(embedding_dropout_prob)
-
         # Transformer
         self.transformer = mpu.GPT2ParallelTransformer(num_layers,
                                                        hidden_size,
                                                        num_attention_heads,
+                                                       max_sequence_length,
+                                                       embedding_dropout_prob,
                                                        attention_dropout_prob,
                                                        output_dropout_prob,
                                                        checkpoint_activations,
-                                                       checkpoint_num_layers)
+                                                       checkpoint_num_layers,
+                                                       transformer_xl=transformer_xl)
 
-    def forward(self, input_ids, position_ids, attention_mask):
+    def forward(self, input_ids, position_ids, attention_mask, *mems):
 
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        embeddings = words_embeddings + position_embeddings
-
-        # Dropout.
-        embeddings = self.embedding_dropout(embeddings)
+        embeddings = words_embeddings
 
         # Transformer.
-        transformer_output = self.transformer(embeddings, attention_mask)
-
+        transformer_output = self.transformer(embeddings, position_ids, attention_mask, *mems)
+        logits, *hidden_layers = transformer_output
         # Parallel logits.
-        transformer_output_parallel = mpu.copy_to_model_parallel_region(
-            transformer_output)
-        logits_parallel = F.linear(transformer_output_parallel,
+        logits_parallel = mpu.copy_to_model_parallel_region(
+            logits)
+        logits_parallel = F.linear(logits_parallel,
                                    self.word_embeddings.weight)
 
         if self.parallel_output:
-            return logits_parallel
+            return (logits_parallel, *hidden_layers)
 
-        return mpu.gather_from_model_parallel_region(logits_parallel)
+        return (mpu.gather_from_model_parallel_region(logits_parallel), *hidden_layers)
 
 
 def gpt2_get_params_for_weight_decay_optimization(module):

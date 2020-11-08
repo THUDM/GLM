@@ -17,6 +17,7 @@ import os
 import mmap
 import pickle as pkl
 import time
+import numpy as np
 from itertools import accumulate
 
 import torch
@@ -41,7 +42,9 @@ def exists_lazy(path, data_type='data'):
         return False
     return True
 
-def make_lazy(path, strs, data_type='data'):
+lazy_data_type = np.int32
+
+def make_lazy(path, dataset, data_type='data', is_array=False):
     """
     Make lazy version of `data_type` field of the file. Byte offsets
     corresponding to data indices are stored in a `.len.pkl` data file.
@@ -53,21 +56,24 @@ def make_lazy(path, strs, data_type='data'):
     lenpath = os.path.join(lazypath, data_type+'.len.pkl')
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
         with open(datapath, 'wb') as f:
-            str_lens = []
-            str_cnt = 0
-            for s in strs:
+            lengths = []
+            for s in dataset:
                 if isinstance(s, dict):
                     s = s['text']
-                elif isinstance(s, list) or isinstance(s, tuple):
-                    s = " ".join(map(str, s))
-                encoded = s.encode('utf-8')
-                f.write(encoded)
-                str_cnt = len(encoded)
-                str_lens.append(str_cnt)
-        pkl.dump(str_lens, open(lenpath, 'wb'))
+                if is_array:
+                    encoded = np.array(s, dtype=lazy_data_type).tobytes(order='C')
+                    f.write(encoded)
+                    lengths.append(len(s))
+                else:
+                    encoded = s.encode('utf-8')
+                    f.write(encoded)
+                    lengths.append(len(encoded))
+        with open(lenpath, 'wb') as f:
+            pkl.dump(lengths, f)
     else:
         while not os.path.exists(lenpath):
             time.sleep(1)
+
 
 def split_strings(strings, start, chr_lens):
     """
@@ -109,24 +115,29 @@ class lazy_array_loader(object):
         data_type2
         data_type2.len.pkl
     """
-    def __init__(self, path, data_type='data', mem_map=False, map_fn=None):
+    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False):
         lazypath = get_lazy_path(path)
         datapath = os.path.join(lazypath, data_type)
         #get file where array entries are concatenated into one big string
         self._file = open(datapath, 'rb')
         self.file = self._file
+        self.is_array = is_array
         #memory map file if necessary
-        self.mem_map = mem_map
-        if self.mem_map:
-            self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
         lenpath = os.path.join(lazypath, data_type+'.len.pkl')
         self.lens = pkl.load(open(lenpath, 'rb'))
         self.ends = list(accumulate(self.lens))
         self.dumb_ends = list(self.ends)
+        self.mem_map = mem_map
+        if self.mem_map:
+            if is_array:
+                self.file = np.memmap(self.file, dtype=lazy_data_type, mode='r', order='C')
+            else:
+                self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
         self.read_lock = Lock()
         self.process_fn = map_fn
         self.map_fn = map_fn
         self._tokenizer = None
+        self.is_lazy = True
 
     def SetTokenizer(self, tokenizer):
         """
@@ -175,23 +186,34 @@ class lazy_array_loader(object):
 
     def file_read(self, start=0, end=None):
         """read specified portion of file"""
-
+        data_type_size = np.dtype(lazy_data_type).itemsize
         # atomic reads to avoid race conditions with multiprocess dataloader
         self.read_lock.acquire()
-        # seek to start of file read
-        self.file.seek(start)
-        # read to end of file if no end point provided
-        if end is None:
-            rtn = self.file.read()
-        #else read amount needed to reach end point
+        if not self.mem_map:
+            # seek to start of file read
+            if self.is_array:
+                start = start * data_type_size
+                end = end * data_type_size if end is not None else None
+            self.file.seek(start)
+            # read to end of file if no end point provided
+            if end is None:
+                rtn = self.file.read()
+            #else read amount needed to reach end point
+            else:
+                rtn = self.file.read(end-start)
+            if self.is_array:
+                rtn = np.ndarray(shape=(len(rtn) / data_type_size,), dtype=lazy_data_type, buffer=rtn, order='C')
         else:
-            rtn = self.file.read(end-start)
+            rtn = self.file[start:end]
+            if self.is_array:
+                rtn = rtn.copy()
         self.read_lock.release()
         #TODO: @raulp figure out mem map byte string bug
         #if mem map'd need to decode byte string to string
-        rtn = rtn.decode('utf-8', 'ignore')
-        # rtn = str(rtn)
-        if self.mem_map:
-            rtn = rtn.decode('unicode_escape')
+        if not self.mem_map:
+            rtn = rtn.decode('utf-8', 'ignore')
+        # # rtn = str(rtn)
+        # if self.mem_map:
+        #     rtn = rtn.decode('unicode_escape')
         return rtn
 

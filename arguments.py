@@ -27,6 +27,7 @@ def add_model_config_args(parser):
 
     group = parser.add_argument_group('model', 'model configuration')
 
+    group.add_argument('--transformer-xl', action='store_true', help='use transformer-xl for training')
     group.add_argument('--pretrained-bert', action='store_true',
                        help='use a pretrained bert-large-uncased model instead'
                             'of initializing from scratch. See '
@@ -304,6 +305,7 @@ def add_data_args(parser):
                        help='Maximum number of predictions to use per sequence.'
                             'Defaults to math.ceil(`--seq-length`*.15/10)*10.'
                             'MUST BE SPECIFIED IF `--use-tfrecords` is True.')
+    group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
 
     return parser
 

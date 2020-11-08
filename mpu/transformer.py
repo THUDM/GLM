@@ -35,6 +35,25 @@ from .utils import divide
 from .utils import split_tensor_along_last_dim
 
 
+class PositionalEmbedding(torch.nn.Module):
+    def __init__(self, hidden_size):
+        super(PositionalEmbedding, self).__init__()
+
+        self.hidden_size = hidden_size
+
+        inv_freq = 1 / (10000 ** (torch.arange(0.0, hidden_size, 2.0) / hidden_size))
+        self.register_buffer('inv_freq', inv_freq)
+
+    def forward(self, pos_seq, bsz=None):
+        sinusoid_inp = torch.ger(pos_seq, self.inv_freq)
+        pos_emb = torch.cat([sinusoid_inp.sin(), sinusoid_inp.cos()], dim=-1)
+
+        if bsz is not None:
+            return pos_emb[None, :, :].expand(bsz, -1, -1)
+        else:
+            return pos_emb[None, :, :]
+
+
 class GPT2ParallelSelfAttention(torch.nn.Module):
     """Parallel self-attention layer for GPT2.
 
@@ -63,7 +82,7 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
     """
     def __init__(self, hidden_size, num_attention_heads,
                  attention_dropout_prob, output_dropout_prob,
-                 init_method, output_layer_init_method=None):
+                 init_method, output_layer_init_method=None, transformer_xl=False):
         super(GPT2ParallelSelfAttention, self).__init__()
         # Set output layer initialization if not provided.
         if output_layer_init_method is None:
@@ -75,11 +94,15 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
                                                      num_attention_heads)
         self.num_attention_heads_per_partition = divide(num_attention_heads,
                                                         world_size)
+        self.transformer_xl = transformer_xl
         # Strided linear layer.
         self.query_key_value = ColumnParallelLinear(hidden_size, 3*hidden_size,
                                                     stride=3,
                                                     gather_output=False,
                                                     init_method=init_method)
+        if transformer_xl:
+            self.relative = ColumnParallelLinear(hidden_size, hidden_size, gather_output=False,
+                                                 init_method=init_method)
         # Dropout. Note that for a single iteration, this layer will generate
         # different outputs on different number of parallel partitions but
         # on average it should not be partition dependent.
@@ -97,7 +120,6 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
             get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
-
     def _transpose_for_scores(self, tensor):
         """Transpose a 3D tensor [b, s, np*hn] into a 4D tensor with
         size [b, np, s, hn].
@@ -108,24 +130,63 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
         tensor = tensor.view(*new_tensor_shape)
         return tensor.permute(0, 2, 1, 3)
 
-    def forward(self, hidden_states, ltor_mask):
+    @staticmethod
+    def _rel_shift(x, zero_triu=False):
+        # ql x kl x bsz x h
+        zero_pad = torch.zeros((x.size(0), 1, *x.size()[2:]),
+                               device=x.device, dtype=x.dtype)
+        x_padded = torch.cat([zero_pad, x], dim=1)
+
+        x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
+
+        x = x_padded[1:].view_as(x)
+
+        if zero_triu:
+            ones = torch.ones((x.size(0), x.size(1)))
+            x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
+
+        return x
+
+    def forward(self, hidden_states, ltor_mask, position_embeddings=None, r_w_bias=None, r_r_bias=None, mem=None):
         # hidden_states: [b, s, h]
         # ltor_mask: [1, 1, s, s]
 
         # Attention heads. [b, s, hp]
-        mixed_x_layer = self.query_key_value(hidden_states)
-        (mixed_query_layer,
-         mixed_key_layer,
-         mixed_value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
+        query_length = hidden_states.size(1)
+
+        if mem is None:
+            mixed_x_layer = self.query_key_value(hidden_states)
+            (mixed_query_layer,
+             mixed_key_layer,
+             mixed_value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
+        else:
+            cat = torch.cat((mem, hidden_states), 1)
+            mixed_x_layer = self.query_key_value(cat)
+            (mixed_query_layer,
+             mixed_key_layer,
+             mixed_value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
+            mixed_query_layer = mixed_query_layer[:, -query_length:]
 
         # Reshape and transpose [b, np, s, hn]
         query_layer = self._transpose_for_scores(mixed_query_layer)
         key_layer = self._transpose_for_scores(mixed_key_layer)
         value_layer = self._transpose_for_scores(mixed_value_layer)
+        if self.transformer_xl:
+            relative_layer = self.relative(position_embeddings)
+            relative_layer = self._transpose_for_scores(relative_layer)  # 1 (bsz) x n_head x klen x d_head
+            # Raw attention scores. [b, np, qs, ks]
+            rw_head_q = query_layer + r_w_bias.unsqueeze(1)
+            ac_score = torch.matmul(rw_head_q,
+                                    key_layer.transpose(-1, -2))
+            rr_head_q = query_layer + r_r_bias.unsqueeze(1)
+            bd_score = torch.matmul(rr_head_q, relative_layer.transpose(-1, -2))
+            bd_score = self._rel_shift(bd_score.permute(2, 3, 0, 1))  # qlen x klen x bsz x n_head
+            bd_score = bd_score.permute(2, 3, 0, 1)
 
-        # Raw attention scores. [b, np, s, s]
-        attention_scores = torch.matmul(query_layer,
-                                        key_layer.transpose(-1, -2))
+            attention_scores = ac_score + bd_score
+        else:
+            # Raw attention scores. [b, np, s, s]
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / math.sqrt(
             self.hidden_size_per_attention_head)
         # Apply the left to right attention mask.
@@ -249,7 +310,8 @@ class GPT2ParallelTransformerLayer(torch.nn.Module):
                  output_dropout_prob,
                  layernorm_epsilon,
                  init_method,
-                 output_layer_init_method=None):
+                 output_layer_init_method=None,
+                 transformer_xl=False):
         super(GPT2ParallelTransformerLayer, self).__init__()
         # Set output layer initialization if not provided.
         if output_layer_init_method is None:
@@ -265,7 +327,8 @@ class GPT2ParallelTransformerLayer(torch.nn.Module):
             attention_dropout_prob,
             output_dropout_prob,
             init_method,
-            output_layer_init_method=output_layer_init_method)
+            output_layer_init_method=output_layer_init_method,
+            transformer_xl=transformer_xl)
 
         # Layernorm on the input data.
         self.post_attention_layernorm = LayerNorm(hidden_size,
@@ -278,14 +341,15 @@ class GPT2ParallelTransformerLayer(torch.nn.Module):
             init_method,
             output_layer_init_method=output_layer_init_method)
 
-    def forward(self, hidden_states, ltor_mask):
+    def forward(self, hidden_states, ltor_mask, position_embeddings=None, r_w_bias=None, r_r_bias=None, mem=None):
         # hidden_states: [b, s, h]
         # ltor_mask: [1, 1, s, s]
 
         # Layer norm at the begining of the transformer layer.
         layernorm_output = self.input_layernorm(hidden_states)
+        mem = self.input_layernorm(mem) if mem is not None else None
         # Self attention.
-        attention_output = self.attention(layernorm_output, ltor_mask)
+        attention_output = self.attention(layernorm_output, ltor_mask, position_embeddings, r_w_bias, r_r_bias, mem)
         # Residual connection.
         layernorm_input = hidden_states + attention_output
         # Layer norm post the self attention.
@@ -353,13 +417,16 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  num_layers,
                  hidden_size,
                  num_attention_heads,
+                 max_sequence_length,
+                 embedding_dropout_prob,
                  attention_dropout_prob,
                  output_dropout_prob,
                  checkpoint_activations,
                  checkpoint_num_layers=1,
                  layernorm_epsilon=1.0e-5,
                  init_method_std=0.02,
-                 use_scaled_init_for_output_weights=True):
+                 use_scaled_init_for_output_weights=True,
+                 transformer_xl=False):
         super(GPT2ParallelTransformer, self).__init__()
         # Store activation checkpoiting flag.
         self.checkpoint_activations = checkpoint_activations
@@ -368,7 +435,36 @@ class GPT2ParallelTransformer(torch.nn.Module):
         output_layer_init_method = None
         if use_scaled_init_for_output_weights:
             output_layer_init_method = scaled_init_method(init_method_std,
-                                                          num_layers)
+                                                      num_layers)
+        # Embeddings dropout
+        self.embedding_dropout = torch.nn.Dropout(embedding_dropout_prob)
+        self.transformer_xl = transformer_xl
+        if transformer_xl:
+            # Relative position embedding
+            self.position_embeddings = PositionalEmbedding(hidden_size)
+            # Per attention head and per partition values.
+            world_size = get_model_parallel_world_size()
+            self.hidden_size_per_attention_head = divide(hidden_size,
+                                                         num_attention_heads)
+            self.num_attention_heads_per_partition = divide(num_attention_heads,
+                                                            world_size)
+            self.r_w_bias = torch.nn.Parameter(
+                torch.Tensor(self.num_attention_heads_per_partition, self.hidden_size_per_attention_head))
+            self.r_w_bias.model_parallel = True
+            self.r_r_bias = torch.nn.Parameter(
+                torch.Tensor(self.num_attention_heads_per_partition, self.hidden_size_per_attention_head))
+            self.r_r_bias.model_parallel = True
+            # Always initialize bias to zero.
+            with torch.no_grad():
+                self.r_w_bias.zero_()
+                self.r_r_bias.zero_()
+        else:
+            # Position embedding (serial).
+            self.position_embeddings = torch.nn.Embedding(max_sequence_length,
+                                                          hidden_size)
+            # Initialize the position embeddings.
+            torch.nn.init.normal_(self.position_embeddings.weight, mean=0.0, std=init_method_std)
+
         def get_layer():
             return GPT2ParallelTransformerLayer(
                 hidden_size,
@@ -377,7 +473,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 output_dropout_prob,
                 layernorm_epsilon,
                 unscaled_init_method(init_method_std),
-                output_layer_init_method=output_layer_init_method)
+                output_layer_init_method=output_layer_init_method,
+                transformer_xl=transformer_xl)
 
         # Transformer layers.
         self.layers = torch.nn.ModuleList(
@@ -391,15 +488,39 @@ class GPT2ParallelTransformer(torch.nn.Module):
             get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
-
-    def forward(self, hidden_states, attention_mask):
+    def forward(self, hidden_states, position_ids, attention_mask, *mems):
+        mem_layers = []
+        if self.transformer_xl:
+            hidden_states = self.embedding_dropout(hidden_states)
+            batch_size, query_length = hidden_states.size()[:2]
+            memory_length = mems[0].size(1) if mems else 0
+            key_length = query_length + memory_length
+            if not mems:
+                attention_mask = attention_mask[:, :, :, -query_length:]
+            position_sequence = torch.arange(key_length - 1, -1, -1.0, device=hidden_states.device,
+                                             dtype=hidden_states.dtype)
+            position_embeddings = self.position_embeddings(position_sequence)
+            # Apply dropout
+            position_embeddings = self.embedding_dropout(position_embeddings)
+            hidden_states = self.embedding_dropout(hidden_states)
+            mem_layers.append(hidden_states.detach())
+        else:
+            position_embeddings = self.position_embeddings(position_ids)
+            hidden_states = hidden_states + position_embeddings
+            hidden_states = self.embedding_dropout(hidden_states)
 
         def custom(start, end):
             def custom_forward(*inputs):
                 layers_ = self.layers[start:end]
-                x_ = inputs[0]
-                for layer in layers_:
-                    x_ = layer(x_, inputs[1])
+                x_, inputs = inputs[0], inputs[1:]
+                mems_ = []
+                if self.transformer_xl:
+                    inputs, mems_ = inputs[:4], inputs[4:]
+                for i, layer in enumerate(layers_):
+                    mem_i_ = mems_[i] if mems_ else None
+                    x_ = layer(x_, *inputs, mem=mem_i_)
+                    if self.transformer_xl:
+                        mem_layers.append(x_.detach())
                 return x_
             return custom_forward
 
@@ -408,17 +529,27 @@ class GPT2ParallelTransformer(torch.nn.Module):
             num_layers = len(self.layers)
             chunk_length = self.checkpoint_num_layers
             while l < num_layers:
-                hidden_states = checkpoint(custom(l, l+chunk_length),
-                                           hidden_states, attention_mask)
+                args = [hidden_states, attention_mask]
+                if self.transformer_xl:
+                    args += [position_embeddings, self.r_w_bias, self.r_r_bias]
+                    if mems:
+                        args += mems[l: l + chunk_length]
+                hidden_states = checkpoint(custom(l, l + chunk_length), *args)
                 l += chunk_length
         else:
-            for layer in self.layers:
-                hidden_states = layer(hidden_states, attention_mask)
+            for i, layer in enumerate(self.layers):
+                if self.transformer_xl:
+                    mem_i = mems[i] if mems else None
+                    hidden_states = layer(hidden_states, attention_mask, position_embeddings, self.r_w_bias, self.r_r_bias,
+                                          mem_i)
+                    mem_layers.append(hidden_states.detach())
+                else:
+                    hidden_states = layer(hidden_states, attention_mask)
 
         # Final layer norm.
         output = self.final_layernorm(hidden_states)
 
-        return output
+        return (output, *mem_layers)
 
 
 class BertParallelSelfAttention(torch.nn.Module):
