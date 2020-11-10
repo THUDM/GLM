@@ -17,27 +17,9 @@ from .datasets import json_dataset, csv_dataset
 import os
 import json
 import random
+from tqdm import tqdm
 from torch.utils import data
 from .lazy_loader import lazy_array_loader
-
-
-class wikipedia(json_dataset):
-    """
-    dataset for wikipedia with arguments configured for convenience
-
-    command line usage: `--train-data wikipedia`
-    """
-    PATH = 'data/wiki.txt'
-    assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
-
-    def __init__(self, **kwargs):
-        assert os.path.exists(wikipedia.PATH), \
-            wikipedia.assert_str
-        if not kwargs:
-            kwargs = {}
-        kwargs['text_key'] = 'text'
-        kwargs['loose_json'] = True
-        super(wikipedia, self).__init__(wikipedia.PATH, **kwargs)
 
 
 class webtext(json_dataset):
@@ -82,11 +64,12 @@ class DataReader:
     PATH = None
     assert_str = None
 
-    def __init__(self, shuffle=False, **kwargs):
+    def __init__(self, shuffle=False, tokenizer=None, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
+        self.tokenizer = tokenizer
         self.prompts, self.texts = [], []
         with open(self.PATH) as file:
-            for row in file:
+            for row in tqdm(file):
                 data = json.loads(row)
                 self.process_line(data)
         if shuffle:
@@ -146,6 +129,23 @@ class baike(DataReader):
         if text:
             self.prompts.append([])
             self.texts.append(text)
+
+
+class wikipedia(DataReader):
+    """
+    dataset for wikipedia with arguments configured for convenience
+
+    command line usage: `--train-data wikipedia`
+    """
+    PATH = 'data/wiki.txt'
+    assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
+
+    def process_line(self, data):
+        text = data['text']
+        tokenization = self.tokenizer.EncodeAsIds(text)
+        self.texts.append(tokenization.tokenization)
+        self.prompts.append([])
+
 
 
 NAMED_CORPORA = {

@@ -130,9 +130,15 @@ class lazy_array_loader(object):
         self.mem_map = mem_map
         if self.mem_map:
             if is_array:
-                self.file = np.memmap(self.file, dtype=lazy_data_type, mode='r', order='C')
+                if self.ends[-1] == 0:
+                    self.file = np.array([], dtype=lazy_data_type)
+                else:
+                    self.file = np.memmap(self.file, dtype=lazy_data_type, mode='r', order='C')
             else:
-                self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
+                if self.ends[-1] == 0:
+                    self.file = []
+                else:
+                    self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
         self.read_lock = Lock()
         self.process_fn = map_fn
         self.map_fn = map_fn
@@ -203,6 +209,8 @@ class lazy_array_loader(object):
                 rtn = self.file.read(end-start)
             if self.is_array:
                 rtn = np.ndarray(shape=(len(rtn) / data_type_size,), dtype=lazy_data_type, buffer=rtn, order='C')
+            else:
+                rtn = rtn.decode('utf-8', 'ignore')
         else:
             rtn = self.file[start:end]
             if self.is_array:
@@ -210,8 +218,6 @@ class lazy_array_loader(object):
         self.read_lock.release()
         #TODO: @raulp figure out mem map byte string bug
         #if mem map'd need to decode byte string to string
-        if not self.mem_map:
-            rtn = rtn.decode('utf-8', 'ignore')
         # # rtn = str(rtn)
         # if self.mem_map:
         #     rtn = rtn.decode('unicode_escape')

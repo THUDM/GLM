@@ -65,7 +65,7 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=False, shuffle=False, split=[1.],
+def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=False, shuffle=True, split=[1.],
                  delim=',', loose=False, binarize_sent=False, drop_unlabeled=False, tokenizer=None,
                  tokenizer_type='CharacterLevelTokenizer', tokenizer_model_path=None, vocab_size=None,
                  model_type='bpe', pad_token=0, character_converage=1.0, non_binary_cols=None,
@@ -74,6 +74,11 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=Fal
     if non_binary_cols is not None:
         # multilabel dataset support (only for csvs)
         label_key = non_binary_cols
+
+        # make tokenizer for dataset
+    if tokenizer is None:
+        tokenizer = make_tokenizer(tokenizer_type, None, tokenizer_model_path, vocab_size, model_type,
+                                   pad_token, character_converage, **kwargs)
 
     def get_dataset_from_path(path_):
         if lazy:
@@ -86,7 +91,7 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=Fal
             if not (exists_lazy(path_, data_type='prompt') and exists_lazy(path_, data_type='text')):
                 # create cached version of dataset for lazy loading if it doesn't exist
                 text = get_dataset(name, text_key=text_key, label_key=label_key,
-                                   binarize_sent=binarize_sent,
+                                   binarize_sent=binarize_sent, tokenizer=tokenizer,
                                    delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
                 make_lazy(path_, text.prompts, data_type='prompt', is_array=True)
                 make_lazy(path_, text.texts, data_type='text', is_array=True)
@@ -98,7 +103,7 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=Fal
         else:
             # get dataset
             text = get_dataset(path_, text_key=text_key, label_key=label_key, binarize_sent=binarize_sent,
-                               delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
+                               tokenizer=tokenizer, delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
             text = corpora.ChineseDataset(prompt_loader=text.prompts, text_loader=text.texts)
         return text
 
@@ -110,10 +115,6 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=Fal
         ds = ConcatDataset(ds)
     if shuffle:
         ds = ShuffleDataset(ds)
-    # make tokenizer for dataset
-    if tokenizer is None:
-        tokenizer = make_tokenizer(tokenizer_type, ds, tokenizer_model_path, vocab_size, model_type,
-                                   pad_token, character_converage, **kwargs)
 
     ds_type = ''
     if 'ds_type' in kwargs:
