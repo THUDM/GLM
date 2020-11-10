@@ -700,14 +700,16 @@ def main():
 
     # Arguments.
     args = get_args()
-
+    args.experiment_name = args.experiment_name + datetime.now().strftime("%m-%d-%H-%M")
+    if args.save:
+        args.save = os.path.join(args.save, args.experiment_name)
     # Pytorch distributed.
     initialize_distributed(args)
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         print('Pretrain GPT2 model')
         print_args(args)
-        summary_writer = get_sample_writer(base="", name="gpt-345M")
+        summary_writer = get_sample_writer(base="", name=args.experiment_name)
 
     # Random seeds for reproducability.
     set_random_seed(args.seed)

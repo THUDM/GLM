@@ -17,7 +17,7 @@ gpt_options=" \
        --num-attention-heads 16 \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
-       --save checkpoints/gpt2_345m \
+       --save checkpoints \
        --train-iters 100000 \
        --resume-dataloader \
        --train-data wikipedia \
