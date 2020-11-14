@@ -44,35 +44,41 @@ def exists_lazy(path, data_type='data'):
 
 lazy_data_type = np.int32
 
-def make_lazy(path, dataset, data_type='data', is_array=False):
-    """
-    Make lazy version of `data_type` field of the file. Byte offsets
-    corresponding to data indices are stored in a `.len.pkl` data file.
-    """
-    lazypath = get_lazy_path(path)
-    if not os.path.exists(lazypath):
-        os.makedirs(lazypath)
-    datapath = os.path.join(lazypath, data_type)
-    lenpath = os.path.join(lazypath, data_type+'.len.pkl')
-    if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-        with open(datapath, 'wb') as f:
-            lengths = []
-            for s in dataset:
-                if isinstance(s, dict):
-                    s = s['text']
-                if is_array:
-                    encoded = np.array(s, dtype=lazy_data_type).tobytes(order='C')
-                    f.write(encoded)
-                    lengths.append(len(s))
-                else:
-                    encoded = s.encode('utf-8')
-                    f.write(encoded)
-                    lengths.append(len(encoded))
-        with open(lenpath, 'wb') as f:
-            pkl.dump(lengths, f)
-    else:
-        while not os.path.exists(lenpath):
-            time.sleep(1)
+
+class LazyWriter:
+    def __init__(self, path, data_type, is_array=False):
+        lazypath = get_lazy_path(path)
+        if not os.path.exists(lazypath):
+            os.makedirs(lazypath)
+        self.datapath = os.path.join(lazypath, data_type)
+        self.lenpath = os.path.join(lazypath, data_type + '.len.pkl')
+        self.output = open(self.datapath, 'wb')
+        self.lengths = []
+        self.is_array = is_array
+
+
+    @staticmethod
+    def get_len_path(path, data_type):
+        lazypath = get_lazy_path(path)
+        return os.path.join(lazypath, data_type + '.len.pkl')
+
+    def write(self, dataset):
+        for s in dataset:
+            if isinstance(s, dict):
+                s = s['text']
+            if self.is_array:
+                encoded = np.array(s, dtype=lazy_data_type).tobytes(order='C')
+                self.output.write(encoded)
+                self.lengths.append(len(s))
+            else:
+                encoded = s.encode('utf-8')
+                self.output.write(encoded)
+                self.lengths.append(len(encoded))
+
+    def close(self):
+        self.output.close()
+        with open(self.lenpath, 'wb') as f:
+            pkl.dump(self.lengths, f)
 
 
 def split_strings(strings, start, chr_lens):
@@ -136,7 +142,7 @@ class lazy_array_loader(object):
                     self.file = np.memmap(self.file, dtype=lazy_data_type, mode='r', order='C')
             else:
                 if self.ends[-1] == 0:
-                    self.file = []
+                    self.file = bytearray()
                 else:
                     self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
         self.read_lock = Lock()
@@ -215,6 +221,8 @@ class lazy_array_loader(object):
             rtn = self.file[start:end]
             if self.is_array:
                 rtn = rtn.copy()
+            else:
+                rtn = rtn.decode('utf-8', 'strict')
         self.read_lock.release()
         #TODO: @raulp figure out mem map byte string bug
         #if mem map'd need to decode byte string to string

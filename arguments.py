@@ -104,7 +104,7 @@ def add_training_args(parser):
 
     group = parser.add_argument_group('train', 'training configurations')
 
-    group.add_argument('--experiment-name', type=str, default="gpt-345m",
+    group.add_argument('--experiment-name', type=str, default="gpt-345M",
                        help="The experiment name for summary and checkpoint")
     group.add_argument('--batch-size', type=int, default=4,
                        help='Data Loader batch size')
@@ -125,7 +125,7 @@ def add_training_args(parser):
                        help='report interval')
     group.add_argument('--exit-interval', type=int, default=None,
                        help='Exit the program after this many new iterations.')
-
+    group.add_argument('--summary-dir', type=str, default="", help="The directory to store the summary")
     group.add_argument('--seed', type=int, default=1234,
                        help='random seed')
     # Batch prodecuer arguments
@@ -293,8 +293,10 @@ def add_data_args(parser):
                        choices=['CharacterLevelTokenizer',
                                 'SentencePieceTokenizer',
                                 'BertWordPieceTokenizer',
-                                'GPT2BPETokenizer'],
+                                'GPT2BPETokenizer',
+                                'ChineseSPTokenizer'],
                        help='what type of tokenizer to use')
+    group.add_argument('--pre-tokenize', action='store_true')
     group.add_argument("--cache-dir", default=None, type=str,
                        help="Where to store pre-trained BERT downloads")
     group.add_argument('--use-tfrecords', action='store_true',
@@ -303,6 +305,8 @@ def add_data_args(parser):
                             'normal data pipeline')
     group.add_argument('--seq-length', type=int, default=512,
                        help="Maximum sequence length to process")
+    group.add_argument('--mem-length', type=int, default=512,
+                       help="The memory length to preserve")
     group.add_argument('--max-preds-per-seq', type=int, default=None,
                        help='Maximum number of predictions to use per sequence.'
                             'Defaults to math.ceil(`--seq-length`*.15/10)*10.'

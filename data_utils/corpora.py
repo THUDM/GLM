@@ -17,7 +17,8 @@ from .datasets import json_dataset, csv_dataset
 import os
 import json
 import random
-from tqdm import tqdm
+# import ray
+import tqdm
 from torch.utils import data
 from .lazy_loader import lazy_array_loader
 
@@ -60,75 +61,136 @@ class ChineseDataset(data.Dataset):
         return len(self.prompts)
 
 
+# @ray.remote
+def read_file(path, reader, tokenizer, tokenize):
+    prompts, texts = [], []
+    with open(path) as file:
+        for row in file:
+            data = json.loads(row)
+            prompt, text = reader.process_line(data, tokenizer, tokenize)
+            prompts += prompt
+            texts += text
+    return prompts, texts
+
+
 class DataReader:
     PATH = None
     assert_str = None
 
-    def __init__(self, shuffle=False, tokenizer=None, **kwargs):
+    def __init__(self, prompt_writer, text_writer, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
+        # ray.init(num_cpus=90)
         self.tokenizer = tokenizer
-        self.prompts, self.texts = [], []
-        with open(self.PATH) as file:
-            for row in tqdm(file):
-                data = json.loads(row)
-                self.process_line(data)
-        if shuffle:
-            shuffle_idx = list(range(len(self.prompts)))
-            random.shuffle(shuffle_idx)
-            self.prompts = [self.prompts[idx] for idx in shuffle_idx]
-            self.texts = [self.texts[idx] for idx in shuffle_idx]
+        self.tokenize = tokenize
+        if os.path.isdir(self.PATH):
+            paths = [entry.path for entry in os.scandir(self.PATH) if not entry.is_dir() and not entry.name.endswith("bz2")]
+        else:
+            paths = [self.PATH]
+        results = []
+        for path in paths:
+            results.append(read_file(path, type(self), tokenizer, tokenize))
+        for result in tqdm.tqdm(results):
+            prompts, texts = result
+            prompt_writer.write(prompts)
+            text_writer.write(texts)
 
-    def process_line(self, data):
+    @staticmethod
+    def get_token_count(contents):
+        return sum(map(len, contents))
+
+    @staticmethod
+    def process_sample(prompt, text, tokenizer, tokenize):
+        if isinstance(prompt, str) and tokenize:
+            prompt = tokenizer.EncodeAsIds(prompt).tokenization if prompt else []
+        if isinstance(text, str) and tokenize:
+            text = tokenizer.EncodeAsIds(text).tokenization if text else []
+        return prompt, text
+
+    @staticmethod
+    def trim_field(content, max_length):
+        if len(content) > max_length:
+            content = content[:max_length]
+            content += "......"
+        return content
+
+    @staticmethod
+    def process_line(data, tokenizer, tokenize):
         raise NotImplementedError
 
 
 class zhihu(DataReader):
-    PATH = "data/zhihu/data.json"
+    PATH = "/root/data/zhihu/zhihu"
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
-    qtitle_prefix = []
-    qcontent_prefix = []
-    user_prefix = []
-    answer_prefix = []
+    qtitle_prefix = "问题："
+    qcontent_prefix = "问题描述："
+    user_prefix = "回答用户："
+    answer_prefix = " 回答："
 
-    def process_line(self, data):
-        if data.get("ans-content", []):
-            prompt = zhihu.qtitle_prefix + data["q_title"] + zhihu.qcontent_prefix + data[
-                "q-content"] + zhihu.user_prefix + data.get("user-signature", []) + zhihu.answer_prefix
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        prompts, texts = [], []
+        ans_length = len(data.get("ans-content", ""))
+        ans_up = data.get("ans-up-num", "")
+        ans_up = int(ans_up) if ans_up else 0
+        if ans_length > 100 or ans_up > 1000:
+            qtitle = data["q_title"]
+            qcontent = data["q-content"]
+            if qcontent is None:
+                qcontent = ""
+            qcontent = cls.trim_field(qcontent, max_length=100)
+            user = data.get("user-signature", "")
+            prompt = cls.qtitle_prefix + qtitle + cls.qcontent_prefix + qcontent + cls.user_prefix + user + cls.answer_prefix
             text = data["ans-content"]
-            self.prompts.append(prompt)
-            self.texts.append(text)
+            prompt, text = cls.process_sample(prompt, text, tokenizer, tokenize)
+            prompts.append(prompt)
+            texts.append(text)
+        return prompts, texts
 
 
 class zhidao(DataReader):
-    PATH = "data/zhidao/data.json"
+    PATH = "/root/data/baike_zhidao/zhidao"
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
-    qtitle_prefix = []
-    qcontent_prefix = []
-    answer_prefix = []
+    qtitle_prefix = "问题："
+    qcontent_prefix = "问题描述："
+    answer_prefix = "回答："
 
-    def process_line(self, data):
-        prompt = self.qtitle_prefix + data["title"] + self.qcontent_prefix + data[
-            "content"] + self.answer_prefix
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        if "title" not in data:
+            return [], []
+        prompts, texts = [], []
+        qtitle = data["title"]
+        qcontent = data.get("content", "")
+        qcontent = cls.trim_field(qcontent, max_length=100)
+        prompt = cls.qtitle_prefix + qtitle + cls.qcontent_prefix + qcontent + cls.answer_prefix
         if "best_answer" in data:
             text = data["best_answer"]["content"]
-            self.prompts.append(prompt)
-            self.texts.append(text)
+            if len(text) > 10:
+                p, t = cls.process_sample(prompt, text, tokenizer, tokenize)
+                prompts.append(p)
+                texts.append(t)
         for answer in data.get("other_answers", []):
             text = answer["content"]
-            self.prompts.append(prompt)
-            self.texts.append(text)
+            if len(text) > 100:
+                p, t = cls.process_sample(prompt, text, tokenizer, tokenize)
+                prompts.append(p)
+                texts.append(t)
+        return prompts, texts
 
 
 class baike(DataReader):
-    PATH = "data/baike/data.json"
+    PATH = "/root/data/baike_zhidao/baike"
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
-    def process_line(self, data):
-        self.prompts.append([])
-        text = data.get("title", []) + data.get("abstract", []) + data.get("content", [])
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        prompts, texts = [], []
+        text = data.get("title", "") + data.get("abstract", "") + data.get("content", "")
         if text:
-            self.prompts.append([])
-            self.texts.append(text)
+            p, t = cls.process_sample("", text, tokenizer, tokenize)
+            prompts.append(p)
+            texts.append(t)
+        return prompts, texts
 
 
 class wikipedia(DataReader):
@@ -137,14 +199,15 @@ class wikipedia(DataReader):
 
     command line usage: `--train-data wikipedia`
     """
+    # PATH = '/dataset/data/wiki.txt'
     PATH = 'data/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
-    def process_line(self, data):
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
         text = data['text']
-        tokenization = self.tokenizer.EncodeAsIds(text)
-        self.texts.append(tokenization.tokenization)
-        self.prompts.append([])
+        prompt, text = cls.process_sample("", text)
+        return [prompt], [text]
 
 
 

@@ -16,7 +16,7 @@
 """Pretrain GPT2"""
 
 # Flag to use Pytorch ddp which uses overlapping communication and computation.
-USE_TORCH_DDP = False
+USE_TORCH_DDP = True
 
 from datetime import datetime
 import os
@@ -77,7 +77,7 @@ def get_model(args):
             sum([p.nelement() for p in model.parameters()])), flush=True)
 
     #To prevent OOM for model sizes that cannot fit in GPU memory in full precision
-    if args.deepspeed and args.fp16:
+    if hasattr(args, "deepspeed") and args.deepspeed and args.fp16:
         model.half()
 
     # GPU allocation.
@@ -131,7 +131,7 @@ def get_optimizer(param_groups, args):
                          lr=args.lr, weight_decay=args.weight_decay)
 
     print(f'Optimizer = {optimizer.__class__.__name__}')
-    if args.deepspeed:
+    if hasattr(args, "deepspeed") and args.deepspeed:
         raise NotImplementedError
         # fp16 wrapper is not required for DeepSpeed.
         # return optimizer
@@ -709,7 +709,7 @@ def main():
     if torch.distributed.get_rank() == 0:
         print('Pretrain GPT2 model')
         print_args(args)
-        summary_writer = get_sample_writer(base="", name=args.experiment_name)
+        summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name)
 
     # Random seeds for reproducability.
     set_random_seed(args.seed)

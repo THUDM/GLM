@@ -27,6 +27,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS \
        --train-data wikipedia \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
+       --pre-tokenize \
        --cache-dir cache \
        --split 949,50,1 \
        --distributed-backend nccl \

@@ -2,15 +2,15 @@
 
 # Change for multinode config
 
-NUM_WORKERS=2
-NUM_GPUS_PER_WORKER=8
+NUM_WORKERS=1
+NUM_GPUS_PER_WORKER=1
 MP_SIZE=1
 
 script_path=$(realpath $0)
 script_dir=$(dirname $script_path)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_GID_INDEX=3 NCCL_NET_GDR_LEVEL=0"
-HOST_FILE_PATH="/root/code/config/pre_hostfile"
+HOST_FILE_PATH="/mnt/config/pre_hostfile"
 #OPTIONS_NCCL=""
 #HOST_FILE_PATH="/workspace/hostfile"
 
@@ -23,12 +23,12 @@ gpt_options=" \
        --num-attention-heads 16 \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
-       --save /model \
+       --save checkpoints \
        --train-iters 50000 \
        --resume-dataloader \
-       --train-data wikipedia \
+       --train-data zhihu \
        --lazy-loader \
-       --tokenizer-type GPT2BPETokenizer \
+       --tokenizer-type ChineseSPTokenizer \
        --pre-tokenize \
        --split 949,50,1 \
        --distributed-backend nccl \

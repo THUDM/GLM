@@ -31,7 +31,7 @@ import numpy as np
 import nltk
 from nltk import tokenize
 
-from .lazy_loader import lazy_array_loader, exists_lazy, make_lazy
+from .lazy_loader import lazy_array_loader, exists_lazy
 from .tokenization import Tokenization
 
 
@@ -475,11 +475,13 @@ class json_dataset(data.Dataset):
 
 
 class XLDataset(data.Dataset):
-    def __init__(self, ds, tokenizer, max_seq_len=1024, sample_across_doc=True, use_tokenizer=True, **kwargs):
+    def __init__(self, ds, tokenizer, max_seq_len=1024, mem_len=1024, sample_across_doc=True, use_tokenizer=True, **kwargs):
         self.ds = ds
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
+        self.mem_len = mem_len
         self.sample_across_doc = sample_across_doc
+        assert not use_tokenizer
         self.use_tokenizer = use_tokenizer
         self.indices, self.num_samples = None, None
         if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
@@ -520,10 +522,10 @@ class XLDataset(data.Dataset):
 
     def getidx(self, data_idx):
         tokens, targets, loss_masks = [], [], []
-        attention_mask = np.concatenate((np.zeros((self.max_seq_len, self.max_seq_len), dtype=np.long),
+        attention_mask = np.concatenate((np.zeros((self.max_seq_len, self.mem_len), dtype=np.long),
                                          np.ones((self.max_seq_len, self.max_seq_len), dtype=np.long)), axis=1)
         if data_idx[0][1] != 0:
-            history = min(self.max_seq_len, data_idx[0][1])
+            history = min(self.mem_len, data_idx[0][1])
             attention_mask[:, -self.max_seq_len-history:-self.max_seq_len] = 1
         for i, (idx, start) in enumerate(data_idx):
             item = self.ds[idx]
@@ -532,7 +534,7 @@ class XLDataset(data.Dataset):
             masks = [0] * len(item['prompt']) + [1] * (len(item['text']) + 1)
             if i > 0:
                 current = len(tokens)
-                attention_mask[current:, :current + self.max_seq_len] = 0
+                attention_mask[current:, :current + self.mem_len] = 0
             tokens += text[start: end]
             targets += text[start + 1: end + 1]
             loss_masks += masks[start + 1: end + 1]
@@ -647,18 +649,14 @@ class GPT2Dataset(data.Dataset):
 
     def getidx(self, data_idx):
         data = self.ds[data_idx]
-        if isinstance(data, dict):
-            text = data['prompt'] + data['text']
-        else:
-            text = data
+        prompt, text = data['prompt'], data['text']
         # tokenize
         if self.use_tokenizer:
-            tokenization = self.tokenizer.EncodeAsIds(text)
-            tokens = tokenization.tokenization
-        else:
-            tokens = text
+            prompt = self.tokenizer.EncodeAsIds(prompt).tokenization
+            text = self.tokenizer.EncodeAsIds(text).tokenization
+        tokens = prompt + text
         tokens.append(self.tokenizer.get_command('eos').Id)
-        loss_masks = [0] * len(data['prompt']) + [1] * (len(tokens) - len(data['prompt']))
+        loss_masks = [0] * len(prompt) + [1] * (len(tokens) - len(prompt))
         return tokens, loss_masks
 
     def pad_seq(self, seq, pad_id=None):

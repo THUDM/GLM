@@ -15,11 +15,12 @@
 """utils for creating datasets"""
 import os
 import math
+import time
 
 from .samplers import DistributedBatchSampler
 from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, bert_sentencepair_dataset, \
     GPT2Dataset, ShuffleDataset, XLDataset
-from .lazy_loader import exists_lazy, make_lazy, lazy_array_loader
+from .lazy_loader import exists_lazy, LazyWriter, lazy_array_loader
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
 from . import corpora
@@ -65,11 +66,11 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=False, shuffle=True, split=[1.],
+def make_dataset(path, seq_length, text_key, label_key, local_rank, lazy=False, xl_style=False, shuffle=True, split=[1.],
                  delim=',', loose=False, binarize_sent=False, drop_unlabeled=False, tokenizer=None,
                  tokenizer_type='CharacterLevelTokenizer', tokenizer_model_path=None, vocab_size=None,
                  model_type='bpe', pad_token=0, character_converage=1.0, non_binary_cols=None,
-                 sample_one_document=False, **kwargs):
+                 sample_one_document=False, pre_tokenize=False, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if non_binary_cols is not None:
         # multilabel dataset support (only for csvs)
@@ -90,15 +91,22 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=Fal
                 raise NotImplementedError
             if not (exists_lazy(path_, data_type='prompt') and exists_lazy(path_, data_type='text')):
                 # create cached version of dataset for lazy loading if it doesn't exist
-                text = get_dataset(name, text_key=text_key, label_key=label_key,
-                                   binarize_sent=binarize_sent, tokenizer=tokenizer,
-                                   delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
-                make_lazy(path_, text.prompts, data_type='prompt', is_array=True)
-                make_lazy(path_, text.texts, data_type='text', is_array=True)
-            prompts = lazy_array_loader(path_, data_type='prompt', map_fn=lambda x: x.tolist(), mem_map=True,
-                                        is_array=True)
-            texts = lazy_array_loader(path_, data_type='text', map_fn=lambda x: x.tolist(), mem_map=True,
-                                      is_array=True)
+                if local_rank == 0:
+                    prompt_writer = LazyWriter(path_, data_type='prompt', is_array=pre_tokenize)
+                    text_writer = LazyWriter(path_, data_type='text', is_array=pre_tokenize)
+                    get_dataset(name, text_key=text_key, label_key=label_key, prompt_writer=prompt_writer,
+                                       text_writer=text_writer, binarize_sent=binarize_sent, tokenizer=tokenizer,
+                                       delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose, tokenize=pre_tokenize)
+                    prompt_writer.close()
+                    text_writer.close()
+                else:
+                    while not os.path.exists(LazyWriter.get_len_path(path_, data_type='prompt')):
+                        time.sleep(1)
+            map_fn = (lambda x: x.tolist()) if pre_tokenize else None
+            prompts = lazy_array_loader(path_, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                        is_array=pre_tokenize)
+            texts = lazy_array_loader(path_, data_type='text', map_fn=map_fn, mem_map=True,
+                                      is_array=pre_tokenize)
             text = corpora.ChineseDataset(prompt_loader=prompts, text_loader=texts)
         else:
             # get dataset
@@ -129,10 +137,10 @@ def make_dataset(path, seq_length, text_key, label_key, lazy=False, xl_style=Fal
                   ds]
         elif ds_type.lower() == 'gpt2':
             if xl_style:
-                ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=False,
+                ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=not pre_tokenize,
                                   sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
             else:
-                ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=False,
+                ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=not pre_tokenize,
                               sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
     else:
         if ds_type.lower() == 'bert':

@@ -26,6 +26,7 @@ import sentencepiece as spm
 from .wordpiece import BertTokenizer, PRETRAINED_VOCAB_ARCHIVE_MAP
 
 from .tokenization_gpt2 import GPT2Tokenizer
+from . import sp_tokenizer
 import regex as re
 
 def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, model_type='bpe', pad_token=0, character_coverage=1.0, command_tokens=None, type_tokens=None, **kwargs):
@@ -39,6 +40,8 @@ def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, mod
         return BertWordPieceTokenizer(model_type, **kwargs)
     elif tokenizer_class is GPT2BPETokenizer:
         return GPT2BPETokenizer(**kwargs)
+    elif tokenizer_class is ChineseSPTokenizer:
+        return ChineseSPTokenizer(**kwargs)
     text_tokenizer =  tokenizer_class(corpus=corpus, vocab_size=vocab_size, model_path=model_path, model_type=model_type,
                                       pad_token=pad_token, character_coverage=character_coverage)
     return Tokenizer(text_tokenizer, command_tokens, type_tokens)
@@ -888,3 +891,88 @@ class GPT2BPETokenizer(Tokenizer):
             Tokens = Tokens.tokenization
         return self.text_tokenizer.decode([self.TokenToId(tok) for tok in Tokens])
 
+
+class ChineseSPTokenizer(Tokenizer):
+    def __init__(self, **kwargs):
+        self.text_tokenizer = sp_tokenizer.from_pretrained()
+
+        self.num_command_tokens = 2
+        self.num_text_tokens = self.text_tokenizer.sp.vocab_size()
+        self.num_tokens = self.num_text_tokens + 1
+        self.num_type_tokens = 2
+
+        self._command_tokens = [
+            CommandToken('pad', '<|endoftext|>', self.num_text_tokens),
+            CommandToken('eos', '<|endoftext|>', self.num_text_tokens),
+        ]
+        self.command_name_map = {tok.name: tok for tok in self._command_tokens}
+        self.command_token_map = {tok.token: tok for tok in self._command_tokens}
+        self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
+
+        self.type_tokens = [
+            TypeToken('str0', '<str0>', 0),
+            TypeToken('str1', '<str1>', 1),
+        ]
+        self.type_name_map = {tok.name: tok for tok in self.type_tokens}
+        self.type_token_map = {tok.token: tok for tok in self.type_tokens}
+        self.type_id_map = {tok.Id: tok for tok in self.type_tokens}
+
+        # self._tokens = list(self.text_tokenizer.encoder.keys())
+        # self._vocab = {k:v for k,v in self.text_tokenizer.encoder.items()}
+        #
+        # self._text_tokens = list(self._tokens)
+        # self._text_token_vocab = {k:v for k,v in self.text_tokenizer.encoder.items()}
+
+        self._command_token_tokens = list(self.command_token_map.keys())
+        self._command_token_vocab = {t:Id for Id,t in self.command_id_map.items()}
+
+        self._token_types = list(self.type_token_map.keys())
+        self._token_type_vocab = {t:Id for Id, t in self.type_id_map.items()}
+
+    def EncodeAsIds(self, text, process_fn=None):
+        processed_text = text
+        if process_fn is not None:
+            processed_text = process_fn(processed_text)
+        Ids = self.text_tokenizer.encode(processed_text)
+        #return Tokenization(Ids, processed_text, text)
+        tokenization = Tokenization(Ids, processed_text, text)
+        tokenization.set_command_tokens(self._command_tokens)
+        return tokenization
+
+    def EncodeAsTokens(self, text, process_fn=None):
+        processed_text = text
+        if process_fn is not None:
+            processed_text = process_fn(processed_text)
+        tokens = self.text_tokenizer.tokenize(processed_text)
+        tokenization=Tokenization(tokens, processed_text, text, asIds=False)
+        tokenization.set_command_tokens(self._command_tokens)
+        return tokenization
+        #return Tokenization(tokens, processed_text, text, asIds=False)
+
+    def IdToToken(self, Id, type_token=False):
+        if isinstance(Id, (TypeToken, CommandToken)):
+            return Id.token
+        if type_token:
+            return self.type_id_map[Id].token
+        return self.text_tokenizer.decoder[Id]
+
+    def TokenToId(self, token, type_token=False):
+        if isinstance(token, (TypeToken, CommandToken)):
+            return token.Id
+        if type_token:
+            return self.type_token_map[token].Id
+        return self.text_tokenizer.convert_token_to_id(token)
+
+    def DecodeIds(self, Ids, type_token=False):
+        if type_token:
+            return ' '.join(Id.token if isinstance(Id, TypeToken) else self.type_id_map[Id].token for Id in Ids)
+        if isinstance(Ids, Tokenization):
+            Ids = Ids.tokenization
+        return self.text_tokenizer.decode(Ids)
+
+    def DecodeTokens(self, Tokens, type_token=False):
+        if type_token:
+            return ' '.join(t.token if isinstance(t, TypeToken) else t for t in Tokens)
+        if isinstance(Tokens, Tokenization):
+            Tokens = Tokens.tokenization
+        return self.text_tokenizer.decode([self.TokenToId(tok) for tok in Tokens])

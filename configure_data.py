@@ -137,6 +137,7 @@ def make_loaders(args):
         eval_seq_length = eval_seq_length * world_size
     split = get_split(args)
     data_set_args = {
+        'local_rank': args.local_rank,
         'path': args.train_data,
         'seq_length': seq_length,
         'lazy': args.lazy_loader,
@@ -155,7 +156,9 @@ def make_loaders(args):
         'cache_dir': args.cache_dir,
         'max_preds_per_seq': args.max_preds_per_seq,
         'presplit_sentences': args.presplit_sentences,
-        'sample_one_document': args.sample_one_document}
+        'sample_one_document': args.sample_one_document,
+        'pre_tokenize': args.pre_tokenize
+    }
 
     eval_set_args = copy.copy(data_set_args)
     eval_set_args['split'] = [1.]
