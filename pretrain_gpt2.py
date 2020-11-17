@@ -22,6 +22,7 @@ from datetime import datetime
 import os
 import random
 import math
+from filelock import FileLock
 import numpy as np
 import torch
 
@@ -36,7 +37,7 @@ from model import GPT2Model
 from model import gpt2_get_params_for_weight_decay_optimization
 
 if USE_TORCH_DDP:
-    from torch.nn.parallel.distributed import DistributedDataParallel as DDP
+    from model import PyTorchDistributedDataParallel as DDP
 else:
     from model import DistributedDataParallel as DDP
 import mpu
@@ -66,6 +67,7 @@ def get_model(args):
                       attention_dropout_prob=args.attention_dropout,
                       output_dropout_prob=args.hidden_dropout,
                       max_sequence_length=args.max_position_embeddings,
+                      max_memory_length=args.mem_length,
                       checkpoint_activations=args.checkpoint_activations,
                       checkpoint_num_layers=args.checkpoint_num_layers,
                       parallel_output=True,
@@ -191,7 +193,10 @@ def setup_model_and_optimizer(args):
 
     lr_scheduler = get_learning_rate_scheduler(optimizer, args)
     if args.load is not None:
-        args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+        with FileLock("/root/checkpoint_lock", timeout=-1):
+            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+        torch.distributed.barrier()
+        lr_scheduler.num_iters = args.iteration
     else:
         args.iteration = 0
 
@@ -317,6 +322,7 @@ def get_batch(data_iterator, args, timers):
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
+# last_tokens = None
 def forward_step(data_iterator, model, args, timers, mems):
     """Forward step."""
 
@@ -324,6 +330,13 @@ def forward_step(data_iterator, model, args, timers, mems):
     timers('batch generator').start()
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator, args, timers)
+    # global last_tokens
+    # last_tokens = tokens.tolist()
+    # if last_tokens is not None:
+    #     for i in range(len(tokens)):
+    #         if tokens[i][0] != 0 and tokens[i][0] != last_tokens[i] + 1:
+    #             breakpoint()
+    # last_tokens = tokens[:, -1].tolist()
     timers('batch generator').stop()
 
     # Forward model.
@@ -700,16 +713,14 @@ def main():
 
     # Arguments.
     args = get_args()
-    args.experiment_name = args.experiment_name + datetime.now().strftime("%m-%d-%H-%M")
+    if args.load:
+        args.experiment_name = os.path.basename(os.path.normpath(args.load))
+    else:
+        args.experiment_name = args.experiment_name + datetime.now().strftime("%m-%d-%H-%M")
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
     # Pytorch distributed.
     initialize_distributed(args)
-    summary_writer = None
-    if torch.distributed.get_rank() == 0:
-        print('Pretrain GPT2 model')
-        print_args(args)
-        summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name)
 
     # Random seeds for reproducability.
     set_random_seed(args.seed)
@@ -720,6 +731,12 @@ def main():
 
     # Model, optimizer, and learning rate.
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
+
+    summary_writer = None
+    if torch.distributed.get_rank() == 0:
+        print('Pretrain GPT2 model')
+        print_args(args)
+        summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name, iteration=args.iteration)
 
     # Resume data loader if necessary.
     if args.resume_dataloader:

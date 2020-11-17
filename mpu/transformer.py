@@ -133,19 +133,44 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
     @staticmethod
     def _rel_shift(x, zero_triu=False):
         # ql x kl x bsz x h
-        zero_pad = torch.zeros((x.size(0), 1, *x.size()[2:]),
+        # bsz x h x ql x kl
+        zero_pad = torch.zeros((*x.size()[:-2], x.size(-2), 1),
                                device=x.device, dtype=x.dtype)
-        x_padded = torch.cat([zero_pad, x], dim=1)
+        x_padded = torch.cat([zero_pad, x], dim=-1)
 
-        x_padded = x_padded.view(x.size(1) + 1, x.size(0), *x.size()[2:])
+        x_padded = x_padded.view(*x.size()[:-2], x.size(-1) + 1, x.size(-2))
 
-        x = x_padded[1:].view_as(x)
+        x = x_padded[:, :, 1:].view_as(x)
 
         if zero_triu:
             ones = torch.ones((x.size(0), x.size(1)))
             x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
 
         return x
+
+    @staticmethod
+    def _rel_shift_latest(x: torch.Tensor):
+        ndims = x.dim()
+        x_shape = x.size()
+        row_dim = 2
+        col_dim = row_dim + 1
+        assert col_dim < ndims
+        tgt_shape_1, tgt_shape_2 = [], []
+        for i in range(ndims):
+            if i == row_dim:
+                tgt_shape_1.append(x_shape[col_dim])
+                tgt_shape_2.append(x_shape[row_dim])
+            elif i == col_dim:
+                tgt_shape_1.append(x_shape[row_dim])
+                tgt_shape_2.append(x_shape[col_dim] - 1)
+            else:
+                tgt_shape_1.append(x_shape[i])
+                tgt_shape_2.append(x_shape[i])
+        x = x.view(*tgt_shape_1)
+        x = x[:, :, 1:, :]
+        x = x.view(*tgt_shape_2)
+        return x
+
 
     def forward(self, hidden_states, ltor_mask, position_embeddings=None, r_w_bias=None, r_r_bias=None, mem=None):
         # hidden_states: [b, s, h]
@@ -180,8 +205,8 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
                                     key_layer.transpose(-1, -2))
             rr_head_q = query_layer + r_r_bias.unsqueeze(1)
             bd_score = torch.matmul(rr_head_q, relative_layer.transpose(-1, -2))
-            bd_score = self._rel_shift(bd_score.permute(2, 3, 0, 1))  # qlen x klen x bsz x n_head
-            bd_score = bd_score.permute(2, 3, 0, 1)
+            bd_score = self._rel_shift(bd_score)  # qlen x klen x bsz x n_head
+            # bd_score = bd_score.permute(2, 3, 0, 1) # bsz n_head qlen klen
 
             attention_scores = ac_score + bd_score
         else:
@@ -418,6 +443,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  hidden_size,
                  num_attention_heads,
                  max_sequence_length,
+                 max_memory_length,
                  embedding_dropout_prob,
                  attention_dropout_prob,
                  output_dropout_prob,
@@ -431,6 +457,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
         # Store activation checkpoiting flag.
         self.checkpoint_activations = checkpoint_activations
         self.checkpoint_num_layers = checkpoint_num_layers
+        self.max_memory_length = max_memory_length
 
         output_layer_init_method = None
         if use_scaled_init_for_output_weights:
@@ -495,8 +522,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
             batch_size, query_length = hidden_states.size()[:2]
             memory_length = mems[0].size(1) if mems else 0
             key_length = query_length + memory_length
-            if not mems:
-                attention_mask = attention_mask[:, :, :, -query_length:]
+            attention_mask = attention_mask[:, :, :, -query_length-memory_length:]
             position_sequence = torch.arange(key_length - 1, -1, -1.0, device=hidden_states.device,
                                              dtype=hidden_states.dtype)
             position_embeddings = self.position_embeddings(position_sequence)
@@ -548,8 +574,23 @@ class GPT2ParallelTransformer(torch.nn.Module):
 
         # Final layer norm.
         output = self.final_layernorm(hidden_states)
+        if self.transformer_xl:
+            mem_layers = self.update_mems(mem_layers, mems)
 
         return (output, *mem_layers)
+
+    def update_mems(self, hiddens, mems):
+        memory_length = mems[0].size(1) if mems else 0
+        query_length = hiddens[0].size(1)
+        new_memory_length = min(self.max_memory_length, memory_length + query_length)
+        new_mems = []
+        with torch.no_grad():
+            for i in range(len(hiddens)):
+                if new_memory_length <= query_length:
+                    new_mems.append(hiddens[i][:, -new_memory_length:])
+                else:
+                    new_mems.append(torch.cat((mems[i][:, -new_memory_length+query_length:], hiddens[i]), dim=1))
+        return new_mems
 
 
 class BertParallelSelfAttention(torch.nn.Module):

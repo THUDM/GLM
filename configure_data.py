@@ -140,6 +140,7 @@ def make_loaders(args):
         'local_rank': args.local_rank,
         'path': args.train_data,
         'seq_length': seq_length,
+        'mem_length': args.mem_length,
         'lazy': args.lazy_loader,
         'xl_style': args.transformer_xl,
         'delim': args.delim,

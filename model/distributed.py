@@ -18,8 +18,19 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 import torch.distributed as dist
 from torch.nn.modules import Module
 from torch.autograd import Variable
+from torch.nn.parallel.distributed import DistributedDataParallel as DDP
 
 import mpu
+
+
+class PyTorchDistributedDataParallel(DDP):
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        sd = self.module.state_dict(destination, prefix, keep_vars)
+        return sd
+
+    def load_state_dict(self, state_dict, strict=True):
+        self.module.load_state_dict(state_dict, strict=strict)
+
 
 class DistributedDataParallel(Module):
 

@@ -22,6 +22,7 @@ import json
 import csv
 import math
 import random
+import tqdm
 from itertools import accumulate
 
 from torch.utils import data
@@ -77,15 +78,26 @@ class ConcatDataset(data.Dataset):
         self.datasets = list(datasets)
         self.is_lazy = sum([isinstance(ds, lazy_array_loader) or (hasattr(ds, 'is_lazy') and ds.is_lazy) for ds in
                             self.datasets]) == len(self.datasets)
-        if self.is_lazy:
-            self.prompt_lens, self.text_lens = [], []
-            for ds in self.datasets:
-                self.prompt_lens += ds.prompt_lens
-                self.text_lens += ds.text_lens
         self.cumulative_sizes = self.cumsum(self.datasets)
         self._X = None
         self._Y = None
         self._lens = None
+
+    def get_text_len(self, idx):
+        dataset_idx = bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+        return self.datasets[dataset_idx].get_text_len(sample_idx)
+
+    def get_prompt_len(self, idx):
+        dataset_idx = bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+        return self.datasets[dataset_idx].get_prompt_len(sample_idx)
 
     def SetTokenizer(self, tokenizer):
         for ds in self.datasets:
@@ -149,14 +161,17 @@ class SplitDataset(data.Dataset):
         self.split_inds = list(split_inds)
         self.wrapped_data = ds
         self.is_lazy = isinstance(ds, lazy_array_loader) or (hasattr(ds, 'is_lazy') and ds.is_lazy)
-        if self.is_lazy:
-            self.text_lens = [self.wrapped_data.text_lens[idx] for idx in self.split_inds]
-            self.prompt_lens = [self.wrapped_data.prompt_lens[idx] for idx in self.split_inds]
         self._X = None
         self._Y = None
 
     def __len__(self):
         return len(self.split_inds)
+
+    def get_text_len(self, idx):
+        return self.wrapped_data.get_text_len(self.split_inds[idx])
+
+    def get_prompt_len(self, idx):
+        return self.wrapped_data.get_prompt_len(self.split_inds[idx])
 
     def __getitem__(self, index):
         return self.wrapped_data[self.split_inds[index]]
@@ -475,10 +490,12 @@ class json_dataset(data.Dataset):
 
 
 class XLDataset(data.Dataset):
-    def __init__(self, ds, tokenizer, max_seq_len=1024, mem_len=1024, sample_across_doc=True, use_tokenizer=True, **kwargs):
+    def __init__(self, ds, tokenizer, max_seq_len=1024, mem_len=None, sample_across_doc=True, use_tokenizer=True, **kwargs):
         self.ds = ds
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
+        if mem_len is None:
+            mem_len = max_seq_len
         self.mem_len = mem_len
         self.sample_across_doc = sample_across_doc
         assert not use_tokenizer
@@ -490,54 +507,48 @@ class XLDataset(data.Dataset):
 
     def init_indices(self):
         if self.is_lazy:
-            lens = np.array(self.ds.text_lens) + np.array(self.ds.prompt_lens)
+            lens = np.array([self.ds.get_prompt_len(idx) + self.ds.get_text_len(idx) for idx in range(len(self.ds))])
         else:
-            lens = [len(d['prompt']) + len(d['text']) for d in self.ds]
-        self.indices = []
-        index, acc_length = [], 0
-        for idx in range(len(self.ds)):
-            data_length = lens[idx]
-            start = 0
-            while start < data_length:
-                index.append((idx, start))
-                length = min(self.max_seq_len, data_length - start, self.max_seq_len - acc_length)
-                acc_length += length
-                if not self.sample_across_doc or acc_length == self.max_seq_len:
-                    self.indices.append(index)
-                    index, acc_length = [], 0
-                start += length
-        self.num_samples = len(self.indices)
+            lens = np.array([len(d['prompt']) + len(d['text']) if isinstance(d, dict) else len(d) for d in self.ds])
+        self.indices = list(accumulate(lens))
+        self.num_samples = self.indices[-1] // self.max_seq_len + 1
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        data_idx = self.indices[idx]
-        tokens, targets, loss_mask, attention_mask = self.getidx(data_idx)
+        tokens, targets, loss_mask, attention_mask = self.getidx(idx)
         tokens = self.pad_seq(tokens)
         targets = self.pad_seq(targets)
         loss_mask = self.pad_seq(loss_mask, pad_id=0)
         return {'text': np.array(tokens), "target": np.array(targets), "loss_mask": np.array(loss_mask),
                 "attention_mask": np.array(attention_mask)}
 
-    def getidx(self, data_idx):
+    def getidx(self, idx):
         tokens, targets, loss_masks = [], [], []
         attention_mask = np.concatenate((np.zeros((self.max_seq_len, self.mem_len), dtype=np.long),
                                          np.ones((self.max_seq_len, self.max_seq_len), dtype=np.long)), axis=1)
-        if data_idx[0][1] != 0:
-            history = min(self.mem_len, data_idx[0][1])
+        sample_idx = bisect_right(self.indices, idx * self.max_seq_len)
+        last_end = 0 if sample_idx == 0 else self.indices[sample_idx - 1]
+        token_offset = idx * self.max_seq_len - last_end
+        if token_offset != 0:
+            history = min(self.mem_len, token_offset)
             attention_mask[:, -self.max_seq_len-history:-self.max_seq_len] = 1
-        for i, (idx, start) in enumerate(data_idx):
-            item = self.ds[idx]
+        count = 0
+        while len(tokens) < self.max_seq_len and sample_idx < len(self.ds):
+            item = self.ds[sample_idx]
             text = item['prompt'] + item['text'] + [self.tokenizer.get_command('eos').Id]
-            end = min(len(text) - 1, start + self.max_seq_len - len(tokens))
+            end = min(len(text) - 1, token_offset + self.max_seq_len - len(tokens))
             masks = [0] * len(item['prompt']) + [1] * (len(item['text']) + 1)
-            if i > 0:
+            if count > 0:
                 current = len(tokens)
                 attention_mask[current:, :current + self.mem_len] = 0
-            tokens += text[start: end]
-            targets += text[start + 1: end + 1]
-            loss_masks += masks[start + 1: end + 1]
+            tokens += text[token_offset: end]
+            targets += text[token_offset + 1: end + 1]
+            loss_masks += masks[token_offset + 1: end + 1]
+            count += 1
+            sample_idx += 1
+            token_offset = 0
         return tokens, targets, loss_masks, attention_mask
 
     def pad_seq(self, seq, pad_id=None):
@@ -580,7 +591,7 @@ class GPT2Dataset(data.Dataset):
     def init_weighting(self):
         if self.weighted:
             if self.is_lazy:
-                lens = np.array(self.ds.text_lens)
+                lens = np.array([self.ds.get_text_len(idx) for idx in range(len(self.ds))])
             else:
                 lens = np.array([len(d['text']) if isinstance(d, dict)
                                  else len(d) for d in self.ds])
@@ -915,7 +926,7 @@ class bert_sentencepair_dataset(data.Dataset):
     def pad_seq(self, seq):
         """helper function to pad sequence pair"""
         num_pad = max(0, self.max_seq_len - len(seq))
-        pad_mask = [0] * len(seq) + [1] * num_pad 
+        pad_mask = [0] * len(seq) + [1] * num_pad
         seq += [self.tokenizer.get_command('pad').Id] * num_pad
         return seq, pad_mask
 

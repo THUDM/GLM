@@ -375,7 +375,7 @@ def get_args():
         with open(args.deepspeed_config) as file:
             deepspeed_config = json.load(file)
         if "train_micro_batch_size_per_gpu" in deepspeed_config:
-            args.batch_size = deepspeed_config["train_micro_batch_size_per_gpu"] * args.model_parallel_size
+            args.batch_size = deepspeed_config["train_micro_batch_size_per_gpu"]
         if "optimizer" in deepspeed_config:
             optimizer_params_config = deepspeed_config["optimizer"].get("params", {})
             args.lr = optimizer_params_config.get("lr", args.lr)

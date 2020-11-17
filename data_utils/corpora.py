@@ -51,6 +51,12 @@ class ChineseDataset(data.Dataset):
             self.text_lens = self.texts.lens
             self.is_lazy = True
 
+    def get_text_len(self, idx):
+        return self.text_lens[idx]
+
+    def get_prompt_len(self, idx):
+        return self.prompt_lens[idx]
+
     def process_line(self, data):
         raise NotImplementedError
 
@@ -120,11 +126,16 @@ class DataReader:
 
 class zhihu(DataReader):
     PATH = "/root/data/zhihu/zhihu"
+    # PATH = "data/zhihu/data.json"
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
     qtitle_prefix = "问题："
     qcontent_prefix = "问题描述："
     user_prefix = "回答用户："
     answer_prefix = " 回答："
+    # qtitle_prefix = []
+    # qcontent_prefix = []
+    # user_prefix = []
+    # answer_prefix = []
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
@@ -144,11 +155,15 @@ class zhihu(DataReader):
             prompt, text = cls.process_sample(prompt, text, tokenizer, tokenize)
             prompts.append(prompt)
             texts.append(text)
+        # prompt = data["q_title"] + data["q-content"] + data["user-signature"]
+        # text = data["ans-content"]
+        # prompts.append(prompt)
+        # texts.append(text)
         return prompts, texts
 
 
 class zhidao(DataReader):
-    PATH = "/root/data/baike_zhidao/zhidao"
+    PATH = "/root/data/zhidao/zhidao"
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
     qtitle_prefix = "问题："
     qcontent_prefix = "问题描述："
@@ -179,7 +194,7 @@ class zhidao(DataReader):
 
 
 class baike(DataReader):
-    PATH = "/root/data/baike_zhidao/baike"
+    PATH = "/root/data/baike/baike"
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
     @classmethod
@@ -206,7 +221,7 @@ class wikipedia(DataReader):
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
         text = data['text']
-        prompt, text = cls.process_sample("", text)
+        prompt, text = cls.process_sample("", text, tokenizer, tokenize)
         return [prompt], [text]
 
 

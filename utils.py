@@ -30,11 +30,11 @@ from tensorboardX import SummaryWriter
 SUMMARY_WRITER_DIR_NAME = 'runs'
 
 
-def get_sample_writer(name, base=".."):
+def get_sample_writer(name, base="..", iteration=0):
     """Returns a tensorboard summary writer
     """
     return SummaryWriter(
-        log_dir=os.path.join(base, SUMMARY_WRITER_DIR_NAME, name))
+        log_dir=os.path.join(base, SUMMARY_WRITER_DIR_NAME, name), purge_step=iteration)
 
 
 def print_rank_0(message):
@@ -191,7 +191,7 @@ def save_checkpoint(iteration, model, optimizer,
                     lr_scheduler, args):
     """Save a model checkpoint."""
     if args.deepspeed:
-        save_ds_checkpoint(iteration, model, args)
+        save_ds_checkpoint(iteration, model, lr_scheduler, args)
     else:
         # Only rank zer0 of the data parallel writes to the disk.
         if isinstance(model, torchDDP):
@@ -236,11 +236,13 @@ def save_checkpoint(iteration, model, optimizer,
     torch.distributed.barrier()
 
 
-def save_ds_checkpoint(iteration, model, args):
+def save_ds_checkpoint(iteration, model, lr_scheduler, args):
     """Save a model checkpoint."""
 
     sd = {}
     sd['iteration'] = iteration
+    if lr_scheduler is not None:
+        sd['client_lr_scheduler'] = lr_scheduler.state_dict()
     # rng states.
     if not args.no_save_rng:
         sd['random_rng_state'] = random.getstate()
@@ -290,8 +292,9 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
 
     if args.deepspeed:
 
-        checkpoint_name, sd = model.load_checkpoint(args.load, iteration, load_optimizer_states=load_optimizer_states)
-
+        checkpoint_name, sd = model.load_checkpoint(args.load, iteration, load_optimizer_states=not args.no_load_optim)
+        if "client_lr_scheduler" in sd:
+            lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
         if checkpoint_name is None:
             if mpu.get_data_parallel_rank() == 0:
                 print("Unable to load checkpoint.")
@@ -363,7 +366,6 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
                          'state.'.format(checkpoint_name))
             exit()
 
-    torch.distributed.barrier()
     if mpu.get_data_parallel_rank() == 0:
         print('  successfully loaded {}'.format(checkpoint_name))
 

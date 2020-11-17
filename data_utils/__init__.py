@@ -66,11 +66,10 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, text_key, label_key, local_rank, lazy=False, xl_style=False, shuffle=True, split=[1.],
-                 delim=',', loose=False, binarize_sent=False, drop_unlabeled=False, tokenizer=None,
-                 tokenizer_type='CharacterLevelTokenizer', tokenizer_model_path=None, vocab_size=None,
-                 model_type='bpe', pad_token=0, character_converage=1.0, non_binary_cols=None,
-                 sample_one_document=False, pre_tokenize=False, **kwargs):
+def make_dataset(path, seq_length, mem_length, text_key, label_key, local_rank, lazy=False, xl_style=False,
+                 shuffle=True, split=[1.], delim=',', loose=False, binarize_sent=False, drop_unlabeled=False,
+                 tokenizer=None, tokenizer_type='CharacterLevelTokenizer', tokenizer_model_path=None, vocab_size=None,
+                 model_type='bpe', pad_token=0, character_converage=1.0, non_binary_cols=None,sample_one_document=False, pre_tokenize=False, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if non_binary_cols is not None:
         # multilabel dataset support (only for csvs)
@@ -121,15 +120,13 @@ def make_dataset(path, seq_length, text_key, label_key, local_rank, lazy=False, 
     else:
         ds = [get_dataset_from_path(p) for p in path]
         ds = ConcatDataset(ds)
-    if shuffle:
-        ds = ShuffleDataset(ds)
 
     ds_type = ''
     if 'ds_type' in kwargs:
         ds_type = kwargs['ds_type']
     # Split dataset into train/val/test (and wrap bert dataset)
     if should_split(split):
-        ds = split_ds(ds, split, shuffle=False)
+        ds = split_ds(ds, split, shuffle=shuffle)
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             ds = [bert_sentencepair_dataset(d, max_seq_len=seq_length,
@@ -137,8 +134,8 @@ def make_dataset(path, seq_length, text_key, label_key, local_rank, lazy=False, 
                   ds]
         elif ds_type.lower() == 'gpt2':
             if xl_style:
-                ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=not pre_tokenize,
-                                  sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
+                ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
+                                use_tokenizer=not pre_tokenize, sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
             else:
                 ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=not pre_tokenize,
                               sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
@@ -148,7 +145,7 @@ def make_dataset(path, seq_length, text_key, label_key, local_rank, lazy=False, 
             ds = bert_sentencepair_dataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
         elif ds_type.lower() == 'gpt2':
             if xl_style:
-                ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, use_tokenizer=False,
+                ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, mem_len=mem_length, use_tokenizer=False,
                                  sample_across_doc=not sample_one_document)
             else:
                 ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length, use_tokenizer=False,
