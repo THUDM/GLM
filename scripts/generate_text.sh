@@ -1,9 +1,9 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=checkpoints/gpt2_345m
+CHECKPOINT_PATH=checkpoints/gpt-345M11-14-13-21
 MPSIZE=1
-NLAYERS=24
-NHIDDEN=1024
+NLAYERS=40
+NHIDDEN=1408
 NATT=16
 MAXSEQLEN=1024
 
@@ -27,7 +27,7 @@ deepspeed --num_nodes 1 --num_gpus 1 generate_samples.py \
        --load $CHECKPOINT_PATH \
        --num-attention-heads $NATT \
        --max-position-embeddings 1024 \
-       --tokenizer-type GPT2BPETokenizer \
+       --tokenizer-type ChineseSPTokenizer \
        --fp16 \
        --cache-dir cache \
        --out-seq-length $MAXSEQLEN \

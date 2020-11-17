@@ -38,39 +38,7 @@ from fp16 import FP16_Module
 from model import GPT2Model
 from model import DistributedDataParallel as DDP
 from utils import print_rank_0
-
-def get_model(args):
-    """Build the model."""
-
-    print_rank_0('building GPT2 model ...')
-    model = GPT2Model(num_layers=args.num_layers,
-                      vocab_size=args.vocab_size,
-                      hidden_size=args.hidden_size,
-                      num_attention_heads=args.num_attention_heads,
-                      embedding_dropout_prob=args.hidden_dropout,
-                      attention_dropout_prob=args.attention_dropout,
-                      output_dropout_prob=args.hidden_dropout,
-                      max_sequence_length=args.max_position_embeddings,
-                      checkpoint_activations=args.checkpoint_activations,
-                      checkpoint_num_layers=args.checkpoint_num_layers,
-                      parallel_output=False)
-
-    if mpu.get_data_parallel_rank() == 0:
-        print(' > number of parameters on model parallel rank {}: {}'.format(
-            mpu.get_model_parallel_rank(),
-            sum([p.nelement() for p in model.parameters()])), flush=True)
-
-    # GPU allocation.
-    model.cuda(torch.cuda.current_device())
-
-    # Fp16 conversion.
-    if args.fp16:
-        model = FP16_Module(model)
-
-    # Wrap model for distributed training.
-    model = DDP(model)
-
-    return model
+from pretrain_gpt2 import get_model
 
 def setup_model(args):
     """Setup model and optimizer."""
@@ -199,7 +167,7 @@ def generate_samples(model, tokenizer, args, device):
             org_context_length = context_length
 
             while counter < (args.out_seq_length - org_context_length):
-                logits = model(tokens, position_ids, attention_mask)
+                logits, *mems = model(tokens, position_ids, attention_mask)
                 logits = logits[:, context_length - 1, :] / args.temperature
                 logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)            
                 log_probs = F.softmax(logits, dim=-1)
@@ -210,7 +178,6 @@ def generate_samples(model, tokenizer, args, device):
 
                 output_tokens_list = tokens.view(-1).contiguous()
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
-                token_end = decode_tokens.find("<|endoftext|>")
 
                 is_end = prev[0] == args.eod_token
                 if mpu.get_model_parallel_rank() == 0 and (counter % 16 == 0 or is_end):
