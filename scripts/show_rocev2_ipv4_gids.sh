@@ -7,9 +7,9 @@ DEVS=$1
 if [ -z "$DEVS" ] ; then
 	DEVS=$(ls /sys/class/infiniband/)
 fi
-echo -e "===RoCE V2 IPv4 GIDS==="
-echo -e "DEV\t\tGID"
-echo -e "------\t\t---\t"
+#echo -e "===RoCE V2 IPv4 GIDS==="
+#echo -e "DEV\t\tGID"
+#echo -e "------\t\t---\t"
 for d in $DEVS ; do
 	for p in $(ls /sys/class/infiniband/$d/ports/) ; do
 		for g in $(ls /sys/class/infiniband/$d/ports/$p/gids/) ; do
@@ -25,7 +25,7 @@ for d in $DEVS ; do
 			_type=$(echo $__type| grep -o "[Vv].*")
 			if [ $(echo $gid | cut -d ":" -f -1) = "0000" ] ; then
 				if [ $_type == $TARGET_TYPE ]; then
-				    echo -e "$d\t$g"
+				    echo -e "$g"
 				fi
 			fi
 		done #g (gid)
