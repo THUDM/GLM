@@ -27,7 +27,7 @@ import numpy as np
 import torch
 
 import deepspeed
-
+from contextlib import ExitStack
 from arguments import get_args
 from configure_data import configure_data
 from fp16 import FP16_Module
@@ -490,13 +490,12 @@ def train(model, optimizer, lr_scheduler,
     total_lm_loss = 0.0
 
     # Iterations.
-    iteration = args.iteration
     skipped_iters = 0
 
     timers('interval time').start()
     report_memory_flag = True
     mems = []
-    while iteration < args.train_iters:
+    while args.iteration < args.train_iters:
 
         lm_loss, skipped_iter, mems = train_step(train_data_iterator,
                                            model,
@@ -504,21 +503,21 @@ def train(model, optimizer, lr_scheduler,
                                            lr_scheduler,
                                            args, timers, mems)
         skipped_iters += skipped_iter
-        iteration += 1
+        args.iteration += 1
 
         # Update losses.
         total_lm_loss += lm_loss.data.detach().float()
 
         # Logging.
-        if iteration % args.log_interval == 0:
+        if args.iteration % args.log_interval == 0:
             learning_rate = optimizer.param_groups[0]['lr']
             avg_lm_loss = total_lm_loss.item() / args.log_interval
             elapsed_time = timers('interval time').elapsed()
             report_iteration_metrics(summary_writer, optimizer, learning_rate, avg_lm_loss,
-                                     elapsed_time * 1000.0 / args.log_interval, iteration, args.train_iters, args)
+                                     elapsed_time * 1000.0 / args.log_interval, args.iteration, args.train_iters, args)
             total_lm_loss = 0.0
             if report_memory_flag:
-                report_memory('after {} iterations'.format(iteration))
+                report_memory('after {} iterations'.format(args.iteration))
                 report_memory_flag = False
             if USE_TORCH_DDP:
                 timers.log(['forward', 'backward', 'optimizer',
@@ -529,24 +528,24 @@ def train(model, optimizer, lr_scheduler,
                             'batch generator', 'data loader'],
                            normalizer=args.log_interval)
         # Checkpointing
-        if args.save and args.save_interval and iteration % args.save_interval == 0:
-            save_checkpoint(iteration, model, optimizer, lr_scheduler, args)
+        if args.save and args.save_interval and args.iteration % args.save_interval == 0:
+            save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Evaluation
-        if args.eval_interval and iteration % args.eval_interval == 0 and args.do_valid:
-            prefix = 'iteration {}'.format(iteration)
+        if args.eval_interval and args.iteration % args.eval_interval == 0 and args.do_valid:
+            prefix = 'iteration {}'.format(args.iteration)
             evaluate_and_print_results(
-                prefix, val_data_iterator, model, args, timers, False, step=iteration, summary_writer=summary_writer)
+                prefix, val_data_iterator, model, args, timers, False, step=args.iteration, summary_writer=summary_writer)
 
-        if args.exit_interval and iteration % args.exit_interval == 0:
+        if args.exit_interval and args.iteration % args.exit_interval == 0:
             torch.distributed.barrier()
             time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             rank = torch.distributed.get_rank()
             print('rank: {} | time: {} | exiting the program at iteration {}'.
-                  format(rank, time_str, iteration), flush=True)
+                  format(rank, time_str, args.iteration), flush=True)
             exit()
 
-    return iteration, skipped_iters
+    return args.iteration, skipped_iters
 
 
 def evaluate(data_iterator, model, args, timers, verbose=False):
@@ -761,11 +760,15 @@ def main():
     iteration = 0
     if args.train_iters > 0:
         if args.do_train:
-            iteration, skipped = train(model, optimizer,
-                                       lr_scheduler,
-                                       train_data_iterator,
-                                       val_data_iterator,
-                                       timers, args, summary_writer=summary_writer)
+            with ExitStack() as stack:
+                def save_on_exit(args_, model_, optimizer_, lr_scheduler_):
+                    save_checkpoint(args_.iteration, model_, optimizer_, lr_scheduler_, args_)
+                stack.callback(save_on_exit, args, model, optimizer, lr_scheduler)
+                iteration, skipped = train(model, optimizer,
+                                           lr_scheduler,
+                                           train_data_iterator,
+                                           val_data_iterator,
+                                           timers, args, summary_writer=summary_writer)
 
         if args.do_valid:
             prefix = 'the end of training for val data'
