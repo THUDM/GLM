@@ -84,6 +84,7 @@ def get_batch(context_tokens, device, args):
 
     return tokens, attention_mask, position_ids
 
+
 def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     # This function has been mostly taken from huggingface conversational ai code at
     # https://medium.com/huggingface/how-to-build-a-state-of-the-art-conversational-ai-with-transfer-learning-2d818ac26313
@@ -116,7 +117,7 @@ def generate_samples(model, tokenizer, args, device):
     
     context_count=0
     model.eval()
-    with torch.no_grad():
+    with torch.no_grad(), open("samples.txt", "w") as output:
         while True:
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
             terminate_runs=0
@@ -130,6 +131,7 @@ def generate_samples(model, tokenizer, args, device):
                 if "stop" in raw_text:
                     terminate_runs = 1
                 else:
+                    output.write(raw_text)
                     context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
                     context_length = len(context_tokens)
 
@@ -197,6 +199,7 @@ def generate_samples(model, tokenizer, args, device):
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
                 trim_decode_tokens = decode_tokens[len(raw_text):decode_tokens.find("<|endoftext|>")]
                 print("\nGPT2:", trim_decode_tokens, flush=True)
+                output.write(trim_decode_tokens + "\n")
             raw_text = None
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
