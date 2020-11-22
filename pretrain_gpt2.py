@@ -90,12 +90,13 @@ def get_model(args):
         model = FP16_Module(model)
 
     # Wrap model for distributed training.
-    if USE_TORCH_DDP:
-        i = torch.cuda.current_device()
-        model = DDP(model, device_ids=[i], output_device=i,
-                    process_group=mpu.get_data_parallel_group())
-    else:
-        model = DDP(model)
+    if not args.deepspeed:
+        if USE_TORCH_DDP:
+            i = torch.cuda.current_device()
+            model = DDP(model, device_ids=[i], output_device=i,
+                        process_group=mpu.get_data_parallel_group())
+        else:
+            model = DDP(model)
 
     return model
 
@@ -167,7 +168,8 @@ def get_learning_rate_scheduler(optimizer, args):
                                warmup_iter=warmup_iter,
                                num_iters=num_iters,
                                decay_style=args.lr_decay_style,
-                               last_iter=init_step)
+                               last_iter=init_step,
+                               decay_ratio=args.lr_decay_ratio)
 
     return lr_scheduler
 
@@ -195,10 +197,9 @@ def setup_model_and_optimizer(args):
     if args.load is not None:
         with FileLock("/root/checkpoint_lock", timeout=-1):
             args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
-        torch.distributed.barrier()
-        lr_scheduler.num_iters = args.iteration
     else:
         args.iteration = 0
+    torch.distributed.barrier()
 
     return model, optimizer, lr_scheduler
 
@@ -209,15 +210,16 @@ def get_masks_and_position_ids(data,
                                reset_attention_mask,
                                loss_mask=None,
                                attention_mask=None,
-                               transformer_xl=False):
+                               transformer_xl=False,
+                               mem_length=None):
     # Extract batch size and sequence length.
     batch_size, seq_length = data.size()
 
     # Attention mask (lower triangular).
     if transformer_xl:
         if attention_mask is None:
-            attention_mask = torch.ones((1, seq_length, 2 * seq_length), device=data.device)
-        attention_mask = torch.tril(torch.triu(attention_mask, 1), seq_length)
+            attention_mask = torch.ones((1, seq_length, seq_length + mem_length), device=data.device)
+        attention_mask = torch.tril(torch.triu(attention_mask, 1 - seq_length + mem_length), mem_length)
     else:
         if reset_attention_mask:
             att_mask_batch = batch_size
@@ -314,7 +316,8 @@ def get_batch(data_iterator, args, timers):
         args.reset_attention_mask,
         loss_mask=loss_mask,
         attention_mask=attention_mask,
-        transformer_xl=args.transformer_xl)
+        transformer_xl=args.transformer_xl,
+        mem_length=args.mem_length)
     # Convert
     if args.fp16:
         attention_mask = attention_mask.half()
@@ -364,9 +367,6 @@ def backward_step(optimizer, model, lm_loss, args, timers):
             optimizer.backward(loss, update_master_grads=False)
         else:
             loss.backward()
-
-    # Reduce across processes.
-    lm_loss_reduced = lm_loss
 
     reduced_losses = lm_loss.view(1)
 
@@ -763,7 +763,7 @@ def main():
             with ExitStack() as stack:
                 def save_on_exit(args_, model_, optimizer_, lr_scheduler_):
                     save_checkpoint(args_.iteration, model_, optimizer_, lr_scheduler_, args_)
-                stack.callback(save_on_exit, args, model, optimizer, lr_scheduler)
+                # stack.callback(save_on_exit, args, model, optimizer, lr_scheduler)
                 iteration, skipped = train(model, optimizer,
                                            lr_scheduler,
                                            train_data_iterator,

@@ -142,6 +142,7 @@ def add_training_args(parser):
     group.add_argument('--lr-decay-style', type=str, default='linear',
                        choices=['constant', 'linear', 'cosine', 'exponential'],
                        help='learning rate decay function')
+    group.add_argument('--lr-decay-ratio', type=float, default=0.5)
     group.add_argument('--lr', type=float, default=1.0e-4,
                        help='initial learning rate')
     group.add_argument('--warmup', type=float, default=0.01,

@@ -151,7 +151,7 @@ def report_memory(name):
         torch.cuda.max_memory_allocated() / mega_bytes)
     string += ' | cached: {}'.format(torch.cuda.memory_cached() / mega_bytes)
     string += ' | max cached: {}'.format(
-        torch.cuda.max_memory_cached() / mega_bytes)
+        torch.cuda.memory_reserved() / mega_bytes)
     print_rank_0(string)
 
 
@@ -295,6 +295,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
         checkpoint_name, sd = model.load_checkpoint(args.load, iteration, load_optimizer_states=not args.no_load_optim)
         if "client_lr_scheduler" in sd:
             lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
+            print_rank_0("Load lr scheduler state")
         if checkpoint_name is None:
             if mpu.get_data_parallel_rank() == 0:
                 print("Unable to load checkpoint.")
