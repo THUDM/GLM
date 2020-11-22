@@ -2,8 +2,8 @@
 
 # Change for multinode config
 
-NUM_WORKERS=1
-NUM_GPUS_PER_WORKER=1
+NUM_WORKERS=8
+NUM_GPUS_PER_WORKER=8
 MP_SIZE=1
 
 script_path=$(realpath $0)
@@ -15,17 +15,20 @@ HOST_FILE_PATH="/root/code/config/pre_hostfile"
 #HOST_FILE_PATH="/workspace/hostfile"
 
 
-config_json="$script_dir/ds_config.json"
+config_json="$script_dir/ds_config_29B.json"
 gpt_options=" \
+       --experiment-name txl-2.8b \
        --model-parallel-size ${MP_SIZE} \
-       --num-layers 3 \
-       --hidden-size 1024 \
-       --num-attention-heads 16 \
-       --seq-length 1024 \
-       --max-position-embeddings 1024 \
-       --save checkpoints \
-       --load checkpoints/gpt-345M11-14-13-21
-       --train-iters 320000 \
+       --num-layers 32 \
+       --hidden-size 2560 \
+       --num-attention-heads 32 \
+       --seq-length 512 \
+       --max-position-embeddings 512 \
+       --mem-length 256 \
+       --load /root/data/checkpoints/txl-2.8b11-20-15-10 \
+       --save /root/data/checkpoints \
+       --save-interval 2000 \
+       --train-iters 300000 \
        --resume-dataloader \
        --train-data zhihu baike zhidao \
        --lazy-loader \
@@ -34,6 +37,8 @@ gpt_options=" \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \
+       --lr-decay-ratio 0.1 \
+       --lr-decay-iters 300000 \
        --warmup .01 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
