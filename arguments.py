@@ -377,6 +377,10 @@ def get_args():
             deepspeed_config = json.load(file)
         if "train_micro_batch_size_per_gpu" in deepspeed_config:
             args.batch_size = deepspeed_config["train_micro_batch_size_per_gpu"]
+        if "gradient_accumulation_steps" in deepspeed_config:
+            args.gradient_accumulation_steps = deepspeed_config["gradient_accumulation_steps"]
+        else:
+            args.gradient_accumulation_steps = None
         if "optimizer" in deepspeed_config:
             optimizer_params_config = deepspeed_config["optimizer"].get("params", {})
             args.lr = optimizer_params_config.get("lr", args.lr)

@@ -194,12 +194,6 @@ def setup_model_and_optimizer(args):
         optimizer = get_optimizer(param_groups, args)
 
     lr_scheduler = get_learning_rate_scheduler(optimizer, args)
-    if args.load is not None:
-        with FileLock("/root/checkpoint_lock", timeout=-1):
-            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
-    else:
-        args.iteration = 0
-    torch.distributed.barrier()
 
     return model, optimizer, lr_scheduler
 
@@ -417,36 +411,43 @@ def see_memory_usage(message, force=False):
 def train_step(data_iterator, model, optimizer, lr_scheduler,
                args, timers, mems):
     """Single training step."""
+    while True:
+        # Forward model for one step.
+        timers('forward').start()
+        lm_loss, mems = forward_step(data_iterator, model, args, timers, mems)
+        timers('forward').stop()
 
-    # Forward model for one step.
-    timers('forward').start()
-    lm_loss, mems = forward_step(data_iterator, model, args, timers, mems)
-    timers('forward').stop()
+        #print_rank_0("loss is {}".format(lm_loss))
 
-    #print_rank_0("loss is {}".format(lm_loss))
+        # Calculate gradients, reduce across processes, and clip.
+        timers('backward').start()
+        lm_loss_reduced = backward_step(optimizer, model, lm_loss, args, timers)
+        timers('backward').stop()
 
-    # Calculate gradients, reduce across processes, and clip.
-    timers('backward').start()
-    lm_loss_reduced = backward_step(optimizer, model, lm_loss, args, timers)
-    timers('backward').stop()
-
-    # Update parameters.
-    skipped_iter = 0
-    timers('optimizer').start()
-    if args.deepspeed:
-        model.step()
-        if not (args.fp16 and optimizer.overflow):
-            lr_scheduler.step()
-    else:
-        optimizer.step()
-
-        # Update learning rate.
-        if not (args.fp16 and optimizer.overflow):
-            lr_scheduler.step()
+        # Update parameters.
+        skipped_iter, complete = 0, False
+        timers('optimizer').start()
+        if args.deepspeed:
+            if model.is_gradient_accumulation_boundary():
+                model.step()
+                complete = True
+                if not (args.fp16 and optimizer.overflow):
+                    lr_scheduler.step()
+                else:
+                    skipped_iter = 1
+            else:
+                model.step()
         else:
-            skipped_iter = 1
-    timers('optimizer').stop()
-
+            optimizer.step()
+            complete = True
+            # Update learning rate.
+            if not (args.fp16 and optimizer.overflow):
+                lr_scheduler.step()
+            else:
+                skipped_iter = 1
+        timers('optimizer').stop()
+        if complete:
+            break
     return lm_loss_reduced, skipped_iter, mems
 
 
@@ -730,6 +731,13 @@ def main():
 
     # Model, optimizer, and learning rate.
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
+
+    if args.load is not None:
+        with FileLock("/root/checkpoint_lock", timeout=-1):
+            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+    else:
+        args.iteration = 0
+    torch.distributed.barrier()
 
     summary_writer = None
     if torch.distributed.get_rank() == 0:

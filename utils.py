@@ -362,8 +362,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
             mpu.get_cuda_rng_tracker().set_states(sd['rng_tracker_states'])
         except KeyError:
             print_rank_0('Unable to load optimizer from checkpoint {}, exiting. '
-                         'Specify --no-load-optim or --finetune to prevent '
-                         'attempting to load the optimizer '
+                         'Specify --no-load-rng or --finetune to prevent '
+                         'attempting to load the random '
                          'state.'.format(checkpoint_name))
             exit()
 

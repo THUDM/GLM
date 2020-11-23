@@ -68,7 +68,8 @@ def make_data_loader(dataset, batch_size, args):
                                                                         batch_size,
                                                                         drop_last,
                                                                         rank,
-                                                                        world_size)
+                                                                        world_size,
+                                                                        gradient_accumulation_steps=args.gradient_accumulation_steps)
         else:
             batch_sampler = torch.utils.data.BatchSampler(sampler,
                                                           batch_size,
