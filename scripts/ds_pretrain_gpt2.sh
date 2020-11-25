@@ -2,8 +2,8 @@
 
 # Change for multinode config
 
-NUM_WORKERS=2
-NUM_GPUS_PER_WORKER=8
+NUM_WORKERS=1
+NUM_GPUS_PER_WORKER=1
 MP_SIZE=1
 
 script_path=$(realpath $0)
@@ -18,12 +18,12 @@ HOST_FILE_PATH="/root/code/config/pre_hostfile"
 config_json="$script_dir/ds_config.json"
 gpt_options=" \
        --model-parallel-size ${MP_SIZE} \
-       --num-layers 40 \
-       --hidden-size 1408 \
+       --num-layers 24 \
+       --hidden-size 1024 \
        --num-attention-heads 16 \
-       --seq-length 1024 \
-       --max-position-embeddings 1024 \
-       --save /model \
+       --seq-length 512 \
+       --max-position-embeddings 512 \
+       --save checkpoints \
        --train-iters 50000 \
        --resume-dataloader \
        --train-data wikipedia \
@@ -32,7 +32,6 @@ gpt_options=" \
        --pre-tokenize \
        --split 949,50,1 \
        --distributed-backend nccl \
-       --no-load-optim \
        --lr-decay-style cosine \
        --warmup .01 \
        --checkpoint-activations \
