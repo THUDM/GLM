@@ -79,8 +79,10 @@ def get_batch(context_tokens, device, args):
     attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
         tokens,
         args.eod_token,
-        args.reset_position_ids,
-        args.reset_attention_mask)
+        reset_position_ids=False,
+        reset_attention_mask=False,
+        transformer_xl=args.transformer_xl,
+        mem_length=args.mem_length)
 
     return tokens, attention_mask, position_ids
 
@@ -150,9 +152,9 @@ def generate_samples(model, tokenizer, args, device):
             if terminate_runs == 1:
                 return
 
-            pad_id = tokenizer.get_command('pad').Id
-            if context_length < args.out_seq_length:
-                context_tokens.extend([pad_id] * (args.out_seq_length - context_length))
+            # pad_id = tokenizer.get_command('pad').Id
+            # if context_length < args.out_seq_length:
+            #     context_tokens.extend([pad_id] * (args.out_seq_length - context_length))
 
             context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
             context_length_tensor = torch.cuda.LongTensor([context_length])
@@ -161,27 +163,33 @@ def generate_samples(model, tokenizer, args, device):
             torch.distributed.broadcast(context_tokens_tensor, mpu.get_model_parallel_src_rank(), group=mpu.get_model_parallel_group())
 
             context_length = context_length_tensor[0].item()
-            tokens, attention_mask, position_ids=get_batch(context_tokens_tensor, device, args)
+            tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
 
             start_time = time.time()
 
-            counter = 0
+            counter, mems = 0, []
             org_context_length = context_length
-
             while counter < (args.out_seq_length - org_context_length):
-                logits, *mems = model(tokens, position_ids, attention_mask)
-                logits = logits[:, context_length - 1, :] / args.temperature
+                if counter == 0:
+                    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+                else:
+                    index = org_context_length + counter
+                    logits, *mems = model(tokens[:, index - 1: index], tokens.new_ones((1, 1)) * (index - 1),
+                                          tokens.new_ones(1, 1, 1, args.out_seq_length, device=tokens.device,
+                                                          dtype=torch.float), *mems)
+                logits = logits[:, -1]
+                logits /= args.temperature
                 logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)            
                 log_probs = F.softmax(logits, dim=-1)
-                prev = torch.multinomial(log_probs, num_samples=1)
-                tokens[0, context_length] = prev[0] 
+                prev = torch.multinomial(log_probs, num_samples=1)[0]
+                tokens = torch.cat((tokens, prev.view(1, 1)), dim=1)
                 context_length += 1
                 counter += 1
 
                 output_tokens_list = tokens.view(-1).contiguous()
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
 
-                is_end = prev[0] == args.eod_token
+                is_end = prev == args.eod_token
                 if mpu.get_model_parallel_rank() == 0 and (counter % 16 == 0 or is_end):
                    os.system('clear')
                    print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
@@ -252,6 +260,7 @@ def main():
 
     # Arguments.
     args = get_args()
+    args.mem_length = args.out_seq_length + args.mem_length - 1
 
     # Pytorch distributed.
     initialize_distributed(args)

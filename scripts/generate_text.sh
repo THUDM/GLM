@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=checkpoints/gpt-345M11-14-13-21
+CHECKPOINT_PATH=/root/data/checkpoints/gpt-345M11-14-13-21
 MPSIZE=1
 NLAYERS=40
 NHIDDEN=1408

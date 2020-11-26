@@ -71,7 +71,7 @@ def get_model(args):
                       checkpoint_activations=args.checkpoint_activations,
                       checkpoint_num_layers=args.checkpoint_num_layers,
                       parallel_output=True,
-                      transformer_xl=args.transformer_xl)
+                      relative_encoding=args.transformer_xl)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(
@@ -713,6 +713,7 @@ def main():
 
     # Arguments.
     args = get_args()
+    args.mem_length = args.mem_length if args.transformer_xl else 0
     if args.load:
         args.experiment_name = os.path.basename(os.path.normpath(args.load))
     else:

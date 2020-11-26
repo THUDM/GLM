@@ -306,7 +306,7 @@ def add_data_args(parser):
                             'normal data pipeline')
     group.add_argument('--seq-length', type=int, default=512,
                        help="Maximum sequence length to process")
-    group.add_argument('--mem-length', type=int, default=512,
+    group.add_argument('--mem-length', type=int, default=0,
                        help="The memory length to preserve")
     group.add_argument('--max-preds-per-seq', type=int, default=None,
                        help='Maximum number of predictions to use per sequence.'

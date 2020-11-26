@@ -52,7 +52,7 @@ class GPT2Model(torch.nn.Module):
                  checkpoint_activations,
                  checkpoint_num_layers=1,
                  parallel_output=True,
-                 transformer_xl=False):
+                 relative_encoding=False):
 
         super(GPT2Model, self).__init__()
 
@@ -75,7 +75,7 @@ class GPT2Model(torch.nn.Module):
                                                        output_dropout_prob,
                                                        checkpoint_activations,
                                                        checkpoint_num_layers,
-                                                       transformer_xl=transformer_xl)
+                                                       relative_encoding=relative_encoding)
 
     def forward(self, input_ids, position_ids, attention_mask, *mems):
 
