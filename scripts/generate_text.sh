@@ -1,10 +1,10 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/root/data/checkpoints/gpt-345M11-14-13-21
+CHECKPOINT_PATH=/root/data/checkpoints/txl-2.8b11-20-15-10
 MPSIZE=1
-NLAYERS=40
-NHIDDEN=1408
-NATT=16
+NLAYERS=32
+NHIDDEN=2560
+NATT=32
 MAXSEQLEN=1024
 
 #SAMPLING ARGS
@@ -31,6 +31,9 @@ deepspeed --num_nodes 1 --num_gpus 1 generate_samples.py \
        --fp16 \
        --cache-dir cache \
        --out-seq-length $MAXSEQLEN \
+       --seq-length 512 \
+       --mem-length 256 \
+       --transformer-xl \
        --temperature $TEMP \
        --top_k $TOPK \
        --top_p $TOPP

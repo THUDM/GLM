@@ -137,7 +137,7 @@ def generate_samples(model, tokenizer, args, device):
                     context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
                     context_length = len(context_tokens)
 
-                    if context_length >=args.out_seq_length//2:
+                    if context_length >=args.seq_length:
                         print("\nContext length", context_length, \
                             "\nPlease give smaller context (half of the sequence length)!")
                         continue
@@ -175,7 +175,7 @@ def generate_samples(model, tokenizer, args, device):
                 else:
                     index = org_context_length + counter
                     logits, *mems = model(tokens[:, index - 1: index], tokens.new_ones((1, 1)) * (index - 1),
-                                          tokens.new_ones(1, 1, 1, args.out_seq_length, device=tokens.device,
+                                          tokens.new_ones(1, 1, 1, args.mem_length + 1, device=tokens.device,
                                                           dtype=torch.float), *mems)
                 logits = logits[:, -1]
                 logits /= args.temperature
@@ -260,7 +260,7 @@ def main():
 
     # Arguments.
     args = get_args()
-    args.mem_length = args.out_seq_length + args.mem_length - 1
+    args.mem_length = args.seq_length + args.mem_length - 1
 
     # Pytorch distributed.
     initialize_distributed(args)
