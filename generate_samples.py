@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 import argparse
 import time
+from datetime import datetime
 from arguments import get_args
 from utils import Timers
 from pretrain_gpt2 import initialize_distributed
@@ -119,7 +120,11 @@ def generate_samples(model, tokenizer, args, device):
     
     context_count=0
     model.eval()
-    with torch.no_grad(), open("samples.txt", "w") as output:
+    output_path = "./samples"
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    output_path = os.path.join(output_path, f"sample-{datetime.now().strftime('%m-%d-%H-%M')}.txt")
+    with torch.no_grad(), open(output_path, "w") as output:
         while True:
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
             terminate_runs=0
