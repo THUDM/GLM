@@ -297,7 +297,7 @@ def add_data_args(parser):
                                 'GPT2BPETokenizer',
                                 'ChineseSPTokenizer'],
                        help='what type of tokenizer to use')
-    group.add_argument('--pre-tokenize', action='store_true')
+    group.add_argument('--not-pre-tokenize', action='store_true')
     group.add_argument("--cache-dir", default=None, type=str,
                        help="Where to store pre-trained BERT downloads")
     group.add_argument('--use-tfrecords', action='store_true',

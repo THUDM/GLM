@@ -17,11 +17,12 @@ from .datasets import json_dataset, csv_dataset
 import os
 import json
 import random
-# import ray
 import tqdm
+from multiprocessing import Queue, Process
 from torch.utils import data
 from .lazy_loader import lazy_array_loader
 
+NUM_PROCESSES = 40
 
 class webtext(json_dataset):
     """
@@ -42,63 +43,83 @@ class webtext(json_dataset):
         super(webtext, self).__init__(webtext.PATH, **kwargs)
 
 
-class ChineseDataset(data.Dataset):
-    def __init__(self, prompt_loader, text_loader, **kwargs):
+class PromptDataset(data.Dataset):
+    def __init__(self, prompt_loader, text_loader, tokenizer=None, to_tokenize=False, **kwargs):
         self.prompts = prompt_loader
         self.texts = text_loader
+        self.tokenizer = tokenizer
+        self.to_tokenize = to_tokenize
         if isinstance(self.prompts, lazy_array_loader) and isinstance(self.texts, lazy_array_loader):
             self.prompt_lens = self.prompts.lens
             self.text_lens = self.texts.lens
             self.is_lazy = True
 
     def get_text_len(self, idx):
-        return self.text_lens[idx]
-
-    def get_prompt_len(self, idx):
-        return self.prompt_lens[idx]
+        return self.prompt_lens[idx] + self.text_lens[idx]
 
     def process_line(self, data):
         raise NotImplementedError
 
     def __getitem__(self, index):
-        return {"prompt": self.prompts[index], "text": self.texts[index]}
+        prompt = self.prompts[index]
+        text = self.texts[index]
+        if self.to_tokenize:
+            prompt = self.tokenizer.EncodeAsIds(prompt).tokenization
+            text = self.tokenizer.EncodeAsIds(text).tokenization
+        return {"tokens": prompt + text, "loss_masks": [0] * len(prompt) + [1] * len(text)}
 
     def __len__(self):
         return len(self.prompts)
-
-
-# @ray.remote
-def read_file(path, reader, tokenizer, tokenize):
-    prompts, texts = [], []
-    with open(path) as file:
-        for row in file:
-            data = json.loads(row)
-            prompt, text = reader.process_line(data, tokenizer, tokenize)
-            prompts += prompt
-            texts += text
-    return prompts, texts
 
 
 class DataReader:
     PATH = None
     assert_str = None
 
+    @staticmethod
+    def tokenize_worker(input, output, reader, tokenizer, tokenize):
+        for row in iter(input.get, 'STOP'):
+            data = json.loads(row)
+            prompts, texts = reader.process_line(data, tokenizer, tokenize)
+            for prompt, text in zip(prompts, texts):
+                output.put((prompt, text))
+        output.put("COMPLETE")
+
     def __init__(self, prompt_writer, text_writer, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
-        # ray.init(num_cpus=90)
         self.tokenizer = tokenizer
         self.tokenize = tokenize
         if os.path.isdir(self.PATH):
             paths = [entry.path for entry in os.scandir(self.PATH) if not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
-        results = []
+        task_queue, done_queue = Queue(), Queue()
+        processes = []
+        for i in range(NUM_PROCESSES):
+            process = Process(target=self.tokenize_worker,
+                              args=(task_queue, done_queue, type(self), tokenizer, tokenize))
+            process.start()
+            processes.append(process)
         for path in paths:
-            results.append(read_file(path, type(self), tokenizer, tokenize))
-        for result in tqdm.tqdm(results):
-            prompts, texts = result
-            prompt_writer.write(prompts)
-            text_writer.write(texts)
+            with open(path) as file:
+                for row in tqdm.tqdm(file):
+                    task_queue.put(row)
+        for i in range(len(processes)):
+            task_queue.put('STOP')
+        count = len(processes)
+        progress_bar = tqdm.tqdm()
+        while True:
+            data = done_queue.get()
+            if data == 'COMPLETE':
+                count -= 1
+                if count == 0:
+                    break
+            else:
+                prompt, text = data
+                prompt_writer.write(prompt)
+                text_writer.write(text)
+                progress_bar.update()
+        progress_bar.close()
 
     @staticmethod
     def get_token_count(contents):
@@ -119,8 +140,8 @@ class DataReader:
             content += "......"
         return content
 
-    @staticmethod
-    def process_line(data, tokenizer, tokenize):
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
         raise NotImplementedError
 
 
@@ -215,7 +236,7 @@ class wikipedia(DataReader):
     command line usage: `--train-data wikipedia`
     """
     # PATH = '/dataset/data/wiki.txt'
-    PATH = 'data/wiki.txt'
+    PATH = '/root/data/wikipedia/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     @classmethod

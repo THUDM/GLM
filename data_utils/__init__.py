@@ -106,12 +106,13 @@ def make_dataset(path, seq_length, mem_length, text_key, label_key, local_rank, 
                                         is_array=pre_tokenize)
             texts = lazy_array_loader(path_, data_type='text', map_fn=map_fn, mem_map=True,
                                       is_array=pre_tokenize)
-            text = corpora.ChineseDataset(prompt_loader=prompts, text_loader=texts)
+            text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
+                                         to_tokenize=not pre_tokenize)
         else:
             # get dataset
             text = get_dataset(path_, text_key=text_key, label_key=label_key, binarize_sent=binarize_sent,
                                tokenizer=tokenizer, delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
-            text = corpora.ChineseDataset(prompt_loader=text.prompts, text_loader=text.texts)
+            text = corpora.PromptDataset(prompt_loader=text.prompts, text_loader=text.texts)
         return text
 
     # get one or multiple datasets and concatenate
@@ -135,19 +136,18 @@ def make_dataset(path, seq_length, mem_length, text_key, label_key, local_rank, 
         elif ds_type.lower() == 'gpt2':
             if xl_style:
                 ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                                use_tokenizer=not pre_tokenize, sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
+                                sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
             else:
-                ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length, use_tokenizer=not pre_tokenize,
-                              sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
+                ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length,
+                                  sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
     else:
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             ds = bert_sentencepair_dataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
         elif ds_type.lower() == 'gpt2':
             if xl_style:
-                ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, mem_len=mem_length, use_tokenizer=False,
-                                 sample_across_doc=not sample_one_document)
+                ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
+                               sample_across_doc=not sample_one_document)
             else:
-                ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length, use_tokenizer=False,
-                             sample_across_doc=not sample_one_document)
+                ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
     return ds, tokenizer

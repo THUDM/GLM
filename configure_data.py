@@ -159,7 +159,7 @@ def make_loaders(args):
         'max_preds_per_seq': args.max_preds_per_seq,
         'presplit_sentences': args.presplit_sentences,
         'sample_one_document': args.sample_one_document,
-        'pre_tokenize': args.pre_tokenize
+        'pre_tokenize': not args.not_pre_tokenize
     }
 
     eval_set_args = copy.copy(data_set_args)

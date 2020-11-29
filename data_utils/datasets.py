@@ -91,14 +91,6 @@ class ConcatDataset(data.Dataset):
             sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
         return self.datasets[dataset_idx].get_text_len(sample_idx)
 
-    def get_prompt_len(self, idx):
-        dataset_idx = bisect_right(self.cumulative_sizes, idx)
-        if dataset_idx == 0:
-            sample_idx = idx
-        else:
-            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
-        return self.datasets[dataset_idx].get_prompt_len(sample_idx)
-
     def SetTokenizer(self, tokenizer):
         for ds in self.datasets:
             ds.SetTokenizer(tokenizer)
@@ -169,9 +161,6 @@ class SplitDataset(data.Dataset):
 
     def get_text_len(self, idx):
         return self.wrapped_data.get_text_len(self.split_inds[idx])
-
-    def get_prompt_len(self, idx):
-        return self.wrapped_data.get_prompt_len(self.split_inds[idx])
 
     def __getitem__(self, index):
         return self.wrapped_data[self.split_inds[index]]
@@ -490,7 +479,7 @@ class json_dataset(data.Dataset):
 
 
 class XLDataset(data.Dataset):
-    def __init__(self, ds, tokenizer, max_seq_len=1024, mem_len=None, sample_across_doc=True, use_tokenizer=True, **kwargs):
+    def __init__(self, ds, tokenizer, max_seq_len=1024, mem_len=None, sample_across_doc=True, **kwargs):
         self.ds = ds
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
@@ -498,8 +487,6 @@ class XLDataset(data.Dataset):
             mem_len = max_seq_len
         self.mem_len = mem_len
         self.sample_across_doc = sample_across_doc
-        assert not use_tokenizer
-        self.use_tokenizer = use_tokenizer
         self.indices, self.num_samples = None, None
         if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
             self.is_lazy = True
@@ -507,7 +494,7 @@ class XLDataset(data.Dataset):
 
     def init_indices(self):
         if self.is_lazy:
-            lens = np.array([self.ds.get_prompt_len(idx) + self.ds.get_text_len(idx) for idx in range(len(self.ds))])
+            lens = np.array([self.ds.get_text_len(idx) for idx in range(len(self.ds))])
         else:
             lens = np.array([len(d['prompt']) + len(d['text']) if isinstance(d, dict) else len(d) for d in self.ds])
         self.indices = list(accumulate(lens))
@@ -537,9 +524,10 @@ class XLDataset(data.Dataset):
         count = 0
         while len(tokens) < self.max_seq_len and sample_idx < len(self.ds):
             item = self.ds[sample_idx]
-            text = item['prompt'] + item['text'] + [self.tokenizer.get_command('eos').Id]
+            text, masks = item['tokens'], item['loss_masks']
+            text = text + [self.tokenizer.get_command('eos').Id]
             end = min(len(text) - 1, token_offset + self.max_seq_len - len(tokens))
-            masks = [0] * len(item['prompt']) + [1] * (len(item['text']) + 1)
+            masks = masks + [1]
             if count > 0:
                 current = len(tokens)
                 attention_mask[current:, :current + self.mem_len] = 0
@@ -566,7 +554,7 @@ class GPT2Dataset(data.Dataset):
                  weighted=True,
                  sample_across_doc=True,
                  random_across_doc_sampling=True,
-                 sentence_start=False, use_tokenizer=True, **kwargs):
+                 sentence_start=False, **kwargs):
         """
         sentence_start: the stripped article must start with a complete sentence
         """
@@ -581,7 +569,6 @@ class GPT2Dataset(data.Dataset):
         self.sample_across_doc = sample_across_doc
         self.random_across_doc_sampling = random_across_doc_sampling
         self.sentence_start = sentence_start
-        self.use_tokenizer = use_tokenizer
         self.weighting, self.total_len = None, None
         self.is_lazy = False
         if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
@@ -660,14 +647,9 @@ class GPT2Dataset(data.Dataset):
 
     def getidx(self, data_idx):
         data = self.ds[data_idx]
-        prompt, text = data['prompt'], data['text']
-        # tokenize
-        if self.use_tokenizer:
-            prompt = self.tokenizer.EncodeAsIds(prompt).tokenization
-            text = self.tokenizer.EncodeAsIds(text).tokenization
-        tokens = prompt + text
-        tokens.append(self.tokenizer.get_command('eos').Id)
-        loss_masks = [0] * len(prompt) + [1] * (len(tokens) - len(prompt))
+        tokens, loss_masks = data['tokens'], data['loss_masks']
+        tokens = tokens + [self.tokenizer.get_command('eos').Id]
+        loss_masks = loss_masks + [1]
         return tokens, loss_masks
 
     def pad_seq(self, seq, pad_id=None):

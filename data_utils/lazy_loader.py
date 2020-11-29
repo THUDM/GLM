@@ -62,18 +62,17 @@ class LazyWriter:
         lazypath = get_lazy_path(path)
         return os.path.join(lazypath, data_type + '.len.pkl')
 
-    def write(self, dataset):
-        for s in dataset:
-            if isinstance(s, dict):
-                s = s['text']
-            if self.is_array:
-                encoded = np.array(s, dtype=lazy_data_type).tobytes(order='C')
-                self.output.write(encoded)
-                self.lengths.append(len(s))
-            else:
-                encoded = s.encode('utf-8')
-                self.output.write(encoded)
-                self.lengths.append(len(encoded))
+    def write(self, s):
+        if isinstance(s, dict):
+            s = s['text']
+        if self.is_array:
+            encoded = np.array(s, dtype=lazy_data_type).tobytes(order='C')
+            self.output.write(encoded)
+            self.lengths.append(len(s))
+        else:
+            encoded = s.encode('utf-8')
+            self.output.write(encoded)
+            self.lengths.append(len(encoded))
 
     def close(self):
         self.output.close()
