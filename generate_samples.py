@@ -195,7 +195,7 @@ def generate_samples(model, tokenizer, args, device):
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
 
                 is_end = prev == args.eod_token
-                if mpu.get_model_parallel_rank() == 0 and (counter % 16 == 0 or is_end):
+                if mpu.get_model_parallel_rank() == 0 and (counter % 128 == 0 or is_end):
                    os.system('clear')
                    print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
                    print("\nContext:", raw_text, flush=True)

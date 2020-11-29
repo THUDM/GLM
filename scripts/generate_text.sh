@@ -1,11 +1,12 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/root/data/checkpoints/txl-2.8b11-20-15-10
+CHECKPOINT_PATH=/data/checkpoints/txl-2.8b11-20-15-10
 MPSIZE=1
 NLAYERS=32
 NHIDDEN=2560
 NATT=32
 MAXSEQLEN=1024
+MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 #SAMPLING ARGS
 TEMP=0.9
@@ -18,7 +19,7 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/ds_config.json"
 
-deepspeed --num_nodes 1 --num_gpus 1 generate_samples.py \
+deepspeed --num_nodes 1 --num_gpus 1 --master_port ${MASTER_PORT} generate_samples.py \
        --deepspeed \
        --model-parallel-size $MPSIZE \
        --deepspeed_config ${config_json} \
