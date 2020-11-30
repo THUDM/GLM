@@ -20,7 +20,7 @@ import time
 from .samplers import DistributedBatchSampler
 from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, bert_sentencepair_dataset, \
     GPT2Dataset, ShuffleDataset, XLDataset
-from .lazy_loader import exists_lazy, LazyWriter, lazy_array_loader
+from .lazy_loader import exists_lazy, LazyWriter, LazyLoader
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
 from . import corpora
@@ -47,18 +47,53 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_dataset(path, **kwargs):
+def get_dataset(name, tokenizer, pre_tokenize, local_rank):
     """gets dataset object based on keyword args and file at `path`"""
-    if supported_corpus(path):
-        return corpora.NAMED_CORPORA[path](**kwargs)
-    ext = get_ext(path)
-    if '.json' in ext:
-        text = json_dataset(path, **kwargs)
-    elif ext in ['.csv', '.tsv']:
-        text = csv_dataset(path, **kwargs)
+    if supported_corpus(name):
+        dataset = corpora.NAMED_CORPORA[name]
+        path = dataset.PATH
+        if issubclass(dataset, corpora.PromptReader):
+            if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+                # create cached version of dataset for lazy loading if it doesn't exist
+                if local_rank == 0:
+                    prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
+                    text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
+                    writers = {'prompt': prompt_writer, 'text': text_writer}
+                    dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                    prompt_writer.close()
+                    text_writer.close()
+                else:
+                    while not os.path.exists(LazyWriter.get_len_path(path, data_type='prompt')):
+                        time.sleep(1)
+            map_fn = (lambda x: x.tolist()) if pre_tokenize else None
+            prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                 is_array=pre_tokenize)
+            texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
+                               is_array=pre_tokenize)
+            text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
+                                         to_tokenize=not pre_tokenize)
+            return text
+        elif issubclass(dataset, corpora.KeyReader):
+            if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
+                # create cached version of dataset for lazy loading if it doesn't exist
+                if local_rank == 0:
+                    text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
+                    mask_writer = LazyWriter(path, data_type='mask', is_array=True)
+                    writers = {'mask': mask_writer, 'text': text_writer}
+                    dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                    mask_writer.close()
+                    text_writer.close()
+                else:
+                    while not os.path.exists(LazyWriter.get_len_path(path, data_type='mask')):
+                        time.sleep(1)
+            map_fn = (lambda x: x.tolist()) if pre_tokenize else None
+            masks = LazyLoader(path, data_type='mask', map_fn=map_fn, mem_map=True, is_array=True)
+            texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True, is_array=pre_tokenize)
+            text = corpora.KeyDataset(mask_loader=masks, text_loader=texts, tokenizer=tokenizer,
+                                      to_tokenize=not pre_tokenize)
+            return text
     else:
-        raise NotImplementedError('data file type %s is not supported' % (ext))
-    return text
+        raise NotImplementedError('dataset %s is not supported' % name)
 
 
 def supported_corpus(corpus_name):
@@ -66,11 +101,13 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, mem_length, text_key, label_key, local_rank, lazy=False, xl_style=False,
-                 shuffle=True, split=[1.], delim=',', loose=False, binarize_sent=False, drop_unlabeled=False,
-                 tokenizer=None, tokenizer_type='CharacterLevelTokenizer', tokenizer_model_path=None, vocab_size=None,
-                 model_type='bpe', pad_token=0, character_converage=1.0, non_binary_cols=None,sample_one_document=False, pre_tokenize=False, **kwargs):
+def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=False,
+                 shuffle=True, split=None, tokenizer=None, tokenizer_type='CharacterLevelTokenizer',
+                 tokenizer_model_path=None, vocab_size=None, model_type='bpe', pad_token=0, character_converage=1.0,
+                 non_binary_cols=None, sample_one_document=False, pre_tokenize=False, **kwargs):
     """function to create datasets+tokenizers for common options"""
+    if split is None:
+        split = [1.]
     if non_binary_cols is not None:
         # multilabel dataset support (only for csvs)
         label_key = non_binary_cols
@@ -80,46 +117,11 @@ def make_dataset(path, seq_length, mem_length, text_key, label_key, local_rank, 
         tokenizer = make_tokenizer(tokenizer_type, None, tokenizer_model_path, vocab_size, model_type,
                                    pad_token, character_converage, **kwargs)
 
-    def get_dataset_from_path(path_):
-        if lazy:
-            # get lazily loaded dataset
-            if supported_corpus(path_):
-                name = path_
-                path_ = corpora.NAMED_CORPORA[path_].PATH
-            else:
-                raise NotImplementedError
-            if not (exists_lazy(path_, data_type='prompt') and exists_lazy(path_, data_type='text')):
-                # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
-                    prompt_writer = LazyWriter(path_, data_type='prompt', is_array=pre_tokenize)
-                    text_writer = LazyWriter(path_, data_type='text', is_array=pre_tokenize)
-                    get_dataset(name, text_key=text_key, label_key=label_key, prompt_writer=prompt_writer,
-                                       text_writer=text_writer, binarize_sent=binarize_sent, tokenizer=tokenizer,
-                                       delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose, tokenize=pre_tokenize)
-                    prompt_writer.close()
-                    text_writer.close()
-                else:
-                    while not os.path.exists(LazyWriter.get_len_path(path_, data_type='prompt')):
-                        time.sleep(1)
-            map_fn = (lambda x: x.tolist()) if pre_tokenize else None
-            prompts = lazy_array_loader(path_, data_type='prompt', map_fn=map_fn, mem_map=True,
-                                        is_array=pre_tokenize)
-            texts = lazy_array_loader(path_, data_type='text', map_fn=map_fn, mem_map=True,
-                                      is_array=pre_tokenize)
-            text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
-                                         to_tokenize=not pre_tokenize)
-        else:
-            # get dataset
-            text = get_dataset(path_, text_key=text_key, label_key=label_key, binarize_sent=binarize_sent,
-                               tokenizer=tokenizer, delim=delim, drop_unlabeled=drop_unlabeled, loose_json=loose)
-            text = corpora.PromptDataset(prompt_loader=text.prompts, text_loader=text.texts)
-        return text
-
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
-        ds = get_dataset_from_path(path)
+        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank)
     else:
-        ds = [get_dataset_from_path(p) for p in path]
+        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank) for p in path]
         ds = ConcatDataset(ds)
 
     ds_type = ''

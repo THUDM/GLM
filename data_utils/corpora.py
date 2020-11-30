@@ -20,9 +20,10 @@ import random
 import tqdm
 from multiprocessing import Queue, Process
 from torch.utils import data
-from .lazy_loader import lazy_array_loader
+from .lazy_loader import LazyLoader
 
 NUM_PROCESSES = 40
+
 
 class webtext(json_dataset):
     """
@@ -43,22 +44,47 @@ class webtext(json_dataset):
         super(webtext, self).__init__(webtext.PATH, **kwargs)
 
 
+class KeyDataset(data.Dataset):
+    def __init__(self, text_loader, mask_loader, **kwargs):
+        self.texts = text_loader
+        self.masks = mask_loader
+        self.is_lazy = False
+        if isinstance(self.texts, LazyLoader) and isinstance(self.masks, LazyLoader):
+            self.text_lens = self.texts.lens
+            self.is_lazy = True
+
+    def get_text_len(self, idx):
+        return self.text_lens[idx]
+
+    def __getitem__(self, index):
+        text = self.texts[index]
+        mask_length = self.masks[index]
+        mask = []
+        for i, length in enumerate(mask_length):
+            if i % 2 == 0:
+                mask += [0] * length
+            else:
+                mask += [1] * length
+        assert len(text) == len(mask)
+        return {"tokens": text, "loss_masks": mask}
+
+    def __len__(self):
+        return len(self.texts)
+
+
 class PromptDataset(data.Dataset):
     def __init__(self, prompt_loader, text_loader, tokenizer=None, to_tokenize=False, **kwargs):
         self.prompts = prompt_loader
         self.texts = text_loader
         self.tokenizer = tokenizer
         self.to_tokenize = to_tokenize
-        if isinstance(self.prompts, lazy_array_loader) and isinstance(self.texts, lazy_array_loader):
+        if isinstance(self.prompts, LazyLoader) and isinstance(self.texts, LazyLoader):
             self.prompt_lens = self.prompts.lens
             self.text_lens = self.texts.lens
             self.is_lazy = True
 
     def get_text_len(self, idx):
         return self.prompt_lens[idx] + self.text_lens[idx]
-
-    def process_line(self, data):
-        raise NotImplementedError
 
     def __getitem__(self, index):
         prompt = self.prompts[index]
@@ -78,19 +104,16 @@ class DataReader:
 
     @staticmethod
     def tokenize_worker(input, output, reader, tokenizer, tokenize):
-        for row in iter(input.get, 'STOP'):
-            data = json.loads(row)
-            prompts, texts = reader.process_line(data, tokenizer, tokenize)
-            for prompt, text in zip(prompts, texts):
-                output.put((prompt, text))
-        output.put("COMPLETE")
+        raise NotImplementedError
 
-    def __init__(self, prompt_writer, text_writer, tokenizer=None, tokenize=False, **kwargs):
+    def __init__(self, writers, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
         self.tokenizer = tokenizer
         self.tokenize = tokenize
+        self.writers = writers
         if os.path.isdir(self.PATH):
-            paths = [entry.path for entry in os.scandir(self.PATH) if not entry.is_dir() and not entry.name.endswith("bz2")]
+            paths = [entry.path for entry in os.scandir(self.PATH) if
+                     not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
         task_queue, done_queue = Queue(), Queue()
@@ -115,23 +138,23 @@ class DataReader:
                 if count == 0:
                     break
             else:
-                prompt, text = data
-                prompt_writer.write(prompt)
-                text_writer.write(text)
+                self.write_result(data, self.writers)
                 progress_bar.update()
         progress_bar.close()
+
+    @staticmethod
+    def write_result(data, writers):
+        raise NotImplementedError
 
     @staticmethod
     def get_token_count(contents):
         return sum(map(len, contents))
 
     @staticmethod
-    def process_sample(prompt, text, tokenizer, tokenize):
-        if isinstance(prompt, str) and tokenize:
-            prompt = tokenizer.EncodeAsIds(prompt).tokenization if prompt else []
+    def process_sample(text, tokenizer, tokenize):
         if isinstance(text, str) and tokenize:
             text = tokenizer.EncodeAsIds(text).tokenization if text else []
-        return prompt, text
+        return text
 
     @staticmethod
     def trim_field(content, max_length):
@@ -145,7 +168,66 @@ class DataReader:
         raise NotImplementedError
 
 
-class zhihu(DataReader):
+class PromptReader(DataReader):
+    @staticmethod
+    def tokenize_worker(input, output, reader, tokenizer, tokenize):
+        for row in iter(input.get, 'STOP'):
+            data = json.loads(row)
+            prompts, texts = reader.process_line(data, tokenizer, tokenize)
+            for prompt, text in zip(prompts, texts):
+                output.put((prompt, text))
+        output.put("COMPLETE")
+
+    @staticmethod
+    def write_result(data, writers):
+        prompt, text = data
+        writers['prompt'].write(prompt)
+        writers['text'].write(text)
+
+
+class KeyReader(DataReader):
+    PATH = '/root/data/wikipedia/wiki-key.txt'
+    assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        keys, contents = data['key'], data["content"]
+        assert len(keys) == len(contents)
+        for i in range(1, len(keys)):
+            keys[i] = " " + keys[i]
+        contents = [" " + content for content in contents]
+        keys = [tokenizer.EncodeAsIds(key).tokenization for key in keys]
+        contents = [tokenizer.EncodeAsIds(content).tokenization for content in contents]
+        summary = sum(keys, [])
+        summary_prefix = cls.process_sample("Summary: ", tokenizer, tokenize)
+        summary_mask = [len(summary_prefix), len(summary)]
+        summary = summary_prefix + summary
+        text, text_mask = [], []
+        for key, content in zip(keys, contents):
+            text += key
+            text += content
+            text_mask.append(len(key))
+            text_mask.append(len(content))
+        return (summary, summary_mask), (text, text_mask)
+
+    @staticmethod
+    def tokenize_worker(input, output, reader, tokenizer, tokenize):
+        for row in iter(input.get, 'STOP'):
+            data = json.loads(row)
+            summary, content = reader.process_line(data, tokenizer, tokenize)
+            output.put((summary, content))
+        output.put("COMPLETE")
+
+    @staticmethod
+    def write_result(data, writers):
+        summary, content = data
+        writers['text'].write(summary[0])
+        writers['mask'].write(summary[1])
+        writers['text'].write(content[0])
+        writers['mask'].write(content[1])
+
+
+class zhihu(PromptReader):
     PATH = "/root/data/zhihu/zhihu"
     # PATH = "data/zhihu/data.json"
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
@@ -153,6 +235,7 @@ class zhihu(DataReader):
     qcontent_prefix = "问题描述："
     user_prefix = "回答用户："
     answer_prefix = " 回答："
+
     # qtitle_prefix = []
     # qcontent_prefix = []
     # user_prefix = []
@@ -173,7 +256,8 @@ class zhihu(DataReader):
             user = data.get("user-signature", "")
             prompt = cls.qtitle_prefix + qtitle + cls.qcontent_prefix + qcontent + cls.user_prefix + user + cls.answer_prefix
             text = data["ans-content"]
-            prompt, text = cls.process_sample(prompt, text, tokenizer, tokenize)
+            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer,
+                                                                                               tokenize)
             prompts.append(prompt)
             texts.append(text)
         # prompt = data["q_title"] + data["q-content"] + data["user-signature"]
@@ -183,7 +267,7 @@ class zhihu(DataReader):
         return prompts, texts
 
 
-class zhidao(DataReader):
+class zhidao(PromptReader):
     PATH = "/root/data/zhidao/zhidao"
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
     qtitle_prefix = "问题："
@@ -199,22 +283,23 @@ class zhidao(DataReader):
         qcontent = data.get("content", "")
         qcontent = cls.trim_field(qcontent, max_length=100)
         prompt = cls.qtitle_prefix + qtitle + cls.qcontent_prefix + qcontent + cls.answer_prefix
+        prompt = cls.process_sample(prompt, tokenizer, tokenize)
         if "best_answer" in data:
             text = data["best_answer"]["content"]
             if len(text) > 10:
-                p, t = cls.process_sample(prompt, text, tokenizer, tokenize)
-                prompts.append(p)
-                texts.append(t)
+                text = cls.process_sample(text, tokenizer, tokenize)
+                prompts.append(prompt)
+                texts.append(text)
         for answer in data.get("other_answers", []):
             text = answer["content"]
             if len(text) > 100:
-                p, t = cls.process_sample(prompt, text, tokenizer, tokenize)
-                prompts.append(p)
-                texts.append(t)
+                text = cls.process_sample(text, tokenizer, tokenize)
+                prompts.append(prompt)
+                texts.append(text)
         return prompts, texts
 
 
-class baike(DataReader):
+class baike(PromptReader):
     PATH = "/root/data/baike/baike"
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
@@ -223,13 +308,13 @@ class baike(DataReader):
         prompts, texts = [], []
         text = data.get("title", "") + data.get("abstract", "") + data.get("content", "")
         if text:
-            p, t = cls.process_sample("", text, tokenizer, tokenize)
+            p, t = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
             prompts.append(p)
             texts.append(t)
         return prompts, texts
 
 
-class wikipedia(DataReader):
+class wikipedia(PromptReader):
     """
     dataset for wikipedia with arguments configured for convenience
 
@@ -242,13 +327,13 @@ class wikipedia(DataReader):
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
         text = data['text']
-        prompt, text = cls.process_sample("", text, tokenizer, tokenize)
+        prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
         return [prompt], [text]
-
 
 
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
+    'wikipedia-key': KeyReader,
     'webtext': webtext,
     "zhihu": zhihu,
     "zhidao": zhidao,

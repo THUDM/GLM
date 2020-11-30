@@ -32,7 +32,7 @@ import numpy as np
 import nltk
 from nltk import tokenize
 
-from .lazy_loader import lazy_array_loader, exists_lazy
+from .lazy_loader import LazyLoader, exists_lazy
 from .tokenization import Tokenization
 
 
@@ -76,7 +76,7 @@ class ConcatDataset(data.Dataset):
         super(ConcatDataset, self).__init__()
         assert len(datasets) > 0, 'datasets should not be an empty iterable'
         self.datasets = list(datasets)
-        self.is_lazy = sum([isinstance(ds, lazy_array_loader) or (hasattr(ds, 'is_lazy') and ds.is_lazy) for ds in
+        self.is_lazy = sum([isinstance(ds, LazyLoader) or (hasattr(ds, 'is_lazy') and ds.is_lazy) for ds in
                             self.datasets]) == len(self.datasets)
         self.cumulative_sizes = self.cumsum(self.datasets)
         self._X = None
@@ -152,7 +152,7 @@ class SplitDataset(data.Dataset):
     def __init__(self, ds, split_inds, **kwargs):
         self.split_inds = list(split_inds)
         self.wrapped_data = ds
-        self.is_lazy = isinstance(ds, lazy_array_loader) or (hasattr(ds, 'is_lazy') and ds.is_lazy)
+        self.is_lazy = isinstance(ds, LazyLoader) or (hasattr(ds, 'is_lazy') and ds.is_lazy)
         self._X = None
         self._Y = None
 

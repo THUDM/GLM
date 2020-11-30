@@ -10,7 +10,7 @@ script_path=$(realpath $0)
 script_dir=$(dirname $script_path)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_GID_INDEX=3 NCCL_NET_GDR_LEVEL=0"
-HOST_FILE_PATH="/root/code/config/pre_hostfile"
+HOST_FILE_PATH="/root/code/config/hostfile"
 #OPTIONS_NCCL=""
 #HOST_FILE_PATH="/workspace/hostfile"
 
@@ -23,19 +23,20 @@ gpt_options=" \
        --num-attention-heads 16 \
        --seq-length 512 \
        --max-position-embeddings 512 \
+       --mem-length 256 \
        --save checkpoints \
        --train-iters 50000 \
        --resume-dataloader \
-       --train-data wikipedia \
+       --train-data wikipedia-key \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
-       --pre-tokenize \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \
        --warmup .01 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
+       --transformer-xl \
        --fp16 \
 "
 gpt_options="${gpt_options}

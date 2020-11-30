@@ -42,20 +42,18 @@ def exists_lazy(path, data_type='data'):
         return False
     return True
 
-lazy_data_type = np.int32
-
 
 class LazyWriter:
-    def __init__(self, path, data_type, is_array=False):
+    def __init__(self, path, data_type, is_array=False, array_data_type=np.int32):
         lazypath = get_lazy_path(path)
         if not os.path.exists(lazypath):
             os.makedirs(lazypath)
         self.datapath = os.path.join(lazypath, data_type)
         self.lenpath = os.path.join(lazypath, data_type + '.len.pkl')
+        self.array_data_type = array_data_type
         self.output = open(self.datapath, 'wb')
         self.lengths = []
         self.is_array = is_array
-
 
     @staticmethod
     def get_len_path(path, data_type):
@@ -66,7 +64,7 @@ class LazyWriter:
         if isinstance(s, dict):
             s = s['text']
         if self.is_array:
-            encoded = np.array(s, dtype=lazy_data_type).tobytes(order='C')
+            encoded = np.array(s, dtype=self.array_data_type).tobytes(order='C')
             self.output.write(encoded)
             self.lengths.append(len(s))
         else:
@@ -86,6 +84,7 @@ def split_strings(strings, start, chr_lens):
     """
     return [strings[i-start:j-start] for i, j in zip([start]+chr_lens[:-1], chr_lens)]
 
+
 class ProcessorTokenizer:
     """
     callable class that runs a preprocessing, as well as tokenization step,
@@ -102,7 +101,8 @@ class ProcessorTokenizer:
             string =  self.process_fn(string)
         return string
 
-class lazy_array_loader(object):
+
+class LazyLoader(object):
     """
     Arguments:
         path: path to directory where array entries are concatenated into one big string file
@@ -120,13 +120,14 @@ class lazy_array_loader(object):
         data_type2
         data_type2.len.pkl
     """
-    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False):
+    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32):
         lazypath = get_lazy_path(path)
         datapath = os.path.join(lazypath, data_type)
         #get file where array entries are concatenated into one big string
         self._file = open(datapath, 'rb')
         self.file = self._file
         self.is_array = is_array
+        self.array_data_type = array_data_type
         #memory map file if necessary
         lenpath = os.path.join(lazypath, data_type+'.len.pkl')
         self.lens = pkl.load(open(lenpath, 'rb'))
@@ -136,9 +137,9 @@ class lazy_array_loader(object):
         if self.mem_map:
             if is_array:
                 if self.ends[-1] == 0:
-                    self.file = np.array([], dtype=lazy_data_type)
+                    self.file = np.array([], dtype=array_data_type)
                 else:
-                    self.file = np.memmap(self.file, dtype=lazy_data_type, mode='r', order='C')
+                    self.file = np.memmap(self.file, dtype=array_data_type, mode='r', order='C')
             else:
                 if self.ends[-1] == 0:
                     self.file = bytearray()
@@ -197,7 +198,7 @@ class lazy_array_loader(object):
 
     def file_read(self, start=0, end=None):
         """read specified portion of file"""
-        data_type_size = np.dtype(lazy_data_type).itemsize
+        data_type_size = np.dtype(self.array_data_type).itemsize
         # atomic reads to avoid race conditions with multiprocess dataloader
         self.read_lock.acquire()
         if not self.mem_map:
@@ -213,7 +214,7 @@ class lazy_array_loader(object):
             else:
                 rtn = self.file.read(end-start)
             if self.is_array:
-                rtn = np.ndarray(shape=(len(rtn) / data_type_size,), dtype=lazy_data_type, buffer=rtn, order='C')
+                rtn = np.ndarray(shape=(len(rtn) / data_type_size,), dtype=self.array_data_type, buffer=rtn, order='C')
             else:
                 rtn = rtn.decode('utf-8', 'ignore')
         else:
