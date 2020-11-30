@@ -76,7 +76,7 @@ class AnnealingLR(_LRScheduler):
         # self.start_lr = sd['start_lr']
         self.warmup_iter = sd['warmup_iter']
         self.num_iters = sd['num_iters']
-        self.end_iter = sd['end_iter']
+        # self.end_iter = sd['end_iter']
         self.decay_style = sd['decay_style']
         if 'decay_ratio' in sd:
             self.decay_ratio = sd['decay_ratio']
