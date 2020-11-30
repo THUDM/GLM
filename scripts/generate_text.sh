@@ -19,7 +19,7 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/ds_config.json"
 
-deepspeed --num_nodes 1 --num_gpus 1 --master_port ${MASTER_PORT} generate_samples.py \
+MASTER_PORT=${MASTER_PORT} python generate_samples.py \
        --deepspeed \
        --model-parallel-size $MPSIZE \
        --deepspeed_config ${config_json} \
