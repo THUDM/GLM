@@ -142,7 +142,7 @@ def add_training_args(parser):
     group.add_argument('--lr-decay-style', type=str, default='linear',
                        choices=['constant', 'linear', 'cosine', 'exponential'],
                        help='learning rate decay function')
-    group.add_argument('--lr-decay-ratio', type=float, default=0.5)
+    group.add_argument('--lr-decay-ratio', type=float, default=0.1)
     group.add_argument('--lr', type=float, default=1.0e-4,
                        help='initial learning rate')
     group.add_argument('--warmup', type=float, default=0.01,
@@ -339,8 +339,9 @@ def get_args():
 
     args.rank = int(os.getenv('RANK', '0'))
     args.world_size = int(os.getenv("WORLD_SIZE", '1'))
-
-    if os.getenv('OMPI_COMM_WORLD_LOCAL_RANK'):
+    if hasattr(args, 'deepspeed_mpi') and args.deepspeed_mpi:
+        mpi_define_env(args)
+    elif os.getenv('OMPI_COMM_WORLD_LOCAL_RANK'):
         # We are using (OpenMPI) mpirun for launching distributed data parallel processes
         local_rank = int(os.getenv('OMPI_COMM_WORLD_LOCAL_RANK'))
         local_size = int(os.getenv('OMPI_COMM_WORLD_LOCAL_SIZE'))
@@ -386,3 +387,39 @@ def get_args():
             args.lr = optimizer_params_config.get("lr", args.lr)
             args.weight_decay = optimizer_params_config.get("weight_decay", args.weight_decay)
     return args
+
+
+def mpi_define_env(args):
+    from mpi4py import MPI
+    import subprocess
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    world_size = comm.Get_size()
+
+    master_addr = None
+    if rank == 0:
+        hostname_cmd = ["hostname -I"]
+        result = subprocess.check_output(hostname_cmd, shell=True)
+        master_addr = result.decode('utf-8').split()[0]
+    master_addr = comm.bcast(master_addr, root=0)
+
+    # Determine local rank by assuming hostnames are unique
+    proc_name = MPI.Get_processor_name()
+    all_procs = comm.allgather(proc_name)
+    local_rank = sum([i == proc_name for i in all_procs[:rank]])
+
+    os.environ['RANK'] = str(rank)
+    os.environ['WORLD_SIZE'] = str(world_size)
+    args.local_rank = local_rank
+    args.world_size = world_size
+    args.rank = rank
+    os.environ['MASTER_ADDR'] = master_addr
+    os.environ['MASTER_PORT'] = "29500" # TORCH_DISTRIBUTED_DEFAULT_PORT = 29500
+
+    print(
+        "Discovered MPI settings of world_rank={}, local_rank={}, world_size={}, master_addr={}, master_port={}"
+        .format(os.environ['RANK'],
+                args.local_rank,
+                os.environ['WORLD_SIZE'],
+                os.environ['MASTER_ADDR'],
+                os.environ['MASTER_PORT']))
