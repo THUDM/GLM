@@ -224,6 +224,7 @@ def add_text_generate_args(parser):
     group.add_argument("--top_p", type=float, default=0.0)
     group.add_argument("--top_k", type=int, default=0)
     group.add_argument("--out-seq-length", type=int, default=256)
+    group.add_argument("--hierarchical", action='store_true')
     return parser
 
 
