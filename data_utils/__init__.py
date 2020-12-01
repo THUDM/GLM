@@ -114,8 +114,9 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
 
         # make tokenizer for dataset
     if tokenizer is None:
+        add_eop = path.endswith('key') if isinstance(path, str) else sum([p.endswith('key') for p in path]) > 0
         tokenizer = make_tokenizer(tokenizer_type, None, tokenizer_model_path, vocab_size, model_type,
-                                   pad_token, character_converage, **kwargs)
+                                   pad_token, character_converage, add_eop=add_eop, **kwargs)
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):

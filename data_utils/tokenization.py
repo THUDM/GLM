@@ -800,22 +800,24 @@ class BertWordPieceTokenizer(Tokenizer):
 
 
 class GPT2BPETokenizer(Tokenizer):
-    def __init__(self, cache_dir=None, **kwargs):
+    def __init__(self, cache_dir=None, add_eop=False, **kwargs):
         self.text_tokenizer = GPT2Tokenizer.from_pretrained('gpt2',
                                                             cache_dir=cache_dir)
 
         #disable max len warnings by increasing max len
         self.text_tokenizer.max_len = int(1e12)
-        self.num_command_tokens = 3
-        self.num_tokens = len(self.text_tokenizer.encoder) + 1
-        self.num_text_tokens = self.num_tokens-2
+        self.num_command_tokens = 2
+        self.num_tokens = len(self.text_tokenizer.encoder)
+        self.num_text_tokens = self.num_tokens - 1
         self.num_type_tokens = 2
-
         self._command_tokens = [
             CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
-            CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
-            CommandToken('eop', '<|endofpiece|>', self.num_tokens - 1)
+            CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>'])
         ]
+        if add_eop:
+            self._command_tokens.append(CommandToken('eop', '<|endofpiece|>', self.num_tokens))
+            self.num_tokens += 1
+            self.num_command_tokens += 1
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
@@ -894,7 +896,7 @@ class GPT2BPETokenizer(Tokenizer):
 
 
 class ChineseSPTokenizer(Tokenizer):
-    def __init__(self, **kwargs):
+    def __init__(self, add_eop=False, **kwargs):
         self.text_tokenizer = sp_tokenizer.from_pretrained()
 
         self.num_command_tokens = 2
@@ -906,6 +908,10 @@ class ChineseSPTokenizer(Tokenizer):
             CommandToken('pad', '<|endoftext|>', self.num_text_tokens),
             CommandToken('eos', '<|endoftext|>', self.num_text_tokens),
         ]
+        if add_eop:
+            self._command_tokens.append(CommandToken('eop', '<|endofpiece|>', self.num_text_tokens + 1))
+            self.num_tokens += 1
+            self.num_command_tokens += 1
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
