@@ -944,7 +944,7 @@ class ChineseSPTokenizer(Tokenizer):
         if process_fn is not None:
             processed_text = process_fn(processed_text)
         tokens = self.text_tokenizer.tokenize(processed_text)
-        tokenization=Tokenization(tokens, processed_text, text, asIds=False)
+        tokenization = Tokenization(tokens, processed_text, text, asIds=False)
         tokenization.set_command_tokens(self._command_tokens)
         return tokenization
         #return Tokenization(tokens, processed_text, text, asIds=False)
@@ -954,7 +954,12 @@ class ChineseSPTokenizer(Tokenizer):
             return Id.token
         if type_token:
             return self.type_id_map[Id].token
-        return self.text_tokenizer.decoder[Id]
+        if Id in self.command_id_map:
+            return self.command_id_map[Id].token
+        elif Id in self.type_id_map:
+            return self.type_id_map[Id].token
+        else:
+            return self.text_tokenizer.convert_id_to_token(Id)
 
     def TokenToId(self, token, type_token=False):
         if isinstance(token, (TypeToken, CommandToken)):
