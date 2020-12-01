@@ -78,7 +78,7 @@ def get_model(args):
             mpu.get_model_parallel_rank(),
             sum([p.nelement() for p in model.parameters()])), flush=True)
 
-    #To prevent OOM for model sizes that cannot fit in GPU memory in full precision
+    # To prevent OOM for model sizes that cannot fit in GPU memory in full precision
     if hasattr(args, "deepspeed") and args.deepspeed and args.fp16:
         model.half()
 
@@ -765,7 +765,7 @@ def main():
     else:
         val_data_iterator = None
 
-    #TODO: figure out how to properly set this especially when resuming training
+    # TODO: figure out how to properly set this especially when resuming training
     iteration = 0
     if args.train_iters > 0:
         if args.do_train:
