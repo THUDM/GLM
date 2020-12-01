@@ -204,6 +204,7 @@ class KeyReader(DataReader):
         summary = summary_prefix + summary
         text, text_mask = [], []
         for key, content in zip(keys, contents):
+            content = content + [tokenizer.get_command('eop').Id]
             text += key
             text += content
             text_mask.append(len(key))

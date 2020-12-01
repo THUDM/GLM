@@ -227,13 +227,13 @@ def get_masks_and_position_ids(data,
     # Loss mask.
     if loss_mask is None:
         loss_mask = torch.ones(data.size(), dtype=torch.float, device=data.device)
-    loss_mask[data == eod_token] = 0.0
 
     # Position ids.
     position_ids = torch.arange(seq_length, dtype=torch.long,
                                 device=data.device)
     position_ids = position_ids.unsqueeze(0).expand_as(data)
     if not transformer_xl:
+        loss_mask[data == eod_token] = 0.0
         # We need to clone as the ids will be modifed based on batch index.
         if reset_position_ids:
             position_ids = position_ids.clone()

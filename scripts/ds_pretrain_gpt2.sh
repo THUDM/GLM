@@ -2,8 +2,8 @@
 
 # Change for multinode config
 
-NUM_WORKERS=1
-NUM_GPUS_PER_WORKER=1
+NUM_WORKERS=2
+NUM_GPUS_PER_WORKER=8
 MP_SIZE=1
 
 script_path=$(realpath $0)
@@ -24,7 +24,7 @@ gpt_options=" \
        --seq-length 512 \
        --max-position-embeddings 512 \
        --mem-length 256 \
-       --save checkpoints \
+       --save /root/data/checkpoints \
        --train-iters 50000 \
        --resume-dataloader \
        --train-data wikipedia-key \

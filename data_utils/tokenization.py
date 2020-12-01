@@ -806,14 +806,15 @@ class GPT2BPETokenizer(Tokenizer):
 
         #disable max len warnings by increasing max len
         self.text_tokenizer.max_len = int(1e12)
-        self.num_command_tokens = 2
-        self.num_tokens = len(self.text_tokenizer.encoder)
-        self.num_text_tokens = self.num_tokens-1
+        self.num_command_tokens = 3
+        self.num_tokens = len(self.text_tokenizer.encoder) + 1
+        self.num_text_tokens = self.num_tokens-2
         self.num_type_tokens = 2
 
         self._command_tokens = [
             CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
             CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
+            CommandToken('eop', '<|endofpiece|>', self.num_tokens - 1)
         ]
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
