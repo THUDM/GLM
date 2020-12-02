@@ -353,7 +353,7 @@ class Tokenizer(object):
             if isinstance(Id, CommandToken):
                 rtn_strs.append(self.text_tokenizer.DecodeIds(current_str))
                 current_str = []
-                rtn_strs.append(t.token)
+                rtn_strs.append(Id.token)
             elif Id < self.num_command_tokens:
                 rtn_strs.append(self.text_tokenizer.DecodeIds(current_str))
                 current_str = []

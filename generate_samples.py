@@ -16,6 +16,7 @@
 """Sample Generate GPT2"""
 
 import os
+import nltk
 import random
 import numpy as np
 import torch
@@ -63,6 +64,7 @@ def setup_model(args):
             path = os.path.join(args.load, str(iteration), "mp_rank_00_model_states.pt")
             checkpoint = torch.load(path)
             model.load_state_dict(checkpoint["module"])
+            print(f"Load model file {path}")
         else:
             _ = load_checkpoint(
                 model, None, None, args, load_optimizer_states=False)
@@ -117,10 +119,14 @@ def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     return logits
 
 
-def sample_sequence(model, context_tokens_tensor, context_length, args, device):
+def sample_sequence(model, context_tokens_tensor, context_length, args, device, mems=None, end_token=None):
     tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
 
-    counter, mems = 0, []
+    counter = 0
+    if mems is None:
+        mems = []
+    if end_token is None:
+        end_token = args.eod_token
     org_context_length = context_length
     while counter < (args.out_seq_length - org_context_length):
         if counter == 0:
@@ -135,14 +141,14 @@ def sample_sequence(model, context_tokens_tensor, context_length, args, device):
         logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)
         log_probs = F.softmax(logits, dim=-1)
         prev = torch.multinomial(log_probs, num_samples=1)[0]
+        is_end = prev == end_token
+        if is_end:
+            break
         tokens = torch.cat((tokens, prev.view(1, 1)), dim=1)
         context_length += 1
         counter += 1
-        is_end = prev == args.eod_token
-        if is_end:
-            break
     output_tokens_list = tokens.view(-1).contiguous()
-    return output_tokens_list
+    return output_tokens_list, mems
     # decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
     # if mpu.get_model_parallel_rank() == 0 and (counter % 128 == 0 or is_end):
     #     os.system('clear')
@@ -152,8 +158,54 @@ def sample_sequence(model, context_tokens_tensor, context_length, args, device):
     #     print("\nGPT2:", trim_decode_tokens, flush=True)
 
 
+def read_context(tokenizer, args, output):
+    terminate_runs, skip_run = 0, 0
+    if mpu.get_model_parallel_rank() == 0:
+        while True:
+            raw_text = input("\nContext prompt (stop to exit) >>> ")
+            if not raw_text:
+                print('Prompt should not be empty!')
+                continue
+            if raw_text == "stop":
+                terminate_runs = 1
+                break
+            if args.hierarchical:
+                raw_text = "Summary: " + raw_text
+            output.write(raw_text)
+            context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
+            context_length = len(context_tokens)
+
+            if context_length >= args.seq_length:
+                print("\nContext length", context_length,
+                      "\nPlease give smaller context than the window length!")
+                continue
+            break
+    else:
+        context_length = 0
+
+    terminate_runs_tensor = torch.cuda.LongTensor([terminate_runs])
+    torch.distributed.broadcast(terminate_runs_tensor, mpu.get_model_parallel_src_rank(),
+                                group=mpu.get_model_parallel_group())
+    terminate_runs = terminate_runs_tensor[0].item()
+
+    if terminate_runs == 1:
+        return terminate_runs, raw_text, None, None
+
+    context_length_tensor = torch.cuda.LongTensor([context_length])
+
+    torch.distributed.broadcast(context_length_tensor, mpu.get_model_parallel_src_rank(),
+                                group=mpu.get_model_parallel_group())
+    context_length = context_length_tensor[0].item()
+    if mpu.get_model_parallel_rank() == 0:
+        context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
+    else:
+        context_tokens_tensor = torch.cuda.LongTensor([0] * context_length)
+    torch.distributed.broadcast(context_tokens_tensor, mpu.get_model_parallel_src_rank(),
+                                group=mpu.get_model_parallel_group())
+    return terminate_runs, raw_text, context_tokens_tensor, context_length
+
+
 def generate_samples(model, tokenizer, args, device):
-    context_count = 0
     model.eval()
     output_path = "./samples"
     if not os.path.exists(output_path):
@@ -162,62 +214,43 @@ def generate_samples(model, tokenizer, args, device):
     with torch.no_grad(), open(output_path, "w") as output:
         while True:
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
-            terminate_runs = 0
 
-            if mpu.get_model_parallel_rank() == 0:
-                raw_text = input("\nContext prompt (stop to exit) >>> ")
-                while not raw_text:
-                    print('Prompt should not be empty!')
-                    raw_text = input("\nContext prompt (stop to exit) >>> ")
-
-                if "stop" in raw_text:
-                    terminate_runs = 1
-                else:
-                    output.write(raw_text)
-                    context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
-                    context_length = len(context_tokens)
-
-                    if context_length >= args.seq_length:
-                        print("\nContext length", context_length,
-                              "\nPlease give smaller context than the window length!")
-                        continue
-            else:
-                context_length = 0
-
-            terminate_runs_tensor = torch.cuda.LongTensor([terminate_runs])
-            torch.distributed.broadcast(terminate_runs_tensor, mpu.get_model_parallel_src_rank(),
-                                        group=mpu.get_model_parallel_group())
-            terminate_runs = terminate_runs_tensor[0].item()
-
+            terminate_runs, raw_text, context_tokens_tensor, context_length = read_context(tokenizer, args, output)
             if terminate_runs == 1:
                 return
-
-            context_length_tensor = torch.cuda.LongTensor([context_length])
-
-            torch.distributed.broadcast(context_length_tensor, mpu.get_model_parallel_src_rank(),
-                                        group=mpu.get_model_parallel_group())
-            context_length = context_length_tensor[0].item()
-            if mpu.get_model_parallel_rank() == 0:
-                context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
-            else:
-                context_tokens_tensor = torch.cuda.LongTensor([0] * context_length)
-            torch.distributed.broadcast(context_tokens_tensor, mpu.get_model_parallel_src_rank(),
-                                        group=mpu.get_model_parallel_group())
             start_time = time.time()
-            output_tokens_list = sample_sequence(model, context_tokens_tensor, context_length, args, device)
-
-            if mpu.get_model_parallel_rank() == 0:
-                os.system('clear')
-                print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
-                print("\nContext:", raw_text, flush=True)
+            output_tokens_list, _ = sample_sequence(model, context_tokens_tensor, context_length, args, device)
+            if args.hierarchical:
+                eop_token = tokenizer.get_command('eop').Id
+                if output_tokens_list[-1] == eop_token:
+                    output_tokens_list = output_tokens_list[:-1]
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
-                trim_decode_tokens = decode_tokens[len(raw_text):decode_tokens.find("<|endoftext|>")]
-                print("\nGPT2:", trim_decode_tokens, flush=True)
-                output.write(trim_decode_tokens + "\n")
-            raw_text = None
+                trim_decode_tokens = decode_tokens[9:]
+                print("Summary:", trim_decode_tokens)
+                keys = nltk.tokenize.sent_tokenize(trim_decode_tokens)
+                context, mems = "", []
+                for i, key in enumerate(keys):
+                    if i > 0 and not context.endswith(" "):
+                        key = " " + key
+                    context_tokens = tokenizer.EncodeAsIds(key).tokenization
+                    context_length = len(context_tokens)
+                    context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
+                    output_tokens_list, mems = sample_sequence(model, context_tokens_tensor, context_length, args,
+                                                               device, end_token=eop_token, mems=mems)
+                    decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
+                    context += decode_tokens
+                print(context)
+            else:
+                if mpu.get_model_parallel_rank() == 0:
+                    os.system('clear')
+                    print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
+                    print("\nContext:", raw_text, flush=True)
+                    decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
+                    trim_decode_tokens = decode_tokens[len(raw_text):]
+                    print("\nGPT2:", trim_decode_tokens, flush=True)
+                    output.write(trim_decode_tokens + "\n")
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
-            context_count += 1
 
 
 def prepare_tokenizer(args):
@@ -227,7 +260,8 @@ def prepare_tokenizer(args):
         'model_path': args.tokenizer_path,
         'vocab_size': args.vocab_size,
         'model_type': args.tokenizer_model_type,
-        'cache_dir': args.cache_dir}
+        'cache_dir': args.cache_dir,
+        'add_eop': args.hierarchical}
     tokenizer = make_tokenizer(**tokenizer_args)
 
     num_tokens = tokenizer.num_tokens
