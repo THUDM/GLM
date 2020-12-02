@@ -119,7 +119,7 @@ def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     return logits
 
 
-def sample_sequence(model, context_tokens_tensor, context_length, args, device, mems=None, end_token=None):
+def sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device, mems=None, end_token=None):
     tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
 
     counter = 0
@@ -147,15 +147,15 @@ def sample_sequence(model, context_tokens_tensor, context_length, args, device, 
         tokens = torch.cat((tokens, prev.view(1, 1)), dim=1)
         context_length += 1
         counter += 1
+        if not args.hierarchical and mpu.get_model_parallel_rank() == 0 and counter % 16 == 0:
+            output_tokens_list = tokens.view(-1).contiguous()
+            decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
+            if mpu.get_model_parallel_rank() == 0 and (counter % 128 == 0 or is_end):
+                os.system('clear')
+                trim_decode_tokens = decode_tokens
+                print(trim_decode_tokens, flush=True)
     output_tokens_list = tokens.view(-1).contiguous()
     return output_tokens_list, mems
-    # decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
-    # if mpu.get_model_parallel_rank() == 0 and (counter % 128 == 0 or is_end):
-    #     os.system('clear')
-    #     print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
-    #     print("\nContext:", raw_text, flush=True)
-    #     trim_decode_tokens = decode_tokens[len(raw_text):decode_tokens.find("<|endoftext|>")]
-    #     print("\nGPT2:", trim_decode_tokens, flush=True)
 
 
 def read_context(tokenizer, args, output):
@@ -219,7 +219,7 @@ def generate_samples(model, tokenizer, args, device):
             if terminate_runs == 1:
                 return
             start_time = time.time()
-            output_tokens_list, _ = sample_sequence(model, context_tokens_tensor, context_length, args, device)
+            output_tokens_list, _ = sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device)
             if args.hierarchical:
                 eop_token = tokenizer.get_command('eop').Id
                 if output_tokens_list[-1] == eop_token:
@@ -235,8 +235,8 @@ def generate_samples(model, tokenizer, args, device):
                     context_tokens = tokenizer.EncodeAsIds(key).tokenization
                     context_length = len(context_tokens)
                     context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
-                    output_tokens_list, mems = sample_sequence(model, context_tokens_tensor, context_length, args,
-                                                               device, end_token=eop_token, mems=mems)
+                    output_tokens_list, mems = sample_sequence(model, tokenizer, context_tokens_tensor, context_length,
+                                                               args, device, end_token=eop_token, mems=mems)
                     decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
                     context += decode_tokens
                 print(context)
