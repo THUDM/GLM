@@ -180,20 +180,22 @@ def setup_model_and_optimizer(args):
     model = get_model(args)
     param_groups = get_optimizer_param_groups(model)
 
-    if args.deepspeed:
-        print_rank_0("DeepSpeed is enabled.")
+    if args.train_data is not None:
+        if args.deepspeed:
+            print_rank_0("DeepSpeed is enabled.")
 
-        model, optimizer, _, _ = deepspeed.initialize(
-            model=model,
-            model_parameters=param_groups,
-            args=args,
-            mpu=mpu,
-            dist_init_required=False
-        )
+            model, optimizer, _, _ = deepspeed.initialize(
+                model=model,
+                model_parameters=param_groups,
+                args=args,
+                mpu=mpu,
+                dist_init_required=False
+            )
+        else:
+            optimizer = get_optimizer(param_groups, args)
+        lr_scheduler = get_learning_rate_scheduler(optimizer, args)
     else:
-        optimizer = get_optimizer(param_groups, args)
-
-    lr_scheduler = get_learning_rate_scheduler(optimizer, args)
+        optimizer, lr_scheduler = None, None
 
     return model, optimizer, lr_scheduler
 
