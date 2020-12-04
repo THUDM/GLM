@@ -44,14 +44,14 @@ class DataConfig:
                 setattr(args, k, v)
 
 
-def make_data_loader(dataset, batch_size, args):
+def make_data_loader(dataset, batch_size, num_iters, args):
     world_size = torch.distributed.get_world_size(
         group=mpu.get_data_parallel_group())
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
     distributed = world_size > 1
     if args.transformer_xl:
         batch_sampler = data_utils.samplers.DistributedSequentialSampler(len(dataset),
-                                                                         args.train_iters,
+                                                                         num_iters,
                                                                          batch_size,
                                                                          rank,
                                                                          world_size)
@@ -195,18 +195,18 @@ def make_loaders(args):
 
     # wrap datasets with data loader
     if train is not None and args.batch_size > 0:
-        train = make_data_loader(train, batch_size, args)
+        train = make_data_loader(train, batch_size, args.train_iters, args)
         args.do_train = True
     else:
         args.do_train = False
     eval_batch_size = eval_batch_size if eval_batch_size != 0 else batch_size
     if valid is not None:
-        valid = make_data_loader(valid, eval_batch_size, args)
+        valid = make_data_loader(valid, eval_batch_size, args.train_iters, args)
         args.do_valid = True
     else:
         args.do_valid = False
     if test is not None:
-        test = make_data_loader(test, eval_batch_size, args)
+        test = make_data_loader(test, eval_batch_size, len(test) // eval_batch_size + 1, args)
         args.do_test = True
     else:
         args.do_test = False

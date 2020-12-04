@@ -159,13 +159,11 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False, zero=False):
     if release:
         d = 'release'
     else:
-        d = 'iter_{:07d}'.format(iteration)
+        d = '{:d}'.format(iteration)
     if zero:
         dp_rank = mpu.get_data_parallel_rank()
         d += '_zero_dp_rank_{}'.format(dp_rank)
-    return os.path.join(checkpoints_path, d,
-                        'mp_rank_{:02d}'.format(mpu.get_model_parallel_rank()),
-                        'model_optim_rng.pt')
+    return os.path.join(checkpoints_path, d, 'mp_rank_{:02d}_model_states.pt'.format(mpu.get_model_parallel_rank()))
 
 
 def ensure_directory_exists(filename):
@@ -204,7 +202,7 @@ def save_checkpoint(iteration, model, optimizer,
 
             sd = {}
             sd['iteration'] = iteration
-            sd['model'] = model.state_dict()
+            sd['module'] = model.state_dict()
 
             # Optimizer stuff.
             if not args.no_save_optim:
@@ -318,7 +316,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
 
         # Model.
         try:
-            model.load_state_dict(sd['model'])
+            model.load_state_dict(sd['module'])
         except KeyError:
             print_rank_0('A metadata file exists but unable to load model '
                          'from checkpoint {}, exiting'.format(checkpoint_name))
