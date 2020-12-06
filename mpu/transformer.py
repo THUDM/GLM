@@ -534,6 +534,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
         memory_length = mems[0].size(1) if mems else 0
         assert memory_length == 0, 'Do not support transformer-xl.'
         key_length = query_length + memory_length
+        
+        sep = attention_mask
 
         # conventional transformer
         def build_mask_matrix(seq_length, sep):
@@ -543,7 +545,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
             m = m.unsqueeze(1)
             return m
         if not self.performer:
-            attention_mask = build_mask_matrix(query_length, attention_mask)
+            attention_mask = build_mask_matrix(query_length, sep)
 
         if self.relative_encoding:
             hidden_states = self.embedding_dropout(hidden_states)
