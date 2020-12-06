@@ -669,7 +669,8 @@ class GPT2Dataset(data.Dataset):
             return True
         return False
 
-class bert_sentencepair_dataset(data.Dataset):
+
+class BertSentencepairDataset(data.Dataset):
     """
     Dataset containing sentencepairs for BERT training. Each index corresponds to a randomly generated sentence pair.
     Arguments:

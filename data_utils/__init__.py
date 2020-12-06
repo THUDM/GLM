@@ -18,7 +18,7 @@ import math
 import time
 
 from .samplers import DistributedBatchSampler
-from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, bert_sentencepair_dataset, \
+from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
     GPT2Dataset, ShuffleDataset, XLDataset
 from .lazy_loader import exists_lazy, LazyWriter, LazyLoader
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
@@ -133,8 +133,8 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
         ds = split_ds(ds, split, shuffle=shuffle)
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            ds = [bert_sentencepair_dataset(d, max_seq_len=seq_length,
-                                            presplit_sentences=presplit_sentences) if d is not None else None for d in
+            ds = [BertSentencepairDataset(d, max_seq_len=seq_length,
+                                          presplit_sentences=presplit_sentences) if d is not None else None for d in
                   ds]
         elif ds_type.lower() == 'gpt2':
             if xl_style:
@@ -146,7 +146,7 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
     else:
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            ds = bert_sentencepair_dataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
+            ds = BertSentencepairDataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
         elif ds_type.lower() == 'gpt2':
             if xl_style:
                 ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
