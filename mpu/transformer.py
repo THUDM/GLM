@@ -450,7 +450,9 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  layernorm_epsilon=1.0e-5,
                  init_method_std=0.02,
                  use_scaled_init_for_output_weights=True,
-                 relative_encoding=False):
+                 relative_encoding=False,
+                 performer=False
+                 ):
         super(GPT2ParallelTransformer, self).__init__()
         # Store activation checkpoiting flag.
         self.checkpoint_activations = checkpoint_activations
@@ -514,6 +516,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
             checkpoint = deepspeed.checkpointing.checkpoint
 
     def forward(self, hidden_states, position_ids, attention_mask, *mems):
+        assert isinstance(attention_mask, int), 'attention_mask should be a scalar to indicate the seperation position, no matter self.performer=True or False.'
+        
         batch_size, query_length = hidden_states.size()[:2]
         memory_length = mems[0].size(1) if mems else 0
         key_length = query_length + memory_length
