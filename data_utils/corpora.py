@@ -322,7 +322,7 @@ class wikipedia(PromptReader):
     command line usage: `--train-data wikipedia`
     """
     # PATH = '/dataset/data/wiki.txt'
-    PATH = '/root/data/wikipedia/wiki.txt'
+    PATH = 'data/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     @classmethod

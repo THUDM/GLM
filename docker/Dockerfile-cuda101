@@ -184,7 +184,7 @@ RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
 COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
 RUN cd ${STAGE_DIR}/DeepSpeed && \
     git checkout . && \
-    ./install.sh -r
+    DS_BUILD_OPS=1 ./install.sh -r
 RUN rm -rf ${STAGE_DIR}/DeepSpeed
 RUN python -c "import deepspeed; print(deepspeed.__version__)"
 
