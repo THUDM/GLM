@@ -546,6 +546,112 @@ class XLDataset(data.Dataset):
         return seq
 
 
+class BlockDataset(data.Dataset):
+    def __init__(self, ds, tokenizer,
+                 max_seq_len=1024,
+                 sample_across_doc=True,
+                 sentence_start=False, **kwargs):
+        """
+        sentence_start: the stripped article must start with a complete sentence
+        """
+        self.ds = ds
+        self.ds_len = len(self.ds)
+        self.num_samples = 1000 * self.ds_len
+        self.max_seq_len = max_seq_len
+        self.tokenizer = tokenizer
+        self.sample_across_doc = sample_across_doc
+        self.sentence_start = sentence_start
+        self.weighting, self.total_len = None, None
+        self.is_lazy = False
+        if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
+            self.is_lazy = True
+        self.init_weighting()
+
+    def init_weighting(self):
+        if self.is_lazy:
+            lens = np.array([self.ds.get_text_len(idx) for idx in range(len(self.ds))])
+        else:
+            lens = np.array([len(d['text']) if isinstance(d, dict)
+                             else len(d) for d in self.ds])
+        self.total_len = np.sum(lens)
+        self.weighting = list(accumulate(lens))
+
+    def get_weighted_samples(self, np_rng):
+        idx = np_rng.randint(self.total_len)
+        return bisect_right(self.weighting, idx)
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        # init rng
+        rng = random.Random(idx)
+        rng = np.random.RandomState(seed=[rng.randint(0, 2**32-1) for _ in range(16)])
+
+        # get possibly weighted random index from dataset
+        data_idx = self.get_weighted_samples(rng)
+        tokens, loss_mask = self.getidx(data_idx)
+
+        # truncate or pad tokens
+        num_tokens = len(tokens)
+        tokens_to_strip = num_tokens - self.max_seq_len
+
+        # randomly choose a position for start
+        if tokens_to_strip > 0:
+            strip_left_tokens = rng.randint(tokens_to_strip)
+            tokens = tokens[strip_left_tokens:]
+            loss_mask = loss_mask[strip_left_tokens:]
+            if self.sentence_start:
+                token_copy = list(tokens)
+                not_done = True
+                while (len(token_copy) > 0) and not_done:
+                    tok = token_copy.pop(0)
+                    if self.contains_sentence_end(tok):
+                        tokens = token_copy
+                        not_done = False
+            strip_right_rokens = len(tokens) - self.max_seq_len
+            if strip_right_rokens > 0:
+                tokens = tokens[:-strip_right_rokens]
+                loss_mask = loss_mask[:-strip_right_rokens]
+        # Sample multiple documents
+        if self.sample_across_doc:
+            while len(tokens) < self.max_seq_len:
+                data_idx = self.get_weighted_samples(rng)
+                new_tokens, new_loss_mask = self.getidx(data_idx)
+                tokens += new_tokens
+                loss_mask += new_loss_mask
+            tokens = tokens[:self.max_seq_len]
+            loss_mask = loss_mask[:self.max_seq_len]
+
+        tokens = self.pad_seq(tokens)
+        loss_mask = self.pad_seq(loss_mask, pad_id=0)
+        return {'text': np.array(tokens), "loss_mask": np.array(loss_mask)}
+
+    def getidx(self, data_idx):
+        data = self.ds[data_idx]
+        tokens, loss_masks = data['tokens'], data['loss_masks']
+        tokens = tokens + [self.tokenizer.get_command('eos').Id]
+        loss_masks = loss_masks + [1]
+        return tokens, loss_masks
+
+    def pad_seq(self, seq, pad_id=None):
+        total_tokens = self.max_seq_len
+        num_pad_tokens = max(0, total_tokens - len(seq))
+        seq += [self.tokenizer.get_command('pad').Id if pad_id is None else pad_id]*(num_pad_tokens)
+        return seq
+
+    # TODO: rewrite this function for chinese
+    def contains_sentence_end(self, tok):
+        tok = self.tokenizer.IdToToken(tok)
+        if '.' in tok:
+            return True
+        if '?' in tok:
+            return True
+        if '!' in tok:
+            return True
+        return False
+
+
 class GPT2Dataset(data.Dataset):
 
     def __init__(self, ds, tokenizer,

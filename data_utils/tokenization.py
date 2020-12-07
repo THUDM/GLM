@@ -576,6 +576,7 @@ def get_corpus_freq(dataset, filepath, filetype='tsv'):
 
     return total_sentence_count, maxlen
 
+
 class SentencePieceTokenizer(TextTokenizer):
     """Trains and uses sentencepiece for text tokenization"""
     def __init__(self, model_type='bpe', vocab_size=None, corpus=None, model_path=None, character_coverage=1.0, **kwargs):
@@ -686,6 +687,7 @@ class SentencePieceTokenizer(TextTokenizer):
         if isinstance(Tokens, Tokenization):
             Tokens = Tokens.tokenization
         return self.sp.DecodeTokens(Tokens)
+
 
 class BertWordPieceTokenizer(Tokenizer):
     """
