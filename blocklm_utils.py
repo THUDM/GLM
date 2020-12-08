@@ -1,5 +1,5 @@
 import torch
-import mpu
+# import mpu
 import random
 import numpy as np
 from scipy.stats import poisson
@@ -15,12 +15,13 @@ def rindex(lst, val, start=None):
 
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.2, block_ratio=0.2,
-                 average_block_length=3,
-                 max_block_length=20):
+                 average_block_length=3, max_block_length=20):
         self.args = args
         self.tokenizer = tokenizer
-        self.rank = mpu.get_data_parallel_rank()
-        self.world_size = mpu.get_data_parallel_world_size()
+        # self.rank = mpu.get_data_parallel_rank()
+        self.rank = 0
+        # self.world_size = mpu.get_data_parallel_world_size()
+        self.world_size = 1
         prob_normalizer = bert_prob + gpt_prob
         self.bert_prob = bert_prob / prob_normalizer
         self.gpt_prob = gpt_prob / prob_normalizer
@@ -51,13 +52,14 @@ class ConstructBlockStrategy:
         last_index = len(tokens)
         for index in reversed(indices):
             length = last_index - index - 1
-            if index == -1:
+            if index == -1 and mask_index < len(masked_lengths):
                 spans = self.sample_spans(masked_lengths[mask_index:], length, rng, offset=index + 1)
                 mask_spans += spans
             else:
                 current_masked_total = int(length * self.block_ratio)
                 current_masked_length, current_count = 0, 0
-                while masked_lengths[mask_index + current_count] + current_masked_length <= current_masked_total:
+                while mask_index + current_count < len(masked_lengths) and masked_lengths[
+                    mask_index + current_count] + current_masked_length <= current_masked_total:
                     current_masked_length += masked_lengths[mask_index + current_count]
                     current_count += 1
                 if current_count > 0:
