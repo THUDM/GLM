@@ -57,13 +57,14 @@ class ConstructBlockStrategy:
             else:
                 current_masked_total = int(length * self.block_ratio)
                 current_masked_length, current_count = 0, 0
-                while masked_lengths[mask_index + current_count] + current_masked_length < current_masked_total:
+                while masked_lengths[mask_index + current_count] + current_masked_length <= current_masked_total:
                     current_masked_length += masked_lengths[mask_index + current_count]
                     current_count += 1
                 if current_count > 0:
                     spans = self.sample_spans(masked_lengths[mask_index:mask_index + current_count], length,
                                               rng, offset=index + 1)
                     mask_spans += spans
+                    mask_index += current_count
             last_index = index
         return mask_spans
 
