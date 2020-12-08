@@ -720,6 +720,13 @@ class BertWordPieceTokenizer(Tokenizer):
             CommandToken('unk', '[UNK]', self.text_tokenizer.vocab['[UNK]']),
             CommandToken('sep', '[SEP]', self.text_tokenizer.vocab['[SEP]']),
         ]
+        self._command_tokens.extend([
+            CommandToken('eos', '[PAD]', self.text_tokenizer.vocab['[PAD]']),
+            CommandToken('sop', '<|startofpiece|>', self.num_tokens),
+            CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1)
+        ])
+        self.num_tokens += 2
+        self.num_command_tokens += 3
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}

@@ -102,8 +102,8 @@ class DataReader:
     PATH = None
     assert_str = None
 
-    @staticmethod
-    def tokenize_worker(input, output, reader, tokenizer, tokenize):
+    @classmethod
+    def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
         raise NotImplementedError
 
     def __init__(self, writers, tokenizer=None, tokenize=False, **kwargs):
@@ -169,13 +169,18 @@ class DataReader:
 
 
 class PromptReader(DataReader):
-    @staticmethod
-    def tokenize_worker(input, output, reader, tokenizer, tokenize):
+    is_json = True
+
+    @classmethod
+    def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
-            data = json.loads(row)
-            prompts, texts = reader.process_line(data, tokenizer, tokenize)
-            for prompt, text in zip(prompts, texts):
-                output.put((prompt, text))
+            row = row.rstrip()
+            if row:
+                if cls.is_json:
+                    row = json.loads(row)
+                prompts, texts = reader.process_line(row, tokenizer, tokenize)
+                for prompt, text in zip(prompts, texts):
+                    output.put((prompt, text))
         output.put("COMPLETE")
 
     @staticmethod
@@ -211,8 +216,8 @@ class KeyReader(DataReader):
             text_mask.append(len(content))
         return (summary, summary_mask), (text, text_mask)
 
-    @staticmethod
-    def tokenize_worker(input, output, reader, tokenizer, tokenize):
+    @classmethod
+    def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
             data = json.loads(row)
             summary, content = reader.process_line(data, tokenizer, tokenize)
@@ -331,6 +336,7 @@ class wikipedia(PromptReader):
         prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
         return [prompt], [text]
 
+
 class TestDataset(PromptReader):
     PATH = '/root/data/test.json'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
@@ -342,6 +348,20 @@ class TestDataset(PromptReader):
         return [prompt], [text]
 
 
+class bertdata(PromptReader):
+    PATH = '/root/data/formatted_one_article_per_line'
+    is_json = False
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        if data:
+            prompt, text = "", data
+            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            return [prompt], [text]
+        else:
+            return [], []
+
+
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
     'wikipedia-key': KeyReader,
@@ -349,5 +369,6 @@ NAMED_CORPORA = {
     "zhihu": zhihu,
     "zhidao": zhidao,
     "baike": baike,
-    "test": TestDataset
+    "test": TestDataset,
+    "bert": bertdata
 }
