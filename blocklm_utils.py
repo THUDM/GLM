@@ -13,9 +13,17 @@ def rindex(lst, val, start=None):
             return i
 
 
+def index_in_list(lst, val, start=None):
+    if start is None:
+        start = 0
+    for i in range(start, len(lst)):
+        if lst[i] == val:
+            return i
+
+
 class ConstructBlockStrategy:
-    def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.2, block_ratio=0.2,
-                 average_block_length=3, max_block_length=20):
+    def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.5, block_ratio=0.2,
+                 average_block_length=3, max_block_length=40):
         self.args = args
         self.tokenizer = tokenizer
         # self.rank = mpu.get_data_parallel_rank()
@@ -48,7 +56,7 @@ class ConstructBlockStrategy:
         rng.shuffle(masked_lengths)
         mask_spans = []
         mask_index = 0
-        indices = [-1] + [i for i, item in enumerate(tokens) if item == self.args.eod_token]
+        indices = [-1] + np.where(tokens == self.args.eod_token)[0].tolist()
         last_index = len(tokens)
         for index in reversed(indices):
             length = last_index - index - 1
@@ -72,7 +80,7 @@ class ConstructBlockStrategy:
 
     def construct_blocks(self, samples):
         rng = random.Random(self.args.iteration * self.world_size + self.rank)
-        token_batch, target_batch, loss_mask_batch, position_id_batch, block_position_id_batch = [], [], [], [], []
+        token_batch, target_batch, loss_mask_batch, position_id_batch = [], [], [], []
         if rng.random() < self.bert_prob:
             masked_lengths, masked_count = [], 0
             while masked_count < self.total_mask:
@@ -80,71 +88,80 @@ class ConstructBlockStrategy:
                     rng.choices(range(1, len(self.length_distribution) + 1), weights=self.length_distribution)[0]
                 masked_lengths.append(block_length)
                 masked_count += block_length
+            attention_mask = self.args.seq_length - masked_count + len(masked_lengths)
             for sample in samples:
-                tokens, loss_masks = sample['text', 'loss_masks']
+                rng.shuffle(masked_lengths)
+                tokens, loss_masks = sample['text'], sample['loss_mask']
                 block_spans = self.sample_span_in_document(tokens, masked_lengths, rng)
-                position_ids = [1] * len(tokens)
+                position_ids = np.ones(len(tokens), dtype=np.long)
                 for start, end in block_spans:
-                    position_ids[start: end] = 0
-                    position_ids[start] = 1
+                    position_ids[start + 1: end] = 0
                 position_ids = np.cumsum(position_ids) - 1
-                target_tokens, target_position_ids, target_block_position_ids, targets = [], [], [], []
                 rng.shuffle(block_spans)
+                target_tokens, target_position_ids, target_block_position_ids, targets = [], [], [], []
                 for start, end in block_spans:
-                    target_tokens += [self.tokenizer.get_command('sop').Id] + tokens[start: end]
-                    targets += tokens[start: end] + [self.tokenizer.get_command('eop').Id]
+                    target_tokens.append([self.tokenizer.get_command('sop').Id])
+                    target_tokens.append(tokens[start: end])
+                    targets.append(tokens[start: end])
+                    targets.append([self.tokenizer.get_command('eop').Id])
                     target_position_id = position_ids[start: end]
-                    target_position_ids += target_position_id + [target_position_id[0]]
-                    target_block_position_ids += list(range(1, end - start + 1))
+                    target_position_ids.append(target_position_id)
+                    target_position_ids.append([target_position_id[0]])
+                    target_block_position_ids.append(np.arange(1, end - start + 2, dtype=np.long))
                 block_spans.sort(key=lambda x: x[0])
                 source_tokens, source_position_ids = [], []
                 last = 0
                 for start, end in block_spans:
-                    source_tokens += tokens[last: start]
-                    source_tokens.append(self.tokenizer.get_command('MASK').Id)
-                    source_position_ids += position_ids[last: start]
-                    source_position_ids.append(position_ids[start])
-                    last = end + 1
+                    source_tokens.append(tokens[last: start])
+                    source_tokens.append([self.tokenizer.get_command('MASK').Id])
+                    source_position_ids.append(position_ids[last: start])
+                    source_position_ids.append([position_ids[start]])
+                    last = end
                 if last < len(tokens):
-                    source_tokens += tokens[last:]
-                    source_position_ids += position_ids[last:]
-                tokens = source_tokens + target_tokens
-                targets = source_tokens + targets
-                position_ids = source_position_ids + target_position_ids
-                block_position_ids = [0] * len(source_tokens) + target_block_position_ids
+                    source_tokens.append(tokens[last:])
+                    source_position_ids.append(position_ids[last:])
+                source_length = sum(map(len, source_tokens))
+                assert source_length == attention_mask
+                tokens = np.concatenate(source_tokens + target_tokens)
+                targets = np.concatenate(source_tokens + targets)
+                position_ids = np.concatenate(source_position_ids + target_position_ids)
+                block_position_ids = np.concatenate(
+                    [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
+                loss_masks = np.ones(len(tokens), dtype=np.long)
+                loss_masks[:source_length] = 0
                 token_batch.append(tokens)
                 target_batch.append(targets)
-                position_id_batch.append(position_ids)
-                block_position_id_batch.append(block_position_ids)
-                loss_mask_batch.append([0] * len(source_tokens) + [1] * len(target_tokens))
+                position_id_batch.append([position_ids, block_position_ids])
+                loss_mask_batch.append(loss_masks)
         else:
-            start_indices = [sample['loss_masks'].index(1) for sample in samples]
+            start_indices = [index_in_list(sample['loss_mask'], 1) for sample in samples]
             end_indices = [rindex(sample['loss_mask'], 1) for sample in samples]
             start_index, end_index = max(start_indices), min(end_indices) - self.min_generation_length
             if end_index < start_index + 1:
                 end_index = start_index + 1
             division = rng.randrange(start_index, end_index)
             for sample in samples:
-                tokens, loss_masks = sample['text', 'loss_masks']
+                tokens, loss_masks = sample['text'], sample['loss_mask']
                 source_tokens, target_tokens = tokens[:division], tokens[division:]
                 target_masks = loss_masks[division:]
-                tokens = source_tokens + [self.tokenizer.get_command('MASK').Id,
-                                          self.tokenizer.get_command('sop').Id] + target_tokens[:-1]
-                targets = source_tokens + [self.tokenizer.get_command('MASK').Id] + target_tokens
-                loss_masks = [0] * (len(source_tokens) + 1) + target_masks
-                position_ids = list(range(len(source_tokens) + 1)) + [len(source_tokens)] * len(target_masks)
-                block_position_ids = [0] * len(source_tokens) + list(range(len(target_tokens) + 1))
+                tokens = np.concatenate((source_tokens, [self.tokenizer.get_command('MASK').Id,
+                                                         self.tokenizer.get_command('sop').Id], target_tokens[:-1]))
+                targets = np.concatenate((source_tokens, [self.tokenizer.get_command('MASK').Id], target_tokens))
+                loss_masks = np.concatenate((np.zeros(len(source_tokens) + 1, dtype=np.long), target_masks))
+                position_ids = np.arange(len(source_tokens) + 1 + len(target_tokens), dtype=np.long)
+                position_ids[len(source_tokens) + 1:] = len(source_tokens)
+                block_position_ids = np.concatenate(
+                    (np.zeros(len(source_tokens), dtype=np.long), np.arange(len(target_tokens) + 1, dtype=np.long)))
                 token_batch.append(tokens)
                 target_batch.append(targets)
                 loss_mask_batch.append(loss_masks)
-                position_id_batch.append(position_ids)
-                block_position_id_batch.append(block_position_ids)
-            return {'text': torch.tensor(token_batch, dtype=torch.long),
-                    'target': torch.tensor(target_batch, dtype=torch.long),
-                    'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long),
-                    'position_id': torch.tensor(position_id_batch, dtype=torch.long),
-                    'block_position_id': torch.tensor(block_position_id_batch, dtype=torch.long),
-                    'attention_mask': torch.tensor(division + 1, dtype=torch.long)}
+                position_id_batch.append([position_ids, block_position_ids])
+            attention_mask = division + 1
+        return {'text': torch.tensor(token_batch, dtype=torch.long),
+                'target': torch.tensor(target_batch, dtype=torch.long),
+                'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long),
+                'position_id': torch.tensor(position_id_batch, dtype=torch.long),
+                'attention_mask': torch.tensor(attention_mask, dtype=torch.long)}
 
 
 def get_masks_and_position_ids_blocklm(
