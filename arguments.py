@@ -106,6 +106,7 @@ def add_training_args(parser):
 
     group.add_argument('--experiment-name', type=str, default="gpt-345M",
                        help="The experiment name for summary and checkpoint")
+    group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
     group.add_argument('--batch-size', type=int, default=4,
                        help='Data Loader batch size')
     group.add_argument('--weight-decay', type=float, default=0.01,

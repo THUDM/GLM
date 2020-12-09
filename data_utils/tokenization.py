@@ -694,7 +694,7 @@ class BertWordPieceTokenizer(Tokenizer):
     Loads a pretrained WordPiece tokenizer from `cache_dir` for tokenization
     in BERT training. Default to bert-large-uncased tokenizer.
     """
-    def __init__(self, tokenizer_model_type=None, cache_dir=None, **kwargs):
+    def __init__(self, tokenizer_model_type=None, cache_dir=None, add_block_symbols=False, **kwargs):
         # default to bert-large-uncased tokenizer
         if tokenizer_model_type not in PRETRAINED_VOCAB_ARCHIVE_MAP:
             tokenizer_model_type = 'bert-large-uncased'
@@ -708,7 +708,7 @@ class BertWordPieceTokenizer(Tokenizer):
         self.text_tokenizer.max_len = int(1e12)
 
         # set command tokens from wordpiece tokenizer values
-        self.num_command_tokens = 5
+        self.num_command_tokens = 6
         self.num_tokens = len(self.text_tokenizer.vocab)
         self.num_text_tokens = self.num_tokens-5
         self.num_type_tokens = 2
@@ -719,14 +719,15 @@ class BertWordPieceTokenizer(Tokenizer):
             CommandToken('MASK', '[MASK]', self.text_tokenizer.vocab['[MASK]']),
             CommandToken('unk', '[UNK]', self.text_tokenizer.vocab['[UNK]']),
             CommandToken('sep', '[SEP]', self.text_tokenizer.vocab['[SEP]']),
-        ]
-        self._command_tokens.extend([
             CommandToken('eos', '[PAD]', self.text_tokenizer.vocab['[PAD]']),
-            CommandToken('sop', '<|startofpiece|>', self.num_tokens),
-            CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1)
-        ])
-        self.num_tokens += 2
-        self.num_command_tokens += 3
+        ]
+        if add_block_symbols:
+            self._command_tokens.extend([
+                CommandToken('sop', '<|startofpiece|>', self.num_tokens),
+                CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1)
+            ])
+            self.num_tokens += 2
+            self.num_command_tokens += 2
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
@@ -809,7 +810,7 @@ class BertWordPieceTokenizer(Tokenizer):
 
 
 class GPT2BPETokenizer(Tokenizer):
-    def __init__(self, cache_dir=None, add_eop=False, **kwargs):
+    def __init__(self, cache_dir=None, add_block_symbols=False, **kwargs):
         self.text_tokenizer = GPT2Tokenizer.from_pretrained('gpt2',
                                                             cache_dir=cache_dir)
 
@@ -823,10 +824,13 @@ class GPT2BPETokenizer(Tokenizer):
             CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
             CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>'])
         ]
-        if add_eop:
-            self._command_tokens.append(CommandToken('eop', '<|endofpiece|>', self.num_tokens))
-            self.num_tokens += 1
-            self.num_command_tokens += 1
+        if add_block_symbols:
+            self._command_tokens.extend([
+                CommandToken('sop', '<|startofpiece|>', self.num_tokens),
+                CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1)
+            ])
+            self.num_tokens += 2
+            self.num_command_tokens += 2
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
@@ -905,7 +909,7 @@ class GPT2BPETokenizer(Tokenizer):
 
 
 class ChineseSPTokenizer(Tokenizer):
-    def __init__(self, add_eop=False, **kwargs):
+    def __init__(self, add_block_symbols=False, **kwargs):
         self.text_tokenizer = sp_tokenizer.from_pretrained()
 
         self.num_command_tokens = 2
@@ -917,10 +921,13 @@ class ChineseSPTokenizer(Tokenizer):
             CommandToken('pad', '<|endoftext|>', self.num_text_tokens),
             CommandToken('eos', '<|endoftext|>', self.num_text_tokens),
         ]
-        if add_eop:
-            self._command_tokens.append(CommandToken('eop', '<|endofpiece|>', self.num_text_tokens + 1))
-            self.num_tokens += 1
-            self.num_command_tokens += 1
+        if add_block_symbols:
+            self._command_tokens.extend([
+                CommandToken('sop', '<|startofpiece|>', self.num_text_tokens + 1),
+                CommandToken('eop', '<|endofpiece|>', self.num_text_tokens + 2)
+            ])
+            self.num_tokens += 2
+            self.num_command_tokens += 2
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}

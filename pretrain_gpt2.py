@@ -71,7 +71,8 @@ def get_model(args):
                       checkpoint_activations=args.checkpoint_activations,
                       checkpoint_num_layers=args.checkpoint_num_layers,
                       parallel_output=True,
-                      relative_encoding=args.transformer_xl)
+                      relative_encoding=args.transformer_xl,
+                      block_position_encoding=args.block_lm)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(
@@ -119,15 +120,15 @@ def get_optimizer_param_groups(model):
 def get_optimizer(param_groups, args):
     """Set up the optimizer."""
     if args.cpu_optimizer:
-        #Apex FusedAdam uses decoupled weight decay so use the same here
+        # Apex FusedAdam uses decoupled weight decay so use the same here
         if args.cpu_torch_adam:
             cpu_adam_optimizer = torch.optim.AdamW
         else:
-            #TODO add option for decoupled weight decay in DeepCPUAdam
+            # TODO add option for decoupled weight decay in DeepCPUAdam
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             cpu_adam_optimizer = DeepSpeedCPUAdam
         optimizer = cpu_adam_optimizer(param_groups,
-                        lr=args.lr, weight_decay=args.weight_decay)
+                                       lr=args.lr, weight_decay=args.weight_decay)
     else:
         # Use FusedAdam.
         optimizer = Adam(param_groups,
@@ -256,10 +257,10 @@ def get_masks_and_position_ids(data,
                     i = eod_index[j]
                     # Mask attention loss.
                     if reset_attention_mask:
-                        attention_mask[b, 0, (i+1):, :(i+1)] = 0
+                        attention_mask[b, 0, (i + 1):, :(i + 1)] = 0
                     # Reset positions.
                     if reset_position_ids:
-                        position_ids[b, (i+1):] -= (i + 1 - prev_index)
+                        position_ids[b, (i + 1):] -= (i + 1 - prev_index)
                         prev_index = i + 1
 
     return attention_mask, loss_mask, position_ids
@@ -279,7 +280,11 @@ def get_batch(data_iterator, args, timers):
     shard reset mask of the same dimensions is also returned.
     '''
     # Items and their type.
-    keys = ['text', 'target', 'loss_mask', 'attention_mask'] if args.transformer_xl else ['text', 'loss_mask']
+    keys = ['text', 'loss_mask']
+    if args.transformer_xl or args.block_lm:
+        keys += ['target', 'attention_mask']
+    if args.block_lm:
+        keys += ['position_id']
     datatype = torch.int64
 
     # Broadcast data.
@@ -296,6 +301,12 @@ def get_batch(data_iterator, args, timers):
         labels = data_b['target'].long()
         attention_mask = data_b['attention_mask'].float()
         loss_mask = data_b['loss_mask'].float()
+    elif args.block_lm:
+        tokens = data_b['text'].long()
+        labels = data_b['target'].long()
+        attention_mask = data_b['attention_mask'].long()
+        loss_mask = data_b['loss_mask'].float()
+        position_ids = data_b['position_id'].long()
     else:
         tokens_ = data_b['text'].long()
         loss_mask = data_b['loss_mask'].float()
@@ -305,23 +316,23 @@ def get_batch(data_iterator, args, timers):
         attention_mask = None
 
     # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
-        tokens,
-        args.eod_token,
-        args.reset_position_ids,
-        args.reset_attention_mask,
-        loss_mask=loss_mask,
-        attention_mask=attention_mask,
-        transformer_xl=args.transformer_xl,
-        mem_length=args.mem_length)
-    # Convert
-    if args.fp16:
-        attention_mask = attention_mask.half()
+    if not args.block_lm:
+        attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
+            tokens,
+            args.eod_token,
+            args.reset_position_ids,
+            args.reset_attention_mask,
+            loss_mask=loss_mask,
+            attention_mask=attention_mask,
+            transformer_xl=args.transformer_xl,
+            mem_length=args.mem_length)
+        # Convert
+        if args.fp16:
+            attention_mask = attention_mask.half()
 
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
-# last_tokens = None
 def forward_step(data_iterator, model, args, timers, mems):
     """Forward step."""
 
@@ -329,13 +340,6 @@ def forward_step(data_iterator, model, args, timers, mems):
     timers('batch generator').start()
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator, args, timers)
-    # global last_tokens
-    # last_tokens = tokens.tolist()
-    # if last_tokens is not None:
-    #     for i in range(len(tokens)):
-    #         if tokens[i][0] != 0 and tokens[i][0] != last_tokens[i] + 1:
-    #             breakpoint()
-    # last_tokens = tokens[:, -1].tolist()
     timers('batch generator').stop()
 
     # Forward model.
@@ -402,12 +406,12 @@ def see_memory_usage(message, force=False):
     dist.barrier()
     if dist.get_rank() == 0:
         print(message)
-        print("Memory Allocated ", torch.cuda.memory_allocated()/(1024*1024*1024), "GigaBytes")
-        print("Max Memory Allocated ", torch.cuda.max_memory_allocated()/(1024*1024*1024), "GigaBytes")
-        print("Cache Allocated ", torch.cuda.memory_cached()/(1024*1024*1024), "GigaBytes")
-        print("Max cache Allocated ", torch.cuda.max_memory_cached()/(1024*1024*1024), "GigaBytes")
+        print("Memory Allocated ", torch.cuda.memory_allocated() / (1024 * 1024 * 1024), "GigaBytes")
+        print("Max Memory Allocated ", torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024), "GigaBytes")
+        print("Cache Allocated ", torch.cuda.memory_cached() / (1024 * 1024 * 1024), "GigaBytes")
+        print("Max cache Allocated ", torch.cuda.max_memory_cached() / (1024 * 1024 * 1024), "GigaBytes")
         print(" ")
-        #input("Press Any Key To Continue ..")
+        # input("Press Any Key To Continue ..")
 
 
 def train_step(data_iterator, model, optimizer, lr_scheduler,
@@ -419,7 +423,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler,
         lm_loss, mems = forward_step(data_iterator, model, args, timers, mems)
         timers('forward').stop()
 
-        #print_rank_0("loss is {}".format(lm_loss))
+        # print_rank_0("loss is {}".format(lm_loss))
 
         # Calculate gradients, reduce across processes, and clip.
         timers('backward').start()
@@ -501,10 +505,10 @@ def train(model, optimizer, lr_scheduler,
     while args.iteration < args.train_iters:
 
         lm_loss, skipped_iter, mems = train_step(train_data_iterator,
-                                           model,
-                                           optimizer,
-                                           lr_scheduler,
-                                           args, timers, mems)
+                                                 model,
+                                                 optimizer,
+                                                 lr_scheduler,
+                                                 args, timers, mems)
         skipped_iters += skipped_iter
         args.iteration += 1
 
@@ -538,7 +542,8 @@ def train(model, optimizer, lr_scheduler,
         if args.eval_interval and args.iteration % args.eval_interval == 0 and args.do_valid:
             prefix = 'iteration {}'.format(args.iteration)
             evaluate_and_print_results(
-                prefix, val_data_iterator, model, args, timers, False, step=args.iteration, summary_writer=summary_writer)
+                prefix, val_data_iterator, model, args, timers, False, step=args.iteration,
+                summary_writer=summary_writer)
 
         if args.exit_interval and args.iteration % args.exit_interval == 0:
             torch.distributed.barrier()
@@ -668,10 +673,10 @@ def get_train_val_test_data(args):
     if mpu.get_model_parallel_rank() == 0:
         if args.use_npy_data_loader:
             (train_data, val_data, test_data), num_tokens, \
-                eod_token = make_gpt2_dataloaders(args)
+            eod_token = make_gpt2_dataloaders(args)
         else:
             data_config = configure_data()
-            data_config.set_defaults(data_set_type='GPT2', transpose=False)
+            data_config.set_defaults(data_set_type='Block' if args.block_lm else 'GPT2', transpose=False)
             (train_data, val_data, test_data), tokenizer = data_config.apply(
                 args)
             num_tokens = tokenizer.num_tokens
@@ -685,7 +690,7 @@ def get_train_val_test_data(args):
             after += 1
         print_rank_0('> padded vocab (size: {}) with {} dummy '
                      'tokens (new size: {})'.format(
-                         before, after - before, after))
+            before, after - before, after))
         print_rank_0('> found end-of-document token: {}'.format(eod_token))
         token_counts = torch.cuda.LongTensor(
             [after, eod_token, int(args.do_train), int(args.do_valid), int(args.do_test)])
@@ -730,7 +735,7 @@ def main():
 
     # Data stuff.
     train_data, val_data, test_data, args.vocab_size, \
-        args.eod_token = get_train_val_test_data(args)
+    args.eod_token = get_train_val_test_data(args)
 
     # Model, optimizer, and learning rate.
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
@@ -774,6 +779,7 @@ def main():
             with ExitStack() as stack:
                 def save_on_exit(args_, model_, optimizer_, lr_scheduler_):
                     save_checkpoint(args_.iteration, model_, optimizer_, lr_scheduler_, args_)
+
                 # stack.callback(save_on_exit, args, model, optimizer, lr_scheduler)
                 iteration, skipped = train(model, optimizer,
                                            lr_scheduler,

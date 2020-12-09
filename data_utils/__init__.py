@@ -18,8 +18,8 @@ import math
 import time
 
 from .samplers import DistributedBatchSampler
-from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
-    GPT2Dataset, ShuffleDataset, XLDataset
+from .datasets import split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
+    GPT2Dataset, ShuffleDataset, XLDataset, BlockDataset
 from .lazy_loader import exists_lazy, LazyWriter, LazyLoader
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
@@ -104,7 +104,7 @@ def supported_corpus(corpus_name):
 def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=False,
                  shuffle=True, split=None, tokenizer=None, tokenizer_type='CharacterLevelTokenizer',
                  tokenizer_model_path=None, vocab_size=None, model_type='bpe', pad_token=0, character_converage=1.0,
-                 non_binary_cols=None, sample_one_document=False, pre_tokenize=False, **kwargs):
+                 non_binary_cols=None, sample_one_document=False, pre_tokenize=False, ds_type='', **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
@@ -114,9 +114,9 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
 
         # make tokenizer for dataset
     if tokenizer is None:
-        add_eop = path.endswith('key') if isinstance(path, str) else sum([p.endswith('key') for p in path]) > 0
+        add_block_symbols = ds_type.lower() == 'block'
         tokenizer = make_tokenizer(tokenizer_type, None, tokenizer_model_path, vocab_size, model_type,
-                                   pad_token, character_converage, add_eop=add_eop, **kwargs)
+                                   pad_token, character_converage, add_block_symbols=add_block_symbols, **kwargs)
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
@@ -125,32 +125,26 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
         ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank) for p in path]
         ds = ConcatDataset(ds)
 
-    ds_type = ''
-    if 'ds_type' in kwargs:
-        ds_type = kwargs['ds_type']
     # Split dataset into train/val/test (and wrap bert dataset)
+    def wrap_dataset(dataset):
+        if ds_type.lower() == 'bert':
+            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
+            dataset = BertSentencepairDataset(dataset, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
+        elif ds_type.lower() == 'gpt2':
+            if xl_style:
+                dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
+                                    sample_across_doc=not sample_one_document)
+            else:
+                dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length,
+                                      sample_across_doc=not sample_one_document)
+        elif ds_type.lower() == 'block':
+            dataset = BlockDataset(dataset, tokenizer, max_seq_len=seq_length,
+                                   sample_across_doc=not sample_one_document)
+        return dataset
+
     if should_split(split):
         ds = split_ds(ds, split, shuffle=shuffle)
-        if ds_type.lower() == 'bert':
-            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            ds = [BertSentencepairDataset(d, max_seq_len=seq_length,
-                                          presplit_sentences=presplit_sentences) if d is not None else None for d in
-                  ds]
-        elif ds_type.lower() == 'gpt2':
-            if xl_style:
-                ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                                sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
-            else:
-                ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length,
-                                  sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
+        ds = [wrap_dataset(d) if d is not None else None for d in ds]
     else:
-        if ds_type.lower() == 'bert':
-            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            ds = BertSentencepairDataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
-        elif ds_type.lower() == 'gpt2':
-            if xl_style:
-                ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                               sample_across_doc=not sample_one_document)
-            else:
-                ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
+        ds = wrap_dataset(ds)
     return ds, tokenizer
