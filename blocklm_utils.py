@@ -1,5 +1,6 @@
 import torch
-# import mpu
+import torch.utils.data
+import mpu
 import random
 import numpy as np
 from scipy.stats import poisson
@@ -26,10 +27,9 @@ class ConstructBlockStrategy:
                  average_block_length=3, max_block_length=40):
         self.args = args
         self.tokenizer = tokenizer
-        # self.rank = mpu.get_data_parallel_rank()
-        self.rank = 0
-        # self.world_size = mpu.get_data_parallel_world_size()
-        self.world_size = 1
+        self.count = 0
+        self.rank = mpu.get_data_parallel_rank()
+        self.world_size = mpu.get_data_parallel_world_size()
         prob_normalizer = bert_prob + gpt_prob
         self.bert_prob = bert_prob / prob_normalizer
         self.gpt_prob = gpt_prob / prob_normalizer
@@ -79,7 +79,10 @@ class ConstructBlockStrategy:
         return mask_spans
 
     def construct_blocks(self, samples):
-        rng = random.Random(self.args.iteration * self.world_size + self.rank)
+        worker_info = torch.utils.data.get_worker_info()
+        worker_id, num_workers = worker_info.id, worker_info.num_workers
+        rng = random.Random((self.count * num_workers + worker_id) * self.world_size + self.rank)
+        self.count += 1
         token_batch, target_batch, loss_mask_batch, position_id_batch = [], [], [], []
         if rng.random() < self.bert_prob:
             masked_lengths, masked_count = [], 0
@@ -129,6 +132,18 @@ class ConstructBlockStrategy:
                     [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
                 loss_masks = np.ones(len(tokens), dtype=np.long)
                 loss_masks[:source_length] = 0
+
+                # def print_masked_text(ts):
+                #     output_tokens = []
+                #     for i, token in enumerate(ts):
+                #         token = self.tokenizer.IdToToken(token)
+                #         if token == '[MASK]':
+                #             token = f"[{position_ids[i]}]"
+                #         elif token == '<|startofpiece|>':
+                #             token = f"sop[{position_ids[i]}]"
+                #         output_tokens.append(token)
+                #     print(" ".join(output_tokens))
+
                 token_batch.append(tokens)
                 target_batch.append(targets)
                 position_id_batch.append([position_ids, block_position_ids])

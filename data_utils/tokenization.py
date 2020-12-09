@@ -778,6 +778,8 @@ class BertWordPieceTokenizer(Tokenizer):
             return Id.token
         if type_token:
             return self.type_id_map[Id].token
+        if Id in self.command_id_map:
+            return self.command_id_map[Id].token
         return self.text_tokenizer.ids_to_tokens[Id]
 
     def TokenToId(self, token, type_token=False):
@@ -796,8 +798,10 @@ class BertWordPieceTokenizer(Tokenizer):
             Ids = Ids.tokenization
         Tokens = []
         for Id in Ids:
-            Tokens.append(self.text_tokenizer.ids_to_tokens[Id] if Id != -1 else '-1')
-        Tokens = self.text_tokenizer.convert_ids_to_tokens(Ids)
+            if Id in self.command_id_map:
+                Tokens.append(self.command_id_map[Id].token)
+            else:
+                Tokens.append(self.text_tokenizer.ids_to_tokens[Id] if Id != -1 else '-1')
         return ' '.join(Tokens)
 
     def DecodeTokens(self, Tokens, type_token=False):
