@@ -541,27 +541,30 @@ class GPT2ParallelTransformer(torch.nn.Module):
             checkpoint = deepspeed.checkpointing.checkpoint
 
     def forward(self, hidden_states, position_ids, attention_mask, *mems):
-        # attention mask is the beginning postion of B region, \in [0, query_len)
-        assert isinstance(attention_mask, int) or (torch.is_tensor(attention_mask) and torch.numel(
-            attention_mask) == 1), 'attention_mask should be a scalar to indicate the seperation position.'
-
         batch_size, query_length = hidden_states.size()[:2]
         memory_length = mems[0].size(1) if mems else 0
-        assert memory_length == 0, 'Do not support transformer-xl.'
         key_length = query_length + memory_length
+        # attention mask is the beginning postion of B region, \in [0, query_len)
+        is_scalar = isinstance(attention_mask, int) or (torch.is_tensor(attention_mask) and torch.numel(
+            attention_mask) == 1)
+        if self.performer:
+            assert is_scalar, 'attention_mask should be a scalar to indicate the seperation position.'
+            assert memory_length == 0, 'Do not support transformer-xl.'
+        if is_scalar:
+            sep = attention_mask
 
-        sep = attention_mask
+            # conventional transformer
+            def build_mask_matrix(seq_length, sep):
+                m = torch.ones((1, seq_length, seq_length), device=hidden_states.device, dtype=hidden_states.dtype)
+                m = torch.tril(m)
+                m[0, :, :sep] = 1
+                m = m.unsqueeze(1)
+                return m
 
-        # conventional transformer
-        def build_mask_matrix(seq_length, sep):
-            m = torch.ones((1, seq_length, seq_length), device=hidden_states.device, dtype=hidden_states.dtype)
-            m = torch.tril(m)
-            m[0, :, :sep] = 1
-            m = m.unsqueeze(1)
-            return m
-
-        if not self.performer:
-            attention_mask = build_mask_matrix(query_length, sep)
+            if not self.performer:
+                attention_mask = build_mask_matrix(query_length, sep)
+        else:
+            attention_mask = attention_mask[:, :, :, -query_length - memory_length:]
 
         if self.relative_encoding:
             position_sequence = torch.arange(key_length - 1, -1, -1.0, device=hidden_states.device,
@@ -582,7 +585,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
             hidden_states = hidden_states + torch.cat(
                 (self.type_embedding[0].expand(sep, -1), self.type_embedding[1].expand(query_length - sep, -1)))
         hidden_states = self.embedding_dropout(hidden_states)
-
 
         if self.max_memory_length > 0:
             mem_layers = [hidden_states.detach()]
