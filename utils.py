@@ -258,9 +258,15 @@ def get_checkpoint_iteration(args):
     if not os.path.isfile(tracker_filename):
         print_rank_0('WARNING: could not find the metadata file {} '.format(
             tracker_filename))
+        if os.path.isdir(args.load):
+            path = os.path.normpath(args.load)
+            load_dir, iteration = os.path.split(path)
+            if iteration.isdigit():
+                print_rank_0('Try to directly load the checkpoint from the directory')
+                return load_dir, int(iteration), False, True
         print_rank_0('    will not load any checkpoints and will start from '
                      'random')
-        return 0, False, False
+        return args.load, 0, False, False
     iteration = 0
     release = False
     with open(tracker_filename, 'r') as f:
@@ -277,20 +283,20 @@ def get_checkpoint_iteration(args):
     assert iteration > 0 or release, 'error parsing metadata file {}'.format(
         tracker_filename)
 
-    return iteration, release, True
+    return args.load, iteration, release, True
 
 
 def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=True):
     """Load a model checkpoint."""
 
-    iteration, release, success = get_checkpoint_iteration(args)
+    load_dir, iteration, release, success = get_checkpoint_iteration(args)
 
     if not success:
         return 0
 
     if args.deepspeed:
 
-        checkpoint_name, sd = model.load_checkpoint(args.load, iteration, load_optimizer_states=not args.no_load_optim)
+        checkpoint_name, sd = model.load_checkpoint(load_dir, iteration, load_optimizer_states=not args.no_load_optim)
         if "client_lr_scheduler" in sd:
             lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
             print_rank_0("Load lr scheduler state")
@@ -302,7 +308,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
     else:
 
         # Checkpoint.
-        checkpoint_name = get_checkpoint_name(args.load, iteration, release)
+        checkpoint_name = get_checkpoint_name(load_dir, iteration, release)
 
         if mpu.get_data_parallel_rank() == 0:
             print('global rank {} is loading checkpoint {}'.format(
