@@ -770,7 +770,9 @@ def main():
     if torch.distributed.get_rank() == 0:
         print('Pretrain GPT2 model')
         print_args(args)
-        summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name, iteration=args.iteration)
+        if args.train_iters > 0:
+            summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name,
+                                               iteration=args.iteration)
 
     # Resume data loader if necessary.
     if args.resume_dataloader:
