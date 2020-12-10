@@ -802,7 +802,13 @@ class BertWordPieceTokenizer(Tokenizer):
                 Tokens.append(self.command_id_map[Id].token)
             else:
                 Tokens.append(self.text_tokenizer.ids_to_tokens[Id] if Id != -1 else '-1')
-        return ' '.join(Tokens)
+        new_tokens = []
+        for token in Tokens:
+            if token.startswith('##') and len(new_tokens) > 0:
+                new_tokens[-1] += token[2:]
+            else:
+                new_tokens.append(token)
+        return ' '.join(new_tokens)
 
     def DecodeTokens(self, Tokens, type_token=False):
         """converts wordpiece tokens to a text string"""
