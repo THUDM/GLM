@@ -58,11 +58,24 @@ class ConstructBlockStrategy:
         mask_index = 0
         indices = [-1] + np.where(tokens == self.args.eod_token)[0].tolist()
         last_index = len(tokens)
+        documents = []
         for index in reversed(indices):
-            length = last_index - index - 1
-            if index == -1 and mask_index < len(masked_lengths):
-                spans = self.sample_spans(masked_lengths[mask_index:], length, rng, offset=index + 1)
-                mask_spans += spans
+            documents.append((index + 1, last_index - index - 1))
+            last_index = index
+        documents.sort(key=lambda x: x[1])
+        for i, (offset, length) in enumerate(documents):
+            if i == len(documents) - 1:
+                current_masked_length, current_count = 0, 0
+                while mask_index + current_count < len(masked_lengths) and masked_lengths[
+                    mask_index + current_count] + current_masked_length + current_count <= length:
+                    current_masked_length += masked_lengths[mask_index + current_count]
+                    current_count += 1
+                if current_count > 0:
+                    spans = self.sample_spans(masked_lengths[mask_index: mask_index + current_count], length, rng,
+                                              offset=offset)
+                    mask_spans += spans
+                if mask_index + current_count < len(masked_lengths) - 1:
+                    print(length, masked_lengths[mask_index:], masked_lengths[:mask_index], indices)
             else:
                 current_masked_total = int(length * self.block_ratio)
                 current_masked_length, current_count = 0, 0
@@ -72,10 +85,9 @@ class ConstructBlockStrategy:
                     current_count += 1
                 if current_count > 0:
                     spans = self.sample_spans(masked_lengths[mask_index:mask_index + current_count], length,
-                                              rng, offset=index + 1)
+                                              rng, offset=offset)
                     mask_spans += spans
                     mask_index += current_count
-            last_index = index
         return mask_spans
 
     def construct_blocks(self, samples):
@@ -96,6 +108,8 @@ class ConstructBlockStrategy:
                 rng.shuffle(masked_lengths)
                 tokens, loss_masks = sample['text'], sample['loss_mask']
                 block_spans = self.sample_span_in_document(tokens, masked_lengths, rng)
+                if len(block_spans) < len(masked_lengths):
+                    continue
                 position_ids = np.ones(len(tokens), dtype=np.long)
                 for start, end in block_spans:
                     position_ids[start + 1: end] = 0
@@ -125,6 +139,7 @@ class ConstructBlockStrategy:
                     source_position_ids.append(position_ids[last:])
                 source_length = sum(map(len, source_tokens))
                 assert source_length == attention_mask
+                assert self.args.eod_token not in np.concatenate(target_tokens).tolist()
                 tokens = np.concatenate(source_tokens + target_tokens)
                 targets = np.concatenate(source_tokens + targets)
                 position_ids = np.concatenate(source_position_ids + target_position_ids)

@@ -615,6 +615,8 @@ class BlockDataset(data.Dataset):
                         strip_left_tokens += 1
             tokens = tokens[strip_left_tokens:]
             loss_mask = loss_mask[strip_left_tokens:]
+            if len(tokens) == 1 and tokens[0] == self.tokenizer.get_command('eos').Id:
+                tokens, loss_mask = [], []
             strip_right_rokens = len(tokens) - self.max_seq_len
             if strip_right_rokens > 0:
                 tokens = tokens[:-strip_right_rokens]
