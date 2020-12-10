@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/data/checkpoints/txl-2.8b11-20-15-10
+CHECKPOINT_PATH=/root/data/checkpoints/txl-2.8b11-20-15-10
 MPSIZE=1
 NLAYERS=32
 NHIDDEN=2560
@@ -20,7 +20,6 @@ script_dir=$(dirname $script_path)
 config_json="$script_dir/ds_config.json"
 
 MASTER_PORT=${MASTER_PORT} python generate_samples.py \
-       --deepspeed \
        --model-parallel-size $MPSIZE \
        --deepspeed_config ${config_json} \
        --num-layers $NLAYERS \

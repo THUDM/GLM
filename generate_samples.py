@@ -59,15 +59,8 @@ def setup_model(args):
     #         dist_init_required=False
     #     )
     if args.load is not None:
-        if args.deepspeed:
-            iteration, release, success = get_checkpoint_iteration(args)
-            path = os.path.join(args.load, str(iteration), "mp_rank_00_model_states.pt")
-            checkpoint = torch.load(path)
-            model.load_state_dict(checkpoint["module"])
-            print(f"Load model file {path}")
-        else:
-            _ = load_checkpoint(
-                model, None, None, args, load_optimizer_states=False)
+        _ = load_checkpoint(
+            model, None, None, args, load_optimizer_states=False)
     # if args.deepspeed:
     #     model = model.module
 
@@ -80,13 +73,20 @@ def get_batch(context_tokens, device, args):
     tokens = tokens.to(device)
 
     # Get the masks and postition ids.
-    attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
-        tokens,
-        args.eod_token,
-        reset_position_ids=False,
-        reset_attention_mask=False,
-        transformer_xl=args.transformer_xl,
-        mem_length=args.mem_length)
+    if args.block_lm:
+        attention_mask = torch.ones(1, 1, tokens.size(1), tokens.size(1), device=device)
+        position_ids = torch.arange(tokens.size(1), device=device, dtype=torch.long)
+        block_position_ids = torch.zeros(tokens.size(1), device=device, dtype=torch.long)
+        position_ids = torch.stack((position_ids, block_position_ids), dim=0)
+        position_ids = position_ids.unsqueeze(0)
+    else:
+        attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
+            tokens,
+            args.eod_token,
+            reset_position_ids=False,
+            reset_attention_mask=False,
+            transformer_xl=args.transformer_xl,
+            mem_length=args.mem_length)
 
     return tokens, attention_mask, position_ids
 
@@ -119,43 +119,46 @@ def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     return logits
 
 
-def sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device, mems=None, end_token=None):
-    tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
+def sample_sequence(model, tokenizer, tokens, context_length, args, device, mems=None, end_token=None):
+    if not args.block_lm:
+        tokens, attention_mask, position_ids = get_batch(tokens, device, args)
 
     counter = 0
     if mems is None:
         mems = []
     if end_token is None:
-        end_token = args.eod_token
-    org_context_length = context_length
-    while counter < (args.out_seq_length - org_context_length):
-        if counter == 0:
+        end_token = [args.eod_token]
+    while counter + context_length < args.out_seq_length:
+        if counter == 0 and not args.block_lm:
             logits, *mems = model(tokens, position_ids, attention_mask, *mems)
         else:
-            index = org_context_length + counter
-            logits, *mems = model(tokens[:, index - 1: index], tokens.new_ones((1, 1)) * (index - 1),
-                                  tokens.new_ones(1, 1, 1, args.mem_length + 1, device=tokens.device,
-                                                  dtype=torch.float), *mems)
+            if args.block_lm:
+                position_ids = tokens.new_ones(1, 2, 1)
+                position_ids[:, 0] = context_length
+                position_ids[:, 1] = counter + 1
+                attention_mask = tokens.new_ones(1, 1, 1, args.mem_length + 1, device=tokens.device, dtype=torch.float)
+            else:
+                position_ids = tokens.new_ones((1, 1)) * (context_length + counter - 1)
+                attention_mask = tokens.new_ones(1, 1, 1, args.mem_length + 1, device=tokens.device, dtype=torch.float)
+            logits, *mems = model(tokens[:, -1:], position_ids, attention_mask, *mems)
         logits = logits[:, -1]
         logits /= args.temperature
         logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)
         log_probs = F.softmax(logits, dim=-1)
         prev = torch.multinomial(log_probs, num_samples=1)[0]
-        is_end = prev == end_token
+        is_end = prev.item() in end_token
         if is_end:
             break
         tokens = torch.cat((tokens, prev.view(1, 1)), dim=1)
-        context_length += 1
         counter += 1
-        if not args.hierarchical and mpu.get_model_parallel_rank() == 0 and counter % 16 == 0:
+        if not args.block_lm and mpu.get_model_parallel_rank() == 0 and counter % 16 == 0:
             output_tokens_list = tokens.view(-1).contiguous()
             decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
             if mpu.get_model_parallel_rank() == 0 and (counter % 128 == 0 or is_end):
                 os.system('clear')
                 trim_decode_tokens = decode_tokens
                 print(trim_decode_tokens, flush=True)
-    output_tokens_list = tokens.view(-1).contiguous()
-    return output_tokens_list, mems
+    return tokens, mems
 
 
 def read_context(tokenizer, args, output):
@@ -169,10 +172,12 @@ def read_context(tokenizer, args, output):
             if raw_text == "stop":
                 terminate_runs = 1
                 break
-            if args.hierarchical:
-                raw_text = "Summary: " + raw_text
+            if args.block_lm and '[MASK]' not in raw_text:
+                raw_text += ' [MASK]'
             output.write(raw_text)
             context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
+            if args.block_lm and not raw_text.endswith('[MASK]'):
+                context_tokens = context_tokens + [tokenizer.get_command('eos').Id]
             context_length = len(context_tokens)
 
             if context_length >= args.seq_length:
@@ -219,36 +224,29 @@ def generate_samples(model, tokenizer, args, device):
             if terminate_runs == 1:
                 return
             start_time = time.time()
-            output_tokens_list, _ = sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device)
-            if args.hierarchical:
-                eop_token = tokenizer.get_command('eop').Id
-                if output_tokens_list[-1] == eop_token:
-                    output_tokens_list = output_tokens_list[:-1]
-                decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
-                trim_decode_tokens = decode_tokens[9:]
-                print("Summary:", trim_decode_tokens)
-                keys = nltk.tokenize.sent_tokenize(trim_decode_tokens)
-                context, mems = "", []
-                for i, key in enumerate(keys):
-                    if i > 0 and not context.endswith(" "):
-                        key = " " + key
-                    context_tokens = tokenizer.EncodeAsIds(key).tokenization
-                    context_length = len(context_tokens)
-                    context_tokens_tensor = torch.cuda.LongTensor(context_tokens)
-                    output_tokens_list, mems = sample_sequence(model, tokenizer, context_tokens_tensor, context_length,
-                                                               args, device, end_token=eop_token, mems=mems)
-                    decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
-                    context += decode_tokens
-                print(context)
+            if args.block_lm:
+                mems = []
+                tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
+                _, *mems = model(tokens, position_ids, attention_mask, *mems)
+                mask_token = tokenizer.get_command('MASK').Id
+                mask_positions = (context_tokens_tensor == mask_token).nonzero(as_tuple=True)[0]
+                start_token = tokenizer.get_command('sop').Id
+                end_tokens = [tokenizer.get_command('eop').Id, args.eod_token]
+                for mask_position in mask_positions.tolist():
+                    tokens = torch.cat((tokens, tokens.new_full((1, 1), start_token)), dim=1)
+                    tokens, mems = sample_sequence(model, tokenizer, tokens, mask_position, args,
+                                                   device, mems=mems, end_token=end_tokens)
             else:
-                if mpu.get_model_parallel_rank() == 0:
-                    os.system('clear')
-                    print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
-                    print("\nContext:", raw_text, flush=True)
-                    decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
-                    trim_decode_tokens = decode_tokens[len(raw_text):]
-                    print("\nGPT2:", trim_decode_tokens, flush=True)
-                    output.write(trim_decode_tokens + "\n")
+                tokens, _ = sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device)
+            output_tokens_list = tokens.view(-1).contiguous()
+            if mpu.get_model_parallel_rank() == 0:
+                os.system('clear')
+                print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
+                print("\nContext:", raw_text, flush=True)
+                decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
+                trim_decode_tokens = decode_tokens
+                print("\nGPT2:", trim_decode_tokens, flush=True)
+                output.write(trim_decode_tokens + "\n")
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
 
@@ -261,7 +259,7 @@ def prepare_tokenizer(args):
         'vocab_size': args.vocab_size,
         'model_type': args.tokenizer_model_type,
         'cache_dir': args.cache_dir,
-        'add_eop': args.hierarchical}
+        'add_block_symbols': args.block_lm}
     tokenizer = make_tokenizer(**tokenizer_args)
 
     num_tokens = tokenizer.num_tokens
