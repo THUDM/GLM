@@ -341,6 +341,10 @@ def forward_step(data_iterator, model, args, timers, mems):
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator, args, timers)
     timers('batch generator').stop()
+    if tokens.size(1) <= args.seq_length + 1:
+        mode = 'gpt'
+    else:
+        mode = 'bert'
 
     # Forward model.
     logits, *mems = model(tokens, position_ids, attention_mask, *mems)
@@ -349,7 +353,7 @@ def forward_step(data_iterator, model, args, timers, mems):
     loss_mask = loss_mask.view(-1)
     loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
 
-    return loss, mems
+    return loss, mems, mode
 
 
 def backward_step(optimizer, model, lm_loss, args, timers):
@@ -420,7 +424,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler,
     while True:
         # Forward model for one step.
         timers('forward').start()
-        lm_loss, mems = forward_step(data_iterator, model, args, timers, mems)
+        lm_loss, mems, _ = forward_step(data_iterator, model, args, timers, mems)
         timers('forward').stop()
 
         # print_rank_0("loss is {}".format(lm_loss))
@@ -472,10 +476,13 @@ def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, 
         summary_writer.add_scalar(f'Train/elapsed_time', elapsed_time, step)
 
 
-def report_evaluate_metrics(summary_writer, prefix, loss, ppl, step):
-    string = ' validation loss at {} | '.format(prefix)
-    string += 'LM loss: {:.6E} | '.format(loss)
-    string += 'LM PPL: {:.6E}'.format(ppl)
+def report_evaluate_metrics(summary_writer, prefix, loss, ppl, gpt_loss, bert_loss, step):
+    string = ' validation loss at {}'.format(prefix)
+    string += ' | LM loss: {:.6E}'.format(loss)
+    string += ' | LM PPL: {:.6E}'.format(ppl)
+    if gpt_loss != 0 and bert_loss != 0:
+        string += ' | GPT loss: {:.6E}'.format(gpt_loss)
+        string += ' | BERT loss: {:.6E}'.format(bert_loss)
     length = len(string) + 1
     print_rank_0('-' * 100)
     print_rank_0('-' * length)
@@ -484,6 +491,8 @@ def report_evaluate_metrics(summary_writer, prefix, loss, ppl, step):
     if summary_writer is not None:
         summary_writer.add_scalar(f'Train/valid_ppl', ppl, step)
         summary_writer.add_scalar(f'Train/valid_loss', loss, step)
+        summary_writer.add_scalar(f'Train/valid_gpt_loss', gpt_loss, step)
+        summary_writer.add_scalar(f'Train/valid_bert_loss', bert_loss, step)
 
 
 def train(model, optimizer, lr_scheduler,
@@ -562,7 +571,8 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
     # Turn on evaluation mode which disables dropout.
     model.eval()
 
-    total_lm_loss = 0
+    total_lm_loss, total_gpt_loss, total_mask_loss = 0, 0, 0
+    gpt_iters, mask_iters = 0, 0
     mems = []
     with torch.no_grad():
         iteration = 0
@@ -571,7 +581,7 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
             if verbose and iteration % args.log_interval == 0:
                 print_rank_0('Evaluating iter {}/{}'.format(iteration, args.eval_iters))
             # Forward evaluation.
-            lm_loss, mems = forward_step(data_iterator, model, args, timers, mems=mems)
+            lm_loss, mems, mode = forward_step(data_iterator, model, args, timers, mems=mems)
 
             '''when contiguous memory optimizations are enabled, the buffers
             allocated by the optimizations are deallocated during backward pass
@@ -581,25 +591,34 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
                 deepspeed.checkpointing.reset()
 
             # Reduce across processes.
-            if isinstance(model, DDP):
-                torch.distributed.all_reduce(lm_loss.data)
-                lm_loss.data = lm_loss.data / args.world_size
+            torch.distributed.all_reduce(lm_loss.data)
+            lm_loss.data = lm_loss.data / args.world_size
 
-            total_lm_loss += lm_loss.data.detach().float().item()
+            lm_loss = lm_loss.data.detach().float().item()
+            total_lm_loss += lm_loss
+            if mode == 'gpt':
+                total_gpt_loss += lm_loss
+                gpt_iters += 1
+            elif mode == 'bert':
+                total_mask_loss += lm_loss
+                mask_iters += 1
 
     # Move model back to the train mode.
     model.train()
 
     total_lm_loss /= args.eval_iters
-    return total_lm_loss
+    total_gpt_loss = total_gpt_loss / gpt_iters if gpt_iters > 0 else 0
+    total_mask_loss = total_mask_loss / mask_iters if mask_iters > 0 else 0
+    return total_lm_loss, total_gpt_loss, total_mask_loss
 
 
 def evaluate_and_print_results(prefix, data_iterator, model,
                                args, timers, verbose=False, step=None, summary_writer=None):
     """Helper function to evaluate and dump results on screen."""
-    lm_loss = evaluate(data_iterator, model, args, timers, verbose)
+    lm_loss, gpt_loss, bert_loss = evaluate(data_iterator, model, args, timers, verbose)
+
     lm_ppl = math.exp(min(20, lm_loss))
-    report_evaluate_metrics(summary_writer, prefix, lm_loss, lm_ppl, step)
+    report_evaluate_metrics(summary_writer, prefix, lm_loss, lm_ppl, gpt_loss, bert_loss, step)
 
     return lm_loss
 
