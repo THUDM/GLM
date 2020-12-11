@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/root/data/checkpoints/block-lm-base12-09-15-45
+CHECKPOINT_PATH=/root/data/checkpoints/block-lm-blank12-11-05-38
 MPSIZE=1
 NLAYERS=12
 NHIDDEN=768
@@ -9,7 +9,7 @@ MAXSEQLEN=512
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 #SAMPLING ARGS
-TEMP=1.0
+TEMP=0.01
 #If TOPK/TOPP are 0 it defaults to greedy sampling, top-k will also override top-p
 TOPK=0
 TOPP=0
@@ -36,4 +36,6 @@ MASTER_PORT=${MASTER_PORT} python generate_samples.py \
        --seq-length 512 \
        --temperature $TEMP \
        --top_k $TOPK \
-       --top_p $TOPP
+       --top_p $TOPP \
+       --num-beams 4 \
+       --length-penalty 0.4

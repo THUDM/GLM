@@ -120,16 +120,18 @@ def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     return logits
 
 
-def sample_sequence(model, tokenizer, context_tokens, context_length, args, device, mems=None, end_token=None):
+def sample_sequence(model, tokenizer, context_tokens, context_length, args, device, mems=None, end_tokens=None):
     if not args.block_lm:
         context_tokens, attention_mask, position_ids = get_batch(context_tokens, device, args)
-
+        tokens = torch.empty((args.num_beams, 0), device=context_tokens.device, dtype=torch.long)
+    else:
+        tokens = context_tokens.new_full((1, 1), tokenizer.get_command('sop').Id)
     counter = 0
     if mems is None:
         mems = []
-    if end_token is None:
-        end_token = [args.eod_token]
-    if args.num_beams > 0:
+    if end_tokens is None:
+        end_tokens = [args.eod_token]
+    if args.num_beams > 1:
         beam_scorer = BeamSearchScorer(
             batch_size=1,
             max_length=args.out_seq_length,
@@ -138,33 +140,68 @@ def sample_sequence(model, tokenizer, context_tokens, context_length, args, devi
             length_penalty=args.length_penalty,
             do_early_stopping=False,
         )
-        beam_scores = torch.zeros(args.num_beams, dtype=torch.float, device=context_tokens.device)
-    tokens = None
+        beam_scores = torch.zeros(1, dtype=torch.float, device=context_tokens.device)
+    last_beam_num = 1
     while counter + context_length < args.out_seq_length:
         if counter == 0 and not args.block_lm:
-            logits, *mems = model(context_tokens, position_ids, attention_mask, *mems)
+            next_token_logits, *mems = model(context_tokens, position_ids, attention_mask, *mems)
         else:
             if args.block_lm:
-                position_ids = context_tokens.new_ones(1, 2, 1)
+                position_ids = context_tokens.new_ones(last_beam_num, 2, 1)
                 position_ids[:, 0] = context_length
                 position_ids[:, 1] = counter + 1
-                attention_mask = context_tokens.new_ones(1, 1, 1, args.mem_length + 1, device=context_tokens.device,
-                                                         dtype=torch.float)
+                attention_mask = context_tokens.new_ones(last_beam_num, 1, 1, args.mem_length + 1,
+                                                         device=context_tokens.device, dtype=torch.float)
             else:
-                position_ids = context_tokens.new_ones((1, 1)) * (context_length + counter - 1)
-                attention_mask = context_tokens.new_ones(1, 1, 1, args.mem_length + 1, device=context_tokens.device,
-                                                         dtype=torch.float)
-            last_token = context_tokens[:, -1:] if tokens is None else tokens[:, -1:]
-            logits, *mems = model(last_token, position_ids, attention_mask, *mems)
-        logits = logits[:, -1]
-        logits /= args.temperature
-        logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)
-        log_probs = F.softmax(logits, dim=-1)
-        prev = torch.multinomial(log_probs, num_samples=1)[0]
-        is_end = prev.item() in end_token
-        if is_end:
-            break
-        tokens = prev.view(1, 1) if tokens is None else torch.cat((tokens, prev.view(1, 1)), dim=1)
+                position_ids = context_tokens.new_ones((last_beam_num, 1)) * (context_length + counter - 1)
+                attention_mask = context_tokens.new_ones(last_beam_num, 1, 1, args.mem_length + 1,
+                                                         device=context_tokens.device, dtype=torch.float)
+            last_token = tokens[:, -1:]
+            next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems)
+        next_token_logits = next_token_logits[:, -1]
+        if args.num_beams > 1:
+            next_token_scores = F.log_softmax(next_token_logits, dim=-1)
+            next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
+            vocab_size = next_token_scores.shape[-1]
+            next_token_scores = next_token_scores.view(1, last_beam_num * vocab_size)
+
+            probs = F.softmax(next_token_scores, dim=-1)
+            next_tokens = torch.multinomial(probs, num_samples=2 * args.num_beams)
+            next_token_scores = torch.gather(next_token_scores, -1, next_tokens)
+            next_token_scores, _indices = torch.sort(next_token_scores, descending=True, dim=1)
+            next_tokens = torch.gather(next_tokens, -1, _indices)
+
+            next_indices = next_tokens // vocab_size
+            next_tokens = next_tokens % vocab_size
+            # stateless
+            tokens = tokens.expand((args.num_beams, -1))
+            beam_outputs = beam_scorer.process(
+                tokens,
+                next_token_scores,
+                next_tokens,
+                next_indices,
+                eos_token_id=end_tokens,
+                mems=mems
+            )
+            beam_scores = beam_outputs["next_beam_scores"]
+            beam_next_tokens = beam_outputs["next_beam_tokens"]
+            beam_idx = beam_outputs["next_beam_indices"]
+            beam_next_tokens = beam_next_tokens.unsqueeze(-1)
+            tokens = torch.cat([tokens[beam_idx, :], beam_next_tokens], dim=-1)
+            mems = [mem[beam_idx] for mem in mems] if mems else None
+            if beam_scorer.is_done:
+                break
+            last_beam_num = args.num_beams
+        else:
+            next_token_logits /= args.temperature
+            next_token_logits = top_k_logits(next_token_logits, top_k=args.top_k, top_p=args.top_p)
+            log_probs = F.softmax(next_token_logits, dim=-1)
+            prev = torch.multinomial(log_probs, num_samples=1)[0]
+            is_end = prev.item() in end_tokens
+            if is_end:
+                break
+            prev = prev.view(1, 1)
+            tokens = prev if tokens is None else torch.cat((tokens, prev), dim=1)
         counter += 1
         if not args.block_lm and mpu.get_model_parallel_rank() == 0 and counter % 16 == 0:
             output_tokens_list = tokens.view(-1).contiguous()
@@ -173,7 +210,10 @@ def sample_sequence(model, tokenizer, context_tokens, context_length, args, devi
                 os.system('clear')
                 trim_decode_tokens = decode_tokens
                 print(trim_decode_tokens, flush=True)
-    return context_tokens if tokens is None else torch.cat((context_tokens, tokens), dim=1), mems
+    if args.num_beams > 1:
+        tokens, mems = beam_scorer.finalize(tokens, beam_scores, next_tokens, next_indices, eos_token_id=args.eod_token,
+                                            mems=mems)
+    return torch.cat((context_tokens, tokens), dim=1), mems
 
 
 def read_context(tokenizer, args, output):
@@ -245,12 +285,10 @@ def generate_samples(model, tokenizer, args, device):
                 _, *mems = model(tokens, position_ids, attention_mask, *mems)
                 mask_token = tokenizer.get_command('MASK').Id
                 mask_positions = (context_tokens_tensor == mask_token).nonzero(as_tuple=True)[0]
-                start_token = tokenizer.get_command('sop').Id
                 end_tokens = [tokenizer.get_command('eop').Id, args.eod_token]
                 for mask_position in mask_positions.tolist():
-                    tokens = torch.cat((tokens, tokens.new_full((1, 1), start_token)), dim=1)
                     tokens, mems = sample_sequence(model, tokenizer, tokens, mask_position, args,
-                                                   device, mems=mems, end_token=end_tokens)
+                                                   device, mems=mems, end_tokens=end_tokens)
             else:
                 tokens, _ = sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device)
             output_tokens_list = tokens.view(-1).contiguous()
