@@ -32,6 +32,7 @@ from pretrain_gpt2 import get_train_val_test_data
 from pretrain_gpt2 import get_masks_and_position_ids
 from utils import load_checkpoint, get_checkpoint_iteration
 from data_utils import make_tokenizer
+from generation_utils import BeamSearchScorer
 from configure_data import configure_data
 import mpu
 import deepspeed
@@ -119,28 +120,42 @@ def top_k_logits(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
     return logits
 
 
-def sample_sequence(model, tokenizer, tokens, context_length, args, device, mems=None, end_token=None):
+def sample_sequence(model, tokenizer, context_tokens, context_length, args, device, mems=None, end_token=None):
     if not args.block_lm:
-        tokens, attention_mask, position_ids = get_batch(tokens, device, args)
+        context_tokens, attention_mask, position_ids = get_batch(context_tokens, device, args)
 
     counter = 0
     if mems is None:
         mems = []
     if end_token is None:
         end_token = [args.eod_token]
+    if args.num_beams > 0:
+        beam_scorer = BeamSearchScorer(
+            batch_size=1,
+            max_length=args.out_seq_length,
+            num_beams=args.num_beams,
+            device=context_tokens.device,
+            length_penalty=args.length_penalty,
+            do_early_stopping=False,
+        )
+        beam_scores = torch.zeros(args.num_beams, dtype=torch.float, device=context_tokens.device)
+    tokens = None
     while counter + context_length < args.out_seq_length:
         if counter == 0 and not args.block_lm:
-            logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+            logits, *mems = model(context_tokens, position_ids, attention_mask, *mems)
         else:
             if args.block_lm:
-                position_ids = tokens.new_ones(1, 2, 1)
+                position_ids = context_tokens.new_ones(1, 2, 1)
                 position_ids[:, 0] = context_length
                 position_ids[:, 1] = counter + 1
-                attention_mask = tokens.new_ones(1, 1, 1, args.mem_length + 1, device=tokens.device, dtype=torch.float)
+                attention_mask = context_tokens.new_ones(1, 1, 1, args.mem_length + 1, device=context_tokens.device,
+                                                         dtype=torch.float)
             else:
-                position_ids = tokens.new_ones((1, 1)) * (context_length + counter - 1)
-                attention_mask = tokens.new_ones(1, 1, 1, args.mem_length + 1, device=tokens.device, dtype=torch.float)
-            logits, *mems = model(tokens[:, -1:], position_ids, attention_mask, *mems)
+                position_ids = context_tokens.new_ones((1, 1)) * (context_length + counter - 1)
+                attention_mask = context_tokens.new_ones(1, 1, 1, args.mem_length + 1, device=context_tokens.device,
+                                                         dtype=torch.float)
+            last_token = context_tokens[:, -1:] if tokens is None else tokens[:, -1:]
+            logits, *mems = model(last_token, position_ids, attention_mask, *mems)
         logits = logits[:, -1]
         logits /= args.temperature
         logits = top_k_logits(logits, top_k=args.top_k, top_p=args.top_p)
@@ -149,7 +164,7 @@ def sample_sequence(model, tokenizer, tokens, context_length, args, device, mems
         is_end = prev.item() in end_token
         if is_end:
             break
-        tokens = torch.cat((tokens, prev.view(1, 1)), dim=1)
+        tokens = prev.view(1, 1) if tokens is None else torch.cat((tokens, prev.view(1, 1)), dim=1)
         counter += 1
         if not args.block_lm and mpu.get_model_parallel_rank() == 0 and counter % 16 == 0:
             output_tokens_list = tokens.view(-1).contiguous()
@@ -158,7 +173,7 @@ def sample_sequence(model, tokenizer, tokens, context_length, args, device, mems
                 os.system('clear')
                 trim_decode_tokens = decode_tokens
                 print(trim_decode_tokens, flush=True)
-    return tokens, mems
+    return context_tokens if tokens is None else torch.cat((context_tokens, tokens), dim=1), mems
 
 
 def read_context(tokenizer, args, output):
