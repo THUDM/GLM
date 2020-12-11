@@ -341,6 +341,29 @@ def forward_step(data_iterator, model, args, timers, mems):
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
         data_iterator, args, timers)
     timers('batch generator').stop()
+
+    # def print_masked_text(batch_id):
+    #     output_tokens = []
+    #     sep = attention_mask.item()
+    #     for i, token in enumerate(tokens[batch_id, :sep].tolist()):
+    #         token = tokenizer.IdToToken(token)
+    #         if token == '[MASK]':
+    #             token = f"[{position_ids[batch_id, 0, i].item()}]"
+    #         output_tokens.append(token)
+    #     print(" ".join(output_tokens))
+    #     last_index = None
+    #     for i in range(sep, tokens.size(1)):
+    #         if position_ids[batch_id, 1, i] == 1:
+    #             if last_index is not None:
+    #                 print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()),
+    #                       tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
+    #                       position_ids[batch_id, :, last_index: i].tolist())
+    #             last_index = i
+    #     if last_index is not None:
+    #         print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()),
+    #               tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
+    #               position_ids[batch_id, :, last_index:].tolist())
+
     if tokens.size(1) <= args.seq_length + 1:
         mode = 'gpt'
     else:
@@ -491,8 +514,10 @@ def report_evaluate_metrics(summary_writer, prefix, loss, ppl, gpt_loss, bert_lo
     if summary_writer is not None:
         summary_writer.add_scalar(f'Train/valid_ppl', ppl, step)
         summary_writer.add_scalar(f'Train/valid_loss', loss, step)
-        summary_writer.add_scalar(f'Train/valid_gpt_loss', gpt_loss, step)
-        summary_writer.add_scalar(f'Train/valid_bert_loss', bert_loss, step)
+        if gpt_loss != 0:
+            summary_writer.add_scalar(f'Train/valid_gpt_loss', gpt_loss, step)
+        if bert_loss != 0:
+            summary_writer.add_scalar(f'Train/valid_bert_loss', bert_loss, step)
 
 
 def train(model, optimizer, lr_scheduler,
