@@ -24,7 +24,7 @@ def index_in_list(lst, val, start=None):
 
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.5, block_ratio=0.2,
-                 average_block_length=3, max_block_length=40):
+                 average_block_length=3, max_block_length=40, block_position_encoding=True):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -36,7 +36,9 @@ class ConstructBlockStrategy:
         self.min_generation_length = int(min_gpt_ratio * args.seq_length)
         self.block_ratio = block_ratio
         self.total_mask = int(block_ratio * args.seq_length)
-        self.length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
+        self.block_length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
+        self.block_position_encoding = block_position_encoding
+        self.gap_length_distribution = [poisson.pmf(i, average_block_length) for i in range(0, max_block_length)]
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):
@@ -100,7 +102,8 @@ class ConstructBlockStrategy:
             masked_lengths, masked_count = [], 0
             while masked_count < self.total_mask:
                 block_length = \
-                    rng.choices(range(1, len(self.length_distribution) + 1), weights=self.length_distribution)[0]
+                    rng.choices(range(1, len(self.block_length_distribution) + 1),
+                                weights=self.block_length_distribution)[0]
                 masked_lengths.append(block_length)
                 masked_count += block_length
             attention_mask = self.args.seq_length - masked_count + len(masked_lengths)
@@ -112,7 +115,13 @@ class ConstructBlockStrategy:
                     continue
                 position_ids = np.ones(len(tokens), dtype=np.long)
                 for start, end in block_spans:
-                    position_ids[start + 1: end] = 0
+                    if self.block_position_encoding:
+                        position_ids[start + 1: end] = 0
+                    else:
+                        position_ids[start] = 2
+                        if end < len(position_ids):
+                            position_ids[end] = rng.choices(range(0, len(self.gap_length_distribution)),
+                                                            weights=self.gap_length_distribution)[0]
                 position_ids = np.cumsum(position_ids) - 1
                 rng.shuffle(block_spans)
                 target_tokens, target_position_ids, target_block_position_ids, targets = [], [], [], []
@@ -122,17 +131,25 @@ class ConstructBlockStrategy:
                     targets.append(tokens[start: end])
                     targets.append([self.tokenizer.get_command('eop').Id])
                     target_position_id = position_ids[start: end]
-                    target_position_ids.append(target_position_id)
-                    target_position_ids.append([target_position_id[0]])
-                    target_block_position_ids.append(np.arange(1, end - start + 2, dtype=np.long))
+                    if self.block_position_encoding:
+                        target_position_ids.append(target_position_id)
+                        target_position_ids.append([target_position_id[0]])
+                        target_block_position_ids.append(np.arange(1, end - start + 2, dtype=np.long))
+                    else:
+                        target_position_ids.append([target_position_id[0] - 1])
+                        target_position_ids.append(target_position_id)
                 block_spans.sort(key=lambda x: x[0])
                 source_tokens, source_position_ids = [], []
                 last = 0
                 for start, end in block_spans:
                     source_tokens.append(tokens[last: start])
                     source_tokens.append([self.tokenizer.get_command('MASK').Id])
-                    source_position_ids.append(position_ids[last: start])
-                    source_position_ids.append([position_ids[start]])
+                    if self.block_position_encoding:
+                        source_position_ids.append(position_ids[last: start])
+                        source_position_ids.append([position_ids[start]])
+                    else:
+                        source_position_ids.append(position_ids[last: start])
+                        source_position_ids.append([position_ids[start] - 1])
                     last = end
                 if last < len(tokens):
                     source_tokens.append(tokens[last:])
@@ -142,16 +159,18 @@ class ConstructBlockStrategy:
                 assert self.args.eod_token not in np.concatenate(target_tokens).tolist()
                 tokens = np.concatenate(source_tokens + target_tokens)
                 targets = np.concatenate(source_tokens + targets)
-                position_ids = np.concatenate(source_position_ids + target_position_ids)
-                block_position_ids = np.concatenate(
-                    [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
                 loss_masks = np.ones(len(tokens), dtype=np.long)
                 loss_masks[:source_length] = 0
-
                 token_batch.append(tokens)
                 target_batch.append(targets)
-                position_id_batch.append([position_ids, block_position_ids])
                 loss_mask_batch.append(loss_masks)
+                position_ids = np.concatenate(source_position_ids + target_position_ids)
+                if self.block_position_encoding:
+                    block_position_ids = np.concatenate(
+                        [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
+                    position_id_batch.append([position_ids, block_position_ids])
+                else:
+                    position_id_batch.append(position_ids)
         else:
             start_indices = [index_in_list(sample['loss_mask'], 1) for sample in samples]
             end_indices = [rindex(sample['loss_mask'], 1) for sample in samples]
@@ -167,14 +186,19 @@ class ConstructBlockStrategy:
                                                          self.tokenizer.get_command('sop').Id], target_tokens[:-1]))
                 targets = np.concatenate((source_tokens, [self.tokenizer.get_command('MASK').Id], target_tokens))
                 loss_masks = np.concatenate((np.zeros(len(source_tokens) + 1, dtype=np.long), target_masks))
-                position_ids = np.arange(len(source_tokens) + 1 + len(target_tokens), dtype=np.long)
-                position_ids[len(source_tokens) + 1:] = len(source_tokens)
-                block_position_ids = np.concatenate(
-                    (np.zeros(len(source_tokens), dtype=np.long), np.arange(len(target_tokens) + 1, dtype=np.long)))
                 token_batch.append(tokens)
                 target_batch.append(targets)
                 loss_mask_batch.append(loss_masks)
-                position_id_batch.append([position_ids, block_position_ids])
+                if self.block_position_encoding:
+                    position_ids = np.arange(len(source_tokens) + 1 + len(target_tokens), dtype=np.long)
+                    position_ids[len(source_tokens) + 1:] = len(source_tokens)
+                    block_position_ids = np.concatenate(
+                        (np.zeros(len(source_tokens), dtype=np.long), np.arange(len(target_tokens) + 1, dtype=np.long)))
+                    position_id_batch.append([position_ids, block_position_ids])
+                else:
+                    position_ids = np.arange(len(source_tokens) + 1 + len(target_tokens), dtype=np.long)
+                    position_ids[len(source_tokens) + 1:] -= 1
+                    position_id_batch.append(position_ids)
             attention_mask = division + 1
         return {'text': torch.tensor(token_batch, dtype=torch.long),
                 'target': torch.tensor(target_batch, dtype=torch.long),

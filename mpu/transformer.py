@@ -506,6 +506,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
             if block_position_encoding:
                 self.position_embeddings = torch.nn.Embedding(max_sequence_length + 1, hidden_size)
                 self.block_position_embeddings = torch.nn.Embedding(max_sequence_length + 1, hidden_size)
+                torch.nn.init.normal_(self.block_position_embeddings.weight, mean=0.0, std=init_method_std)
             else:
                 self.position_embeddings = torch.nn.Embedding(max_sequence_length, hidden_size)
             # Initialize the position embeddings.
@@ -551,7 +552,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
             assert is_scalar, 'attention_mask should be a scalar to indicate the seperation position.'
             assert memory_length == 0, 'Do not support transformer-xl.'
         if is_scalar:
-            sep = attention_mask
+            sep = attention_mask.item() if torch.is_tensor(attention_mask) else attention_mask
 
             # conventional transformer
             def build_mask_matrix(seq_length, sep):

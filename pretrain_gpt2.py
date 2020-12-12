@@ -72,7 +72,8 @@ def get_model(args):
                       checkpoint_num_layers=args.checkpoint_num_layers,
                       parallel_output=True,
                       relative_encoding=args.transformer_xl,
-                      block_position_encoding=args.block_lm)
+                      type_encoding=args.block_lm and args.no_block_position,
+                      block_position_encoding=args.block_lm and not args.no_block_position)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(
@@ -332,6 +333,8 @@ def get_batch(data_iterator, args, timers):
 
     return tokens, labels, loss_mask, attention_mask, position_ids
 
+# tokenizer = None
+
 
 def forward_step(data_iterator, model, args, timers, mems):
     """Forward step."""
@@ -342,27 +345,30 @@ def forward_step(data_iterator, model, args, timers, mems):
         data_iterator, args, timers)
     timers('batch generator').stop()
 
-    # def print_masked_text(batch_id):
-    #     output_tokens = []
-    #     sep = attention_mask.item()
-    #     for i, token in enumerate(tokens[batch_id, :sep].tolist()):
-    #         token = tokenizer.IdToToken(token)
-    #         if token == '[MASK]':
-    #             token = f"[{position_ids[batch_id, 0, i].item()}]"
-    #         output_tokens.append(token)
-    #     print(" ".join(output_tokens))
-    #     last_index = None
-    #     for i in range(sep, tokens.size(1)):
-    #         if position_ids[batch_id, 1, i] == 1:
-    #             if last_index is not None:
-    #                 print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()),
-    #                       tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
-    #                       position_ids[batch_id, :, last_index: i].tolist())
-    #             last_index = i
-    #     if last_index is not None:
-    #         print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()),
-    #               tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
-    #               position_ids[batch_id, :, last_index:].tolist())
+    def print_masked_text(batch_id):
+        output_tokens = []
+        sep = attention_mask.item()
+        for i, token in enumerate(tokens[batch_id, :sep].tolist()):
+            token = tokenizer.IdToToken(token)
+            if token == '[MASK]':
+                token = f"[{position_ids[batch_id, i].item()}]"
+            output_tokens.append(token)
+        print(" ".join(output_tokens))
+        last_index = None
+        last_position = None
+        for i in range(sep, tokens.size(1)):
+            if last_position is None or position_ids[batch_id, i] != last_position + 1:
+                if last_index is not None:
+                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), ";",
+                          tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
+                          position_ids[batch_id, last_index: i].tolist())
+                last_index = i
+            last_position = position_ids[batch_id, i]
+        if last_index is not None:
+            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
+                  tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
+                  position_ids[batch_id, last_index:].tolist())
+    breakpoint()
 
     if tokens.size(1) <= args.seq_length + 1:
         mode = 'gpt'
@@ -712,7 +718,7 @@ def get_train_val_test_data(args):
     """Load the data on rank zero and boradcast number of tokens to all GPUS."""
 
     (train_data, val_data, test_data) = (None, None, None)
-
+    # global tokenizer
     # Data loader only on rank 0 of each model parallel group.
     if mpu.get_model_parallel_rank() == 0:
         if args.use_npy_data_loader:

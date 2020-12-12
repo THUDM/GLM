@@ -79,7 +79,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
                                                           batch_size,
                                                           drop_last)
     if args.block_lm:
-        strategy = ConstructBlockStrategy(args, tokenizer)
+        strategy = ConstructBlockStrategy(args, tokenizer, block_position_encoding=not args.no_block_position)
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,
                                               num_workers=args.num_workers,
