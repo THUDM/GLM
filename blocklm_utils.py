@@ -148,17 +148,6 @@ class ConstructBlockStrategy:
                 loss_masks = np.ones(len(tokens), dtype=np.long)
                 loss_masks[:source_length] = 0
 
-                # def print_masked_text(ts):
-                #     output_tokens = []
-                #     for i, token in enumerate(ts):
-                #         token = self.tokenizer.IdToToken(token)
-                #         if token == '[MASK]':
-                #             token = f"[{position_ids[i]}]"
-                #         elif token == '<|startofpiece|>':
-                #             token = f"sop[{position_ids[i]}]"
-                #         output_tokens.append(token)
-                #     print(" ".join(output_tokens))
-
                 token_batch.append(tokens)
                 target_batch.append(targets)
                 position_id_batch.append([position_ids, block_position_ids])

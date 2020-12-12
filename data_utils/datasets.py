@@ -661,8 +661,6 @@ class BlockDataset(data.Dataset):
             return True
         if ':' in tok:
             return True
-        if ',' in tok:
-            return True
         return False
 
 
