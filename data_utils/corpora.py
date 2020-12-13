@@ -349,8 +349,8 @@ class TestDataset(PromptReader):
 
 
 class bertdata(PromptReader):
-    PATH = '/root/data/formatted_one_article_per_line'
-    # PATH = '/root/data/formatted_one_article_per_line_large'
+    # PATH = '/root/data/formatted_one_article_per_line'
+    PATH = '/root/data/formatted_one_article_per_line_large'
     is_json = False
 
     @classmethod
