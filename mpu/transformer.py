@@ -555,15 +555,17 @@ class GPT2ParallelTransformer(torch.nn.Module):
             sep = attention_mask.item() if torch.is_tensor(attention_mask) else attention_mask
 
             # conventional transformer
-            def build_mask_matrix(seq_length, sep):
-                m = torch.ones((1, seq_length, seq_length), device=hidden_states.device, dtype=hidden_states.dtype)
+            def build_mask_matrix(seq_length, sep, memory_length=0):
+                m = hidden_states.new_ones((1, seq_length, seq_length))
                 m = torch.tril(m)
                 m[0, :, :sep] = 1
+                if memory_length > 0:
+                    m = torch.cat((hidden_states.new_ones((1, seq_length, memory_length)), m), dim=2)
                 m = m.unsqueeze(1)
                 return m
 
             if not self.performer:
-                attention_mask = build_mask_matrix(query_length, sep)
+                attention_mask = build_mask_matrix(query_length, sep, memory_length=memory_length)
         else:
             attention_mask = attention_mask[:, :, :, -query_length - memory_length:]
 
@@ -583,8 +585,10 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 hidden_states = hidden_states + block_position_embeddings
         # add AB embedding, hidden_states (b, s, h)
         if self.type_encoding:
-            hidden_states = hidden_states + torch.cat(
-                (self.type_embedding[0].expand(sep, -1), self.type_embedding[1].expand(query_length - sep, -1)))
+            type_ids = position_ids.new_zeros(query_length)
+            type_ids[sep:] = 1
+            type_embeddings = torch.nn.functional.embedding(type_ids, self.type_embedding)
+            hidden_states = hidden_states + type_embeddings
         hidden_states = self.embedding_dropout(hidden_states)
 
         if self.max_memory_length > 0:

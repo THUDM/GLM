@@ -348,19 +348,26 @@ class TestDataset(PromptReader):
         return [prompt], [text]
 
 
-class bertdata(PromptReader):
-    # PATH = '/root/data/formatted_one_article_per_line'
-    PATH = '/root/data/formatted_one_article_per_line_large'
+class BertData(PromptReader):
     is_json = False
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
         if data:
             prompt, text = "", data
-            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer,
+                                                                                               tokenize)
             return [prompt], [text]
         else:
             return [], []
+
+
+class BertBaseData(BertData):
+    PATH = '/root/data/formatted_one_article_per_line'
+
+
+class BertLargeData(BertData):
+    PATH = '/root/data/formatted_one_article_per_line_large'
 
 
 NAMED_CORPORA = {
@@ -371,5 +378,6 @@ NAMED_CORPORA = {
     "zhidao": zhidao,
     "baike": baike,
     "test": TestDataset,
-    "bert": bertdata
+    "bert-base": BertBaseData,
+    "bert-large": BertLargeData
 }

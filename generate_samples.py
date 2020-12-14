@@ -75,10 +75,11 @@ def get_batch(context_tokens, device, args):
 
     # Get the masks and postition ids.
     if args.block_lm:
-        attention_mask = torch.ones(1, 1, tokens.size(1), tokens.size(1), device=device)
+        attention_mask = torch.tensor([tokens.size(1)], device=device, dtype=torch.long)
         position_ids = torch.arange(tokens.size(1), device=device, dtype=torch.long)
-        block_position_ids = torch.zeros(tokens.size(1), device=device, dtype=torch.long)
-        position_ids = torch.stack((position_ids, block_position_ids), dim=0)
+        if not args.no_block_position:
+            block_position_ids = torch.zeros(tokens.size(1), device=device, dtype=torch.long)
+            position_ids = torch.stack((position_ids, block_position_ids), dim=0)
         position_ids = position_ids.unsqueeze(0)
     else:
         attention_mask, loss_mask, position_ids = get_masks_and_position_ids(
@@ -142,16 +143,18 @@ def sample_sequence(model, tokenizer, context_tokens, context_length, args, devi
         )
         beam_scores = torch.zeros(1, dtype=torch.float, device=context_tokens.device)
     last_beam_num = 1
-    while counter + context_length < args.out_seq_length:
+    while counter < args.out_seq_length:
         if counter == 0 and not args.block_lm:
             next_token_logits, *mems = model(context_tokens, position_ids, attention_mask, *mems)
         else:
             if args.block_lm:
-                position_ids = context_tokens.new_ones(last_beam_num, 2, 1)
-                position_ids[:, 0] = context_length
-                position_ids[:, 1] = counter + 1
-                attention_mask = context_tokens.new_ones(last_beam_num, 1, 1, args.mem_length + 1,
-                                                         device=context_tokens.device, dtype=torch.float)
+                if args.no_block_position:
+                    position_ids = context_tokens.new_full((last_beam_num, 1), context_length + counter)
+                else:
+                    position_ids = context_tokens.new_ones(last_beam_num, 2, 1)
+                    position_ids[:, 0] = context_length
+                    position_ids[:, 1] = counter + 1
+                attention_mask = context_tokens.new_zeros([1], device=context_tokens.device, dtype=torch.long)
             else:
                 position_ids = context_tokens.new_ones((last_beam_num, 1)) * (context_length + counter - 1)
                 attention_mask = context_tokens.new_ones(last_beam_num, 1, 1, args.mem_length + 1,
@@ -282,13 +285,16 @@ def generate_samples(model, tokenizer, args, device):
             if args.block_lm:
                 mems = []
                 tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
-                _, *mems = model(tokens, position_ids, attention_mask, *mems)
                 mask_token = tokenizer.get_command('MASK').Id
-                mask_positions = (context_tokens_tensor == mask_token).nonzero(as_tuple=True)[0]
                 end_tokens = [tokenizer.get_command('eop').Id, args.eod_token]
-                for mask_position in mask_positions.tolist():
-                    tokens, mems = sample_sequence(model, tokenizer, tokens, mask_position, args,
-                                                   device, mems=mems, end_tokens=end_tokens)
+                mask_positions = (context_tokens_tensor == mask_token).nonzero(as_tuple=True)[0].tolist()
+                if args.no_block_position:
+                    for mask_position in mask_positions:
+                        position_ids[0, mask_position + 1:] += args.out_seq_length
+                _, *mems = model(tokens, position_ids, attention_mask, *mems)
+                for mask_position in mask_positions:
+                    tokens, mems = sample_sequence(model, tokenizer, tokens, position_ids[0, mask_position].item(),
+                                                   args, device, mems=mems, end_tokens=end_tokens)
             else:
                 tokens, _ = sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device)
             output_tokens_list = tokens.view(-1).contiguous()
