@@ -26,7 +26,7 @@ def index_in_list(lst, val, start=None):
 
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.5, block_ratio=0.2,
-                 average_block_length=3, max_block_length=40, block_position_encoding=True):
+                 average_block_length=3, max_block_length=40, average_gap_length=3, block_position_encoding=True):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -40,7 +40,7 @@ class ConstructBlockStrategy:
         self.total_mask = int(block_ratio * args.seq_length)
         self.block_length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
         self.block_position_encoding = block_position_encoding
-        self.gap_length_distribution = [poisson.pmf(i, average_block_length) for i in range(0, max_block_length)]
+        self.gap_length_distribution = [poisson.pmf(i, average_gap_length) for i in range(0, max_block_length)]
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):

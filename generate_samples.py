@@ -28,10 +28,9 @@ from arguments import get_args
 from utils import Timers
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
-from pretrain_gpt2 import get_train_val_test_data
 from pretrain_gpt2 import get_masks_and_position_ids
 from utils import load_checkpoint, get_checkpoint_iteration
-from data_utils import make_tokenizer
+from configure_data import prepare_tokenizer
 from generation_utils import BeamSearchScorer
 from configure_data import configure_data
 import mpu
@@ -60,8 +59,9 @@ def setup_model(args):
     #         dist_init_required=False
     #     )
     if args.load is not None:
+        args.no_load_optim = True
         _ = load_checkpoint(
-            model, None, None, args, load_optimizer_states=False)
+            model, None, None, args)
     # if args.deepspeed:
     #     model = model.module
 
@@ -308,42 +308,6 @@ def generate_samples(model, tokenizer, args, device):
                 output.write(trim_decode_tokens + "\n")
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
-
-
-def prepare_tokenizer(args):
-    tokenizer_args = {
-        'tokenizer_type': args.tokenizer_type,
-        'corpus': None,
-        'model_path': args.tokenizer_path,
-        'vocab_size': args.vocab_size,
-        'model_type': args.tokenizer_model_type,
-        'cache_dir': args.cache_dir,
-        'add_block_symbols': args.block_lm}
-    tokenizer = make_tokenizer(**tokenizer_args)
-
-    num_tokens = tokenizer.num_tokens
-    before = num_tokens
-    after = before
-    multiple = args.make_vocab_size_divisible_by * \
-               mpu.get_model_parallel_world_size()
-    while (after % multiple) != 0:
-        after += 1
-    print_rank_0('> padded vocab (size: {}) with {} dummy '
-                 'tokens (new size: {})'.format(
-        before, after - before, after))
-
-    args.tokenizer_num_tokens = after
-    args.tokenizer_num_type_tokens = tokenizer.num_type_tokens
-    args.eod_token = tokenizer.get_command('eos').Id
-
-    # after = tokenizer.num_tokens
-    # while after % mpu.get_model_parallel_world_size() != 0:
-    #     after += 1
-
-    args.vocab_size = after
-    print("prepare tokenizer done", flush=True)
-
-    return tokenizer
 
 
 def main():

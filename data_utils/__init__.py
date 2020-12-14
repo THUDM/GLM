@@ -102,21 +102,14 @@ def supported_corpus(corpus_name):
 
 
 def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=False,
-                 shuffle=True, split=None, tokenizer=None, tokenizer_type='CharacterLevelTokenizer',
-                 tokenizer_model_path=None, vocab_size=None, model_type='bpe', pad_token=0, character_converage=1.0,
-                 non_binary_cols=None, sample_one_document=False, pre_tokenize=False, ds_type='', **kwargs):
+                 shuffle=True, split=None, tokenizer=None, non_binary_cols=None, sample_one_document=False,
+                 pre_tokenize=False, ds_type='', **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
     if non_binary_cols is not None:
         # multilabel dataset support (only for csvs)
         label_key = non_binary_cols
-
-        # make tokenizer for dataset
-    if tokenizer is None:
-        add_block_symbols = ds_type.lower() == 'block'
-        tokenizer = make_tokenizer(tokenizer_type, None, tokenizer_model_path, vocab_size, model_type,
-                                   pad_token, character_converage, add_block_symbols=add_block_symbols, **kwargs)
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
@@ -147,4 +140,4 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
         ds = [wrap_dataset(d) if d is not None else None for d in ds]
     else:
         ds = wrap_dataset(ds)
-    return ds, tokenizer
+    return ds

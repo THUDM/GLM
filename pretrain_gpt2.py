@@ -16,8 +16,6 @@
 """Pretrain GPT2"""
 
 # Flag to use Pytorch ddp which uses overlapping communication and computation.
-USE_TORCH_DDP = True
-
 from datetime import datetime
 import os
 import random
@@ -29,17 +27,14 @@ import torch
 import deepspeed
 from contextlib import ExitStack
 from arguments import get_args
-from configure_data import configure_data
+from configure_data import configure_data, prepare_tokenizer
 from fp16 import FP16_Module
 from fp16 import FP16_Optimizer
 from learning_rates import AnnealingLR
-from model import GPT2Model
+from model import GPT2Model, MultipleChoice
 from model import gpt2_get_params_for_weight_decay_optimization
-
-if USE_TORCH_DDP:
-    from model import PyTorchDistributedDataParallel as DDP
-else:
-    from model import DistributedDataParallel as DDP
+from model import PyTorchDistributedDataParallel as TorchDDP
+from model import DistributedDataParallel as LocalDDP
 import mpu
 from apex.optimizers import FusedAdam as Adam
 from utils import Timers
@@ -52,10 +47,8 @@ from utils import print_rank_0
 from utils import get_sample_writer
 import torch.distributed as dist
 
-from gpt2_data_loader import make_gpt2_dataloaders
 
-
-def get_model(args):
+def get_model(args, model_type=None):
     """Build the model."""
 
     print_rank_0('building GPT2 model ...')
@@ -75,6 +68,12 @@ def get_model(args):
                       type_encoding=args.block_lm and args.no_block_position,
                       block_position_encoding=args.block_lm and not args.no_block_position)
 
+    if model_type is not None:
+        if model_type == 'multiple_choice':
+            model = MultipleChoice(model, args.hidden_size, args.output_dropout, 0.02)
+        else:
+            raise NotImplementedError(model_type)
+
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(
             mpu.get_model_parallel_rank(),
@@ -93,19 +92,19 @@ def get_model(args):
 
     # Wrap model for distributed training.
     if not args.deepspeed:
-        if USE_TORCH_DDP:
+        if args.DDP_impl == 'torch':
             i = torch.cuda.current_device()
-            model = DDP(model, device_ids=[i], output_device=i,
-                        process_group=mpu.get_data_parallel_group())
+            model = TorchDDP(model, device_ids=[i], output_device=i,
+                             process_group=mpu.get_data_parallel_group())
         else:
-            model = DDP(model)
+            model = LocalDDP(model)
 
     return model
 
 
 def get_optimizer_param_groups(model):
     # Build parameter groups (weight decay and non-decay).
-    while isinstance(model, (DDP, FP16_Module)):
+    while isinstance(model, (LocalDDP, TorchDDP, FP16_Module)):
         model = model.module
     param_groups = gpt2_get_params_for_weight_decay_optimization(model)
 
@@ -176,13 +175,13 @@ def get_learning_rate_scheduler(optimizer, args):
     return lr_scheduler
 
 
-def setup_model_and_optimizer(args):
+def setup_model_and_optimizer(args, model_type=None):
     """Setup model and optimizer."""
 
     model = get_model(args)
     param_groups = get_optimizer_param_groups(model)
 
-    if args.train_data is not None:
+    if args.train_data is not None or args.train_data_path is not None:
         if args.deepspeed:
             print_rank_0("DeepSpeed is enabled.")
 
@@ -333,6 +332,7 @@ def get_batch(data_iterator, args, timers):
 
     return tokens, labels, loss_mask, attention_mask, position_ids
 
+
 # tokenizer = None
 
 
@@ -413,7 +413,7 @@ def backward_step(optimizer, model, lm_loss, args, timers):
     else:
         torch.distributed.all_reduce(reduced_losses.data)
         reduced_losses.data = reduced_losses.data / args.world_size
-        if not USE_TORCH_DDP:
+        if not args.DDP_impl == 'torch':
             timers('allreduce').start()
             model.allreduce_params(reduce_after=False,
                                    fp32_allreduce=args.fp32_allreduce)
@@ -450,20 +450,23 @@ def see_memory_usage(message, force=False):
         # input("Press Any Key To Continue ..")
 
 
-def train_step(data_iterator, model, optimizer, lr_scheduler,
-               args, timers, mems):
+def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, mems=None, forward_step_func=None):
     """Single training step."""
+    if forward_step_func is not None:
+        forward_step_func = forward_step
+    lm_loss_total, count = 0.0, 0
     while True:
         # Forward model for one step.
         timers('forward').start()
-        lm_loss, mems, _ = forward_step(data_iterator, model, args, timers, mems)
+        lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
         timers('forward').stop()
 
         # print_rank_0("loss is {}".format(lm_loss))
 
         # Calculate gradients, reduce across processes, and clip.
         timers('backward').start()
-        lm_loss_reduced = backward_step(optimizer, model, lm_loss, args, timers)
+        lm_loss_total += backward_step(optimizer, model, lm_loss, args, timers)
+        count += 1
         timers('backward').stop()
 
         # Update parameters.
@@ -490,7 +493,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler,
         timers('optimizer').stop()
         if complete:
             break
-    return lm_loss_reduced, skipped_iter, mems
+    return lm_loss_total / count, skipped_iter, mems
 
 
 def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
@@ -569,7 +572,7 @@ def train(model, optimizer, lr_scheduler,
             if report_memory_flag:
                 report_memory('after {} iterations'.format(args.iteration))
                 report_memory_flag = False
-            if USE_TORCH_DDP:
+            if args.deepspeed or args.DDP_impl == 'torch':
                 timers.log(['forward', 'backward', 'optimizer',
                             'batch generator', 'data loader'],
                            normalizer=args.log_interval)
@@ -587,14 +590,6 @@ def train(model, optimizer, lr_scheduler,
             evaluate_and_print_results(
                 prefix, val_data_iterator, model, args, timers, False, step=args.iteration,
                 summary_writer=summary_writer)
-
-        if args.exit_interval and args.iteration % args.exit_interval == 0:
-            torch.distributed.barrier()
-            time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            rank = torch.distributed.get_rank()
-            print('rank: {} | time: {} | exiting the program at iteration {}'.
-                  format(rank, time_str, args.iteration), flush=True)
-            exit()
 
     return args.iteration, skipped_iters
 
@@ -717,50 +712,30 @@ def set_random_seed(seed):
         mpu.model_parallel_cuda_manual_seed(seed)
 
 
-def get_train_val_test_data(args):
+def get_train_val_test_data(args, tokenizer):
     """Load the data on rank zero and boradcast number of tokens to all GPUS."""
 
     (train_data, val_data, test_data) = (None, None, None)
     # global tokenizer
     # Data loader only on rank 0 of each model parallel group.
     if mpu.get_model_parallel_rank() == 0:
-        if args.use_npy_data_loader:
-            (train_data, val_data, test_data), num_tokens, \
-            eod_token = make_gpt2_dataloaders(args)
-        else:
-            data_config = configure_data()
-            data_config.set_defaults(data_set_type='Block' if args.block_lm else 'GPT2', transpose=False)
-            (train_data, val_data, test_data), tokenizer = data_config.apply(
-                args)
-            num_tokens = tokenizer.num_tokens
-            eod_token = tokenizer.get_command('eos').Id
-            assert eod_token == tokenizer.get_command('pad').Id
-        before = num_tokens
-        after = before
-        multiple = args.make_vocab_size_divisible_by * \
-                   mpu.get_model_parallel_world_size()
-        while (after % multiple) != 0:
-            after += 1
-        print_rank_0('> padded vocab (size: {}) with {} dummy '
-                     'tokens (new size: {})'.format(
-            before, after - before, after))
-        print_rank_0('> found end-of-document token: {}'.format(eod_token))
-        token_counts = torch.cuda.LongTensor(
-            [after, eod_token, int(args.do_train), int(args.do_valid), int(args.do_test)])
+        data_config = configure_data()
+        data_config.set_defaults(data_set_type='Block' if args.block_lm else 'GPT2', transpose=False)
+        (train_data, val_data, test_data) = data_config.apply(args, tokenizer)
+
+        data_counts = torch.cuda.LongTensor([int(args.do_train), int(args.do_valid), int(args.do_test)])
     else:
-        token_counts = torch.cuda.LongTensor([0, 0, 0, 0, 0])
+        data_counts = torch.cuda.LongTensor([0, 0, 0])
 
     # Broadcast num tokens.
-    torch.distributed.broadcast(token_counts,
+    torch.distributed.broadcast(data_counts,
                                 mpu.get_model_parallel_src_rank(),
                                 group=mpu.get_model_parallel_group())
-    num_tokens = token_counts[0].item()
-    eod_token = token_counts[1].item()
-    args.do_train = token_counts[2].item()
-    args.do_valid = token_counts[3].item()
-    args.do_test = token_counts[4].item()
+    args.do_train = data_counts[0].item()
+    args.do_valid = data_counts[1].item()
+    args.do_test = data_counts[2].item()
 
-    return train_data, val_data, test_data, num_tokens, eod_token
+    return train_data, val_data, test_data
 
 
 def main():
@@ -787,8 +762,8 @@ def main():
     set_random_seed(args.seed)
 
     # Data stuff.
-    train_data, val_data, test_data, args.vocab_size, \
-    args.eod_token = get_train_val_test_data(args)
+    tokenizer = prepare_tokenizer(args)
+    train_data, val_data, test_data, = get_train_val_test_data(args, tokenizer)
 
     # Model, optimizer, and learning rate.
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)

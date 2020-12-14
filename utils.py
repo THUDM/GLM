@@ -286,7 +286,7 @@ def get_checkpoint_iteration(args):
     return args.load, iteration, release, True
 
 
-def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=True):
+def load_checkpoint(model, optimizer, lr_scheduler, args):
     """Load a model checkpoint."""
 
     load_dir, iteration, release, success = get_checkpoint_iteration(args)
@@ -296,7 +296,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
 
     if args.deepspeed:
 
-        checkpoint_name, sd = model.load_checkpoint(load_dir, iteration, load_optimizer_states=not args.no_load_optim)
+        checkpoint_name, sd = model.load_checkpoint(load_dir, iteration, load_optimizer_states=not args.no_load_optim,
+                                                    load_lr_scheduler_states=not args.no_load_optim)
         if "client_lr_scheduler" in sd:
             lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
             print_rank_0("Load lr scheduler state")
@@ -331,7 +332,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, load_optimizer_states=
         # Optimizer.
         if not release and not args.finetune and not args.no_load_optim:
             try:
-                if optimizer is not None and load_optimizer_states:
+                if optimizer is not None:
                     optimizer.load_state_dict(sd['optimizer'])
                 if lr_scheduler is not None:
                     lr_scheduler.load_state_dict(sd['lr_scheduler'])

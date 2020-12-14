@@ -20,6 +20,8 @@ import torch
 import torch.utils.data
 import data_utils
 from blocklm_utils import ConstructBlockStrategy
+from data_utils.tokenization import make_tokenizer
+from utils import print_rank_0
 
 import mpu
 
@@ -30,11 +32,11 @@ class DataConfig:
         super(DataConfig, self).__init__()
         self.defaults = defaults
 
-    def apply(self, args):
+    def apply(self, args, tokenizer):
         if torch.distributed.get_rank() == 0:
             print('configuring data')
         self.apply_defaults(args)
-        return make_loaders(args)
+        return make_loaders(args, tokenizer)
 
     def set_defaults(self, **kwargs):
         for k, v in kwargs.items():
@@ -45,6 +47,35 @@ class DataConfig:
             k = k.replace('-', '_')
             if not hasattr(args, k):
                 setattr(args, k, v)
+
+
+def prepare_tokenizer(args):
+    tokenizer = make_tokenizer(args.tokenizer_type, None, args.tokenizer_path, args.vocab_size,
+                               args.tokenizer_model_type, add_block_symbols=args.block_lm, cache_dir=args.cache_dir)
+    if mpu.get_model_parallel_rank() == 0:
+        num_tokens = tokenizer.num_tokens
+        eod_token = tokenizer.get_command('eos').Id
+        assert eod_token == tokenizer.get_command('pad').Id
+        before = num_tokens
+        after = before
+        multiple = args.make_vocab_size_divisible_by * \
+                   mpu.get_model_parallel_world_size()
+        while (after % multiple) != 0:
+            after += 1
+        print_rank_0('> padded vocab (size: {}) with {} dummy '
+                     'tokens (new size: {})'.format(before, after - before, after))
+        print_rank_0('> found end-of-document token: {}'.format(eod_token))
+        token_counts = torch.cuda.LongTensor([after, eod_token])
+    else:
+        token_counts = torch.cuda.LongTensor([0, 0])
+    # Broadcast num tokens.
+    torch.distributed.broadcast(token_counts,
+                                mpu.get_model_parallel_src_rank(),
+                                group=mpu.get_model_parallel_group())
+    num_tokens = token_counts[0].item()
+    eod_token = token_counts[1].item()
+    args.vocab_size, args.eod_token = num_tokens, eod_token
+    return tokenizer
 
 
 def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
@@ -126,7 +157,7 @@ def make_tfrecord_loaders(args):
     return (train, valid, test), tokenizer
 
 
-def make_loaders(args):
+def make_loaders(args, tokenizer):
     """makes training/val/test"""
 
     if args.use_tfrecords:
@@ -158,15 +189,11 @@ def make_loaders(args):
         'ds_type': args.data_set_type,
         'split': split,
         'loose': args.loose_json,
-        'tokenizer_type': args.tokenizer_type,
-        'tokenizer_model_path': args.tokenizer_path,
-        'vocab_size': args.vocab_size,
-        'model_type': args.tokenizer_model_type,
-        'cache_dir': args.cache_dir,
         'max_preds_per_seq': args.max_preds_per_seq,
         'presplit_sentences': args.presplit_sentences,
         'sample_one_document': args.sample_one_document,
-        'pre_tokenize': not args.not_pre_tokenize
+        'pre_tokenize': not args.not_pre_tokenize,
+        'tokenizer': tokenizer
     }
 
     eval_set_args = copy.copy(data_set_args)
@@ -181,7 +208,7 @@ def make_loaders(args):
         eval_set_args['text_key'] = args.eval_text_key
 
     # make datasets splits and tokenizer
-    train, valid, test, tokenizer = None, None, None, None
+    train, valid, test = None, None, None
 
     if args.train_data is not None:
         train, tokenizer = data_utils.make_dataset(**data_set_args)

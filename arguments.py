@@ -106,8 +106,11 @@ def add_training_args(parser):
 
     group.add_argument('--experiment-name', type=str, default="gpt-345M",
                        help="The experiment name for summary and checkpoint")
+    group.add_argument('--task', type=str, help='Task name.')
     group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
     group.add_argument('--batch-size', type=int, default=4,
+                       help='Data Loader batch size')
+    group.add_argument('--gradient-accumulation-steps', type=int, default=1,
                        help='Data Loader batch size')
     group.add_argument('--weight-decay', type=float, default=0.01,
                        help='weight decay coefficient for L2 regularization')
@@ -118,17 +121,16 @@ def add_training_args(parser):
                        help='chunk size (number of layers) for checkpointing')
     group.add_argument('--deepspeed-activation-checkpointing', action='store_true',
                        help='uses activation checkpointing from deepspeed')
+    group.add_argument('--epochs', type=int, default=None,
+                       help='Number of finetunning epochs. Zero results in evaluation only.')
     group.add_argument('--clip-grad', type=float, default=1.0,
                        help='gradient clipping')
     group.add_argument('--train-iters', type=int, default=1000000,
                        help='total number of iterations to train over all training runs')
     group.add_argument('--log-interval', type=int, default=100,
                        help='report interval')
-    group.add_argument('--exit-interval', type=int, default=None,
-                       help='Exit the program after this many new iterations.')
     group.add_argument('--summary-dir', type=str, default="", help="The directory to store the summary")
-    group.add_argument('--seed', type=int, default=1234,
-                       help='random seed')
+    group.add_argument('--seed', type=int, default=1234, help='random seed')
     # Batch prodecuer arguments
     group.add_argument('--reset-position-ids', action='store_true',
                        help='Reset posistion ids after end-of-document token.')
@@ -174,8 +176,10 @@ def add_training_args(parser):
                             'with a different seed in this case.')
     # distributed training args
     group.add_argument('--distributed-backend', default='nccl',
-                       help='which backend to use for distributed '
-                            'training. One of [gloo, nccl]')
+                       help='which backend to use for distributed training. One of [gloo, nccl]',
+                       choices=['nccl', 'gloo'])
+    group.add_argument('--DDP-impl', default='torch', choices=['local', 'torch'],
+                       help='which DistributedDataParallel implementation to use.')
 
     group.add_argument('--local_rank', type=int, default=None,
                        help='local rank passed from distributed launcher')
