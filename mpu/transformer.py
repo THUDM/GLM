@@ -640,7 +640,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
         if self.max_memory_length > 0:
             mem_layers = self.update_mems(mem_layers, mems)
 
-        return (output, *mem_layers)
+        return output, *mem_layers
 
     def update_mems(self, hiddens, mems):
         memory_length = mems[0].size(1) if mems else 0

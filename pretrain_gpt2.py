@@ -50,7 +50,9 @@ import torch.distributed as dist
 
 def get_model(args, model_type=None):
     """Build the model."""
-
+    output_predict = True
+    if model_type == "multiple_choice":
+        output_predict = False
     print_rank_0('building GPT2 model ...')
     model = GPT2Model(num_layers=args.num_layers,
                       vocab_size=args.vocab_size,
@@ -66,11 +68,12 @@ def get_model(args, model_type=None):
                       parallel_output=True,
                       relative_encoding=args.transformer_xl,
                       type_encoding=args.block_lm and args.no_block_position,
-                      block_position_encoding=args.block_lm and not args.no_block_position)
+                      block_position_encoding=args.block_lm and not args.no_block_position,
+                      output_predict=output_predict)
 
     if model_type is not None:
         if model_type == 'multiple_choice':
-            model = MultipleChoice(model, args.hidden_size, args.output_dropout, 0.02)
+            model = MultipleChoice(model, args.hidden_size, args.hidden_dropout)
         else:
             raise NotImplementedError(model_type)
 
@@ -178,7 +181,7 @@ def get_learning_rate_scheduler(optimizer, args):
 def setup_model_and_optimizer(args, model_type=None):
     """Setup model and optimizer."""
 
-    model = get_model(args)
+    model = get_model(args, model_type=model_type)
     param_groups = get_optimizer_param_groups(model)
 
     if args.train_data is not None or args.train_data_path is not None:
@@ -451,7 +454,7 @@ def see_memory_usage(message, force=False):
 
 def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, mems=None, forward_step_func=None):
     """Single training step."""
-    if forward_step_func is not None:
+    if forward_step_func is None:
         forward_step_func = forward_step
     lm_loss_total, count = 0.0, 0
     while True:

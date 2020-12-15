@@ -27,8 +27,10 @@ def init_method_normal(std=0.02):
     This is only used for embeddings. The transformer has its
     own initializer.
     """
+
     def init_(tensor):
         return torch.nn.init.normal_(tensor, mean=0.0, std=std)
+
     return init_
 
 
@@ -54,11 +56,13 @@ class GPT2Model(torch.nn.Module):
                  parallel_output=True,
                  relative_encoding=False,
                  type_encoding=False,
-                 block_position_encoding=False):
-
+                 block_position_encoding=False,
+                 output_predict=True
+                 ):
         super(GPT2Model, self).__init__()
 
         self.parallel_output = parallel_output
+        self.output_predict = output_predict
 
         init_method = init_method_normal(std=0.02)
 
@@ -82,7 +86,6 @@ class GPT2Model(torch.nn.Module):
                                                        block_position_encoding=block_position_encoding)
 
     def forward(self, input_ids, position_ids, attention_mask, *mems):
-
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
         embeddings = words_embeddings
@@ -90,20 +93,22 @@ class GPT2Model(torch.nn.Module):
         # Transformer.
         transformer_output = self.transformer(embeddings, position_ids, attention_mask, *mems)
         logits, *hidden_layers = transformer_output
-        # Parallel logits.
-        logits_parallel = mpu.copy_to_model_parallel_region(
-            logits)
-        logits_parallel = F.linear(logits_parallel,
+        if self.output_predict:
+            # Parallel logits.
+            logits_parallel = mpu.copy_to_model_parallel_region(
+                logits)
+            logits_parallel = F.linear(logits_parallel,
                                    self.word_embeddings.weight)
 
-        if self.parallel_output:
-            return (logits_parallel, *hidden_layers)
+            if self.parallel_output:
+                return (logits_parallel, *hidden_layers)
 
-        return (mpu.gather_from_model_parallel_region(logits_parallel), *hidden_layers)
+            return (mpu.gather_from_model_parallel_region(logits_parallel), *hidden_layers)
+        else:
+            return logits, *hidden_layers
 
 
 def gpt2_get_params_for_weight_decay_optimization(module):
-
     weight_decay_params = {'params': []}
     no_weight_decay_params = {'params': [], 'weight_decay': 0.0}
     for module_ in module.modules():

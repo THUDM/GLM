@@ -24,8 +24,8 @@ from tasks.race.dataset import RaceDataset
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = RaceDataset('training', args.train_data_path, tokenizer, args.seq_length)
-    valid_dataset = RaceDataset('validation', args.valid_data_path, tokenizer, args.seq_length)
+    train_dataset = RaceDataset('training', args.train_data, tokenizer, args.seq_length)
+    valid_dataset = RaceDataset('validation', args.valid_data, tokenizer, args.seq_length)
 
     return train_dataset, valid_dataset
 
@@ -41,5 +41,5 @@ def metrics_func_provider(args, tokenizer):
 
 
 def main(args):
-    finetune(args, train_valid_datasets_provider, "multi_choice",
+    finetune(args, train_valid_datasets_provider, "multiple_choice",
              end_of_epoch_callback_provider=metrics_func_provider)

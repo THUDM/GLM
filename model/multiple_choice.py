@@ -19,12 +19,13 @@ import torch
 import torch.nn
 
 from utils import print_rank_0
-from modeling import bert_extended_attention_mask
+from .modeling import bert_extended_attention_mask
+from .gpt2_modeling import init_method_normal
 
 
 class MultipleChoice(torch.nn.Module):
 
-    def __init__(self, language_model, hidden_size, hidden_dropout, init_method_std):
+    def __init__(self, language_model, hidden_size, hidden_dropout):
         super(MultipleChoice, self).__init__()
 
         self.model = language_model
@@ -41,21 +42,21 @@ class MultipleChoice(torch.nn.Module):
 
         # Ensure the shape is [batch-size, choices, sequence]
         assert len(input_ids.shape) == 3
-        assert len(position_ids.shape) == 3
+        assert len(position_ids.shape) == 4
         assert len(attention_mask.shape) == 3
 
         # Reshape and treat choice dimension the same as batch.
         num_choices = input_ids.shape[1]
         input_ids = input_ids.view(-1, input_ids.size(-1))
         attention_mask = attention_mask.view(-1, attention_mask.size(-1))
-        position_ids = position_ids.view(-1, position_ids.size(-1))
+        position_ids = position_ids.view(-1, *position_ids.size()[2:])
 
         extended_attention_mask = bert_extended_attention_mask(attention_mask)
 
-        outputs = self.model(input_ids, position_ids, extended_attention_mask)
-
+        outputs, *mems = self.model(input_ids, position_ids, extended_attention_mask)
         # Output.
-        avg_output = (outputs * attention_mask.unsqueeze(-1)).sum(dim=1) / attention_mask.sum(dim=-1)
+        attention_mask = attention_mask.unsqueeze(-1)
+        avg_output = (outputs * attention_mask).sum(dim=1) / attention_mask.sum(dim=-2)
         pooled_output = torch.tanh(self.pool_layer(avg_output))
         multichoice_output = self.multichoice_dropout(pooled_output)
         multichoice_logits = self.multichoice_head(multichoice_output)
@@ -63,4 +64,4 @@ class MultipleChoice(torch.nn.Module):
         # Reshape back to separate choices.
         multichoice_logits = multichoice_logits.view(-1, num_choices)
 
-        return multichoice_logits
+        return multichoice_logits, *mems

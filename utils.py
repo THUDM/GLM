@@ -24,7 +24,6 @@ import torch
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from fp16 import FP16_Optimizer
 import mpu
-import model
 from tensorboardX import SummaryWriter
 
 SUMMARY_WRITER_DIR_NAME = 'runs'

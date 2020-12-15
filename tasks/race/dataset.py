@@ -75,7 +75,7 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
 
                 # Context: clean up and convert to ids.
                 context = clean_text(context)
-                context_ids = tokenizer.EncodeAsIds(context)
+                context_ids = tokenizer.EncodeAsIds(context).tokenization
 
                 # Loop over questions.
                 for qi, question in enumerate(questions):
@@ -101,7 +101,7 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
                         qa = clean_text(qa)
                         qa = "Question: " + qa
                         # Tokenize.
-                        qa_ids = tokenizer.EncodeAsIds(qa)
+                        qa_ids = tokenizer.EncodeAsIds(qa).tokenization
                         # Trim if needed.
                         if len(qa_ids) > max_qa_length:
                             qa_ids = qa_ids[0:max_qa_length]

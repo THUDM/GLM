@@ -32,6 +32,9 @@ from pretrain_gpt2 import evaluate_and_print_results
 from pretrain_gpt2 import train_step
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
+from model import PyTorchDistributedDataParallel as TorchDDP
+from model import DistributedDataParallel as LocalDDP
+from fp16 import FP16_Module
 
 
 def process_batch(batch, args):
@@ -43,12 +46,14 @@ def process_batch(batch, args):
     if args.fp16:
         attention_mask = attention_mask.half()
     position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
+    block_position_ids = tokens.new_zeros(tokens.size(-1)).unsqueeze(0).unsqueeze(0).expand_as(tokens)
     position_ids = position_ids.unsqueeze(0).unsqueeze(0).expand_as(tokens)
+    position_ids = torch.stack((position_ids, block_position_ids), dim=2)
 
-    return tokens, types, labels, attention_mask
+    return tokens, types, labels, position_ids, attention_mask
 
 
-def cross_entropy_forward_step(batch, model, args, timers):
+def cross_entropy_forward_step(batch, model, args, timers, mems):
     """Simple forward step with cross-entropy loss."""
     # Get the batch.
     timers('batch generator').start()
@@ -56,11 +61,11 @@ def cross_entropy_forward_step(batch, model, args, timers):
         batch_ = next(batch)
     except BaseException:
         batch_ = batch
-    tokens, types, labels, attention_mask = process_batch(batch_, args)
+    tokens, types, labels, position_ids, attention_mask = process_batch(batch_, args)
     timers('batch generator').stop()
 
     # Forward model.
-    logits, *mems = model(tokens, attention_mask, types)
+    logits, *mems = model(tokens, position_ids, attention_mask)
 
     # Cross-entropy loss.
     loss_func = torch.nn.CrossEntropyLoss()
@@ -114,7 +119,7 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
     # Validation dataset. For this dataset, we do not need to set up
     # shuffling so we can just use a simple infinite loop.
     valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
-                                          args.num_workers, not args.keep_last)
+                                          args.num_workers, False)
     valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
 
     return train_dataloader, valid_dataloader
@@ -128,8 +133,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     model.train()
 
     # Tracking loss.
-    losses_dict_sum = {}
-
+    args.iteration = 0
+    total_lm_loss = 0.0
     # Starting epoch and iteration
     start_epoch = args.iteration // args.train_iters_per_epoch
     start_iteration = args.iteration % args.train_iters_per_epoch
@@ -155,6 +160,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             lm_loss, skipped_iter, _ = train_step(batch, model, optimizer, lr_scheduler, args, timers,
                                                   forward_step_func=forward_step)
             args.iteration += 1
+            total_lm_loss += lm_loss.data.detach().float()
 
             # Logging.
             if args.iteration % args.log_interval == 0:
@@ -173,8 +179,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             # Evaluation
             if args.eval_interval and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
-                evaluate_and_print_results(prefix, valid_dataloader, model,
-                                           args.iteration, timers, False, forward_step_func=cross_entropy_forward_step)
+                evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, False,
+                                           forward_step_func=cross_entropy_forward_step)
 
         # Checkpointing at the end of each epoch.
         if args.save:
@@ -204,7 +210,7 @@ def finetune(args, train_valid_datasets_provider, model_type,
     timers('callback function').start()
     end_of_epoch_callback = None
     if end_of_epoch_callback_provider is not None:
-        end_of_epoch_callback = end_of_epoch_callback_provider()
+        end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer)
     timers('callback function').stop()
 
     # Build model, optimizer and learning rate scheduler.
@@ -217,7 +223,12 @@ def finetune(args, train_valid_datasets_provider, model_type,
     # checkpoint.
     timers('pretrained checkpoint').start()
     if args.load is not None:
-        load_checkpoint(model, optimizer, lr_scheduler, args)
+        module = model
+        if isinstance(module, (LocalDDP, TorchDDP)):
+            module = module.module
+        if isinstance(module, FP16_Module):
+            module = module.module
+        load_checkpoint(module.model, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:
@@ -249,6 +260,7 @@ if __name__ == '__main__':
 
     # Arguments.
     args = get_args()
+    assert args.finetune
 
     # Pytorch distributed.
     initialize_distributed(args)
