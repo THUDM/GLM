@@ -1,4 +1,3 @@
-
 import glob
 import json
 import os
@@ -10,7 +9,6 @@ from utils import print_rank_0
 from tasks.data_utils import build_sample
 from tasks.data_utils import build_tokens_types_paddings_from_ids
 from tasks.data_utils import clean_text
-
 
 NUM_CHOICES = 4
 MAX_QA_LENGTH = 128
@@ -77,7 +75,7 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
 
                 # Context: clean up and convert to ids.
                 context = clean_text(context)
-                context_ids = tokenizer.tokenize(context)
+                context_ids = tokenizer.EncodeAsIds(context)
 
                 # Loop over questions.
                 for qi, question in enumerate(questions):
@@ -101,17 +99,18 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
                             qa = " ".join([question, choice])
                         # Clean QA.
                         qa = clean_text(qa)
+                        qa = "Question: " + qa
                         # Tokenize.
-                        qa_ids = tokenizer.tokenize(qa)
+                        qa_ids = tokenizer.EncodeAsIds(qa)
                         # Trim if needed.
                         if len(qa_ids) > max_qa_length:
                             qa_ids = qa_ids[0:max_qa_length]
 
+                        input_ids = context_ids + qa_ids
                         # Build the sample.
                         ids, types, paddings \
-                            = build_tokens_types_paddings_from_ids(
-                                qa_ids, context_ids, max_seq_length,
-                                tokenizer.cls, tokenizer.sep, tokenizer.pad)
+                            = build_tokens_types_paddings_from_ids(input_ids, None, max_seq_length, cls_id=None,
+                                                                   sep_id=None, pad_id=tokenizer.get_command('pad').Id)
 
                         ids_list.append(ids)
                         types_list.append(types)

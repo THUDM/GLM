@@ -18,7 +18,7 @@
 from utils import print_rank_0
 from model.multiple_choice import MultipleChoice
 from tasks.eval_utils import accuracy_func_provider
-from tasks.finetune_utils import finetune
+from finetune_gpt2 import finetune
 from tasks.race.dataset import RaceDataset
 
 
@@ -30,14 +30,6 @@ def train_valid_datasets_provider(args, tokenizer):
     return train_dataset, valid_dataset
 
 
-def model_provider():
-    """Build the model."""
-
-    print_rank_0('building multichoice model for RACE ...')
-
-    return MultipleChoice(num_tokentypes=2)
-
-
 def metrics_func_provider(args, tokenizer):
     """Privde metrics callback function."""
 
@@ -45,9 +37,9 @@ def metrics_func_provider(args, tokenizer):
         name = datapath.split('RACE')[-1].strip('/').replace('/', '-')
         return RaceDataset(name, [datapath], tokenizer, args.seq_length)
 
-    return accuracy_func_provider(single_dataset_provider)
+    return accuracy_func_provider(single_dataset_provider, args)
 
 
 def main(args):
-    finetune(args, train_valid_datasets_provider, model_provider,
+    finetune(args, train_valid_datasets_provider, "multi_choice",
              end_of_epoch_callback_provider=metrics_func_provider)

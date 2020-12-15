@@ -405,21 +405,20 @@ def backward_step(optimizer, model, lm_loss, args, timers):
             loss.backward()
 
     reduced_losses = lm_loss.view(1)
+    torch.distributed.all_reduce(reduced_losses.data)
+    reduced_losses.data = reduced_losses.data / args.world_size
+    lm_loss_reduced = reduced_losses
 
     if args.deepspeed:
         # DeepSpeed backward propagation already addressed all reduce communication.
         # Reset the timer to avoid breaking timer logs below.
         timers('allreduce').reset()
     else:
-        torch.distributed.all_reduce(reduced_losses.data)
-        reduced_losses.data = reduced_losses.data / args.world_size
         if not args.DDP_impl == 'torch':
             timers('allreduce').start()
             model.allreduce_params(reduce_after=False,
                                    fp32_allreduce=args.fp32_allreduce)
             timers('allreduce').stop()
-
-    lm_loss_reduced = reduced_losses
 
     # Update master gradients.
     if not args.deepspeed:
@@ -594,9 +593,10 @@ def train(model, optimizer, lr_scheduler,
     return args.iteration, skipped_iters
 
 
-def evaluate(data_iterator, model, args, timers, verbose=False):
+def evaluate(data_iterator, model, args, timers, verbose=False, forward_step_func=None):
     """Evaluation."""
-
+    if forward_step_func is None:
+        forward_step_func = forward_step
     # Turn on evaluation mode which disables dropout.
     model.eval()
 
@@ -610,7 +610,7 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
             if verbose and iteration % args.log_interval == 0:
                 print_rank_0('Evaluating iter {}/{}'.format(iteration, args.eval_iters))
             # Forward evaluation.
-            lm_loss, mems, mode = forward_step(data_iterator, model, args, timers, mems=mems)
+            lm_loss, mems, mode = forward_step_func(data_iterator, model, args, timers, mems=mems)
 
             '''when contiguous memory optimizations are enabled, the buffers
             allocated by the optimizations are deallocated during backward pass
@@ -642,9 +642,10 @@ def evaluate(data_iterator, model, args, timers, verbose=False):
 
 
 def evaluate_and_print_results(prefix, data_iterator, model,
-                               args, timers, verbose=False, step=None, summary_writer=None):
+                               args, timers, verbose=False, step=None, summary_writer=None, forward_step_func=None):
     """Helper function to evaluate and dump results on screen."""
-    lm_loss, gpt_loss, bert_loss = evaluate(data_iterator, model, args, timers, verbose)
+    lm_loss, gpt_loss, bert_loss = evaluate(data_iterator, model, args, timers, verbose,
+                                            forward_step_func=forward_step_func)
 
     lm_ppl = math.exp(min(20, lm_loss))
     report_evaluate_metrics(summary_writer, prefix, lm_loss, lm_ppl, gpt_loss, bert_loss, step)

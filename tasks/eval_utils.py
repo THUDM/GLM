@@ -21,15 +21,13 @@ import time
 import torch
 
 from utils import print_rank_0
-from megatron import mpu
-from tasks.finetune_utils import build_data_loader
-from tasks.finetune_utils import process_batch
+import mpu
+from finetune_gpt2 import build_data_loader
+from finetune_gpt2 import process_batch
 
 
-def accuracy_func_provider(single_dataset_provider):
+def accuracy_func_provider(single_dataset_provider, args):
     """Provide function that calculates accuracies."""
-    args = get_args()
-
     # Build dataloaders.
     datapaths = args.valid_data
     dataloaders = []
@@ -71,8 +69,7 @@ def accuracy_func_provider(single_dataset_provider):
     return metrics_func
 
 
-def calculate_correct_answers(name, model, dataloader,
-                              epoch, output_predictions):
+def calculate_correct_answers(name, model, dataloader, epoch, output_predictions, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
 
@@ -90,7 +87,7 @@ def calculate_correct_answers(name, model, dataloader,
             ids = []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
-            tokens, types, labels_, attention_mask = process_batch(batch)
+            tokens, types, labels_, attention_mask = process_batch(batch, args)
             logits = model(tokens, attention_mask, types)
             # Add output predictions.
             if output_predictions:
@@ -117,9 +114,8 @@ def calculate_correct_answers(name, model, dataloader,
     percent = float(correct_ans) * 100.0 / float(total_count)
     elapsed_time = time.time() - start_time
     print_rank_0(' > |epoch: {}| metrics for {}: correct / total '
-                 '= {} / {} = {:.4f} %, elapsed time (sec): {:.3f}'.format(
-                     epoch, name, correct_ans, total_count,
-                     percent, elapsed_time))
+                 '= {} / {} = {:.4f} %, elapsed time (sec): {:.3f}'.format(epoch, name, correct_ans, total_count,
+                                                                           percent, elapsed_time))
 
     if output_predictions:
         return correct_ans, total_count, (softmaxes, labels, ids)

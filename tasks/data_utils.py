@@ -60,7 +60,7 @@ def build_tokens_types_paddings_from_text(text_a, text_b,
 
 
 def build_tokens_types_paddings_from_ids(text_a_ids, text_b_ids, max_seq_length,
-                                         cls_id, sep_id, pad_id):
+                                         cls_id=None, sep_id=None, pad_id=None):
     """Build token types and paddings, trim if needed, and pad if needed."""
 
     ids = []
@@ -68,9 +68,10 @@ def build_tokens_types_paddings_from_ids(text_a_ids, text_b_ids, max_seq_length,
     paddings = []
 
     # [CLS].
-    ids.append(cls_id)
-    types.append(0)
-    paddings.append(1)
+    if cls_id is not None:
+        ids.append(cls_id)
+        types.append(0)
+        paddings.append(1)
 
     # A.
     len_text_a = len(text_a_ids)
@@ -79,9 +80,10 @@ def build_tokens_types_paddings_from_ids(text_a_ids, text_b_ids, max_seq_length,
     paddings.extend([1] * len_text_a)
 
     # [SEP].
-    ids.append(sep_id)
-    types.append(0)
-    paddings.append(1)
+    if sep_id is not None:
+        ids.append(sep_id)
+        types.append(0)
+        paddings.append(1)
 
     # B.
     if text_b_ids is not None:
@@ -100,7 +102,7 @@ def build_tokens_types_paddings_from_ids(text_a_ids, text_b_ids, max_seq_length,
         trimmed = True
 
     # [SEP].
-    if (text_b_ids is not None) or trimmed:
+    if sep_id is not None and ((text_b_ids is not None) or trimmed):
         ids.append(sep_id)
         if text_b_ids is None:
             types.append(0)

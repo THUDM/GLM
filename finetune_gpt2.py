@@ -1,3 +1,7 @@
+import os
+import sys
+from arguments import get_args
+
 # coding=utf-8
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -23,11 +27,11 @@ from utils import Timers
 import mpu
 from pretrain_gpt2 import setup_model_and_optimizer
 from utils import load_checkpoint, save_checkpoint
-from megatron.training import evaluate_and_print_results
-from megatron.training import train_step
-from megatron.training import training_log
-from megatron.utils import check_adlr_autoresume_termination
-from megatron.utils import reduce_losses
+from pretrain_gpt2 import report_iteration_metrics
+from pretrain_gpt2 import evaluate_and_print_results
+from pretrain_gpt2 import train_step
+from pretrain_gpt2 import initialize_distributed
+from pretrain_gpt2 import set_random_seed
 
 
 def process_batch(batch, args):
@@ -38,11 +42,13 @@ def process_batch(batch, args):
     attention_mask = batch['padding_mask'].float().cuda().contiguous()
     if args.fp16:
         attention_mask = attention_mask.half()
+    position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
+    position_ids = position_ids.unsqueeze(0).unsqueeze(0).expand_as(tokens)
 
     return tokens, types, labels, attention_mask
 
 
-def _cross_entropy_forward_step(batch, model, args, timers):
+def cross_entropy_forward_step(batch, model, args, timers):
     """Simple forward step with cross-entropy loss."""
     # Get the batch.
     timers('batch generator').start()
@@ -54,16 +60,15 @@ def _cross_entropy_forward_step(batch, model, args, timers):
     timers('batch generator').stop()
 
     # Forward model.
-    logits = model(tokens, attention_mask, types)
+    logits, *mems = model(tokens, attention_mask, types)
 
     # Cross-entropy loss.
     loss_func = torch.nn.CrossEntropyLoss()
     loss = loss_func(logits.contiguous().float(), labels)
 
     # Reduce loss for logging.
-    reduced_loss = reduce_losses([loss])
 
-    return loss, {'lm loss': reduced_loss[0]}
+    return loss, mems, 'bert'
 
 
 def build_data_loader(dataset, batch_size, num_workers, drop_last):
@@ -128,10 +133,6 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     # Starting epoch and iteration
     start_epoch = args.iteration // args.train_iters_per_epoch
     start_iteration = args.iteration % args.train_iters_per_epoch
-    iteration = args.iteration
-
-    # Memory reporting flag.
-    report_memory_flag = True
 
     # For each remaining epoch
     timers('interval time').start()
@@ -151,37 +152,33 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             start_iteration = 0
 
             # Train for one step.
-            losses_dict, skipped_iter = train_step(forward_step, batch, model,
-                                                   optimizer, lr_scheduler)
-            iteration += 1
+            lm_loss, skipped_iter, _ = train_step(batch, model, optimizer, lr_scheduler, args, timers,
+                                                  forward_step_func=forward_step)
+            args.iteration += 1
 
             # Logging.
-            report_memory_flag = training_log(losses_dict, losses_dict_sum,
-                                              optimizer.param_groups[0]['lr'],
-                                              iteration, optimizer.loss_scale,
-                                              report_memory_flag, skipped_iter)
-
-            # Autoresume
-            if args.adlr_autoresume and \
-                    (iteration % args.adlr_autoresume_interval == 0):
-                check_adlr_autoresume_termination(iteration, model,
-                                                  optimizer, lr_scheduler)
+            if args.iteration % args.log_interval == 0:
+                learning_rate = optimizer.param_groups[0]['lr']
+                avg_lm_loss = total_lm_loss.item() / args.log_interval
+                elapsed_time = timers('interval time').elapsed()
+                report_iteration_metrics(None, optimizer, learning_rate, avg_lm_loss,
+                                         elapsed_time * 1000.0 / args.log_interval, args.iteration, args.train_iters,
+                                         args)
+                total_lm_loss = 0.0
 
             # Checkpointing
-            if args.save and args.save_interval and \
-                    iteration % args.save_interval == 0:
-                save_checkpoint(iteration, model, optimizer, lr_scheduler)
+            if args.save and args.save_interval and args.iteration % args.save_interval == 0:
+                save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
             # Evaluation
-            if args.eval_interval and iteration % args.eval_interval == 0:
-                prefix = 'iteration {}'.format(iteration)
-                evaluate_and_print_results(prefix, forward_step,
-                                           valid_dataloader, model,
-                                           iteration, False)
+            if args.eval_interval and args.iteration % args.eval_interval == 0:
+                prefix = 'iteration {}'.format(args.iteration)
+                evaluate_and_print_results(prefix, valid_dataloader, model,
+                                           args.iteration, timers, False, forward_step_func=cross_entropy_forward_step)
 
         # Checkpointing at the end of each epoch.
         if args.save:
-            save_checkpoint(iteration, model, optimizer, lr_scheduler, args)
+            save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None:
@@ -189,7 +186,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
 
 def finetune(args, train_valid_datasets_provider, model_type,
-             forward_step=_cross_entropy_forward_step,
+             forward_step=cross_entropy_forward_step,
              end_of_epoch_callback_provider=None):
     """Main finetune function used across all tasks."""
     timers = Timers()
@@ -244,3 +241,24 @@ def finetune(args, train_valid_datasets_provider, model_type,
             end_of_epoch_callback(model, epoch=-1, output_predictions=True)
 
     print_rank_0('done :-)')
+
+
+if __name__ == '__main__':
+    # Disable CuDNN.
+    torch.backends.cudnn.enabled = False
+
+    # Arguments.
+    args = get_args()
+
+    # Pytorch distributed.
+    initialize_distributed(args)
+
+    # Random seeds for reproducability.
+    set_random_seed(args.seed)
+
+    if args.task == 'RACE':
+        from tasks.race.finetune import main
+    else:
+        raise NotImplementedError('Task {} is not implemented.'.format(args.task))
+
+    main(args)
