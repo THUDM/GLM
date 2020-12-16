@@ -88,8 +88,8 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
 
                     # For each question, build num-choices samples.
                     ids_list = []
-                    types_list = []
-                    paddings_list = []
+                    positions_list = []
+                    mask_list = []
                     for ci in range(NUM_CHOICES):
                         choice = choices[qi][ci]
                         # Merge with choice.
@@ -108,18 +108,18 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
 
                         input_ids = context_ids + qa_ids
                         # Build the sample.
-                        ids, types, paddings \
-                            = build_tokens_types_paddings_from_ids(input_ids, None, max_seq_length, cls_id=None,
-                                                                   sep_id=None, pad_id=tokenizer.get_command('pad').Id)
+                        ids, position_ids, mask \
+                            = build_tokens_types_paddings_from_ids(input_ids, max_seq_length, cls_id=None,
+                                                                   mask_id=tokenizer.get_command('MASK').Id,
+                                                                   start_id=tokenizer.get_command('sop').Id,
+                                                                   pad_id=tokenizer.get_command('pad').Id)
 
                         ids_list.append(ids)
-                        types_list.append(types)
-                        paddings_list.append(paddings)
+                        positions_list.append(position_ids)
+                        mask_list.append(mask)
 
                     # Convert to numpy and add to samples
-                    samples.append(build_sample(ids_list, types_list,
-                                                paddings_list, label,
-                                                num_samples))
+                    samples.append(build_sample(ids_list, positions_list, mask_list, label, num_samples))
                     num_samples += 1
 
     elapsed_time = time.time() - start_time

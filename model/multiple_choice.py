@@ -36,28 +36,25 @@ class MultipleChoice(torch.nn.Module):
         self.multichoice_head = torch.nn.Linear(hidden_size, 1)
 
     def forward(self, input_ids, position_ids, attention_mask):
-
         # [batch, choices, sequence] --> [batch * choices, sequence] -->
         #    transformer --> [batch, choices] --> softmax
 
         # Ensure the shape is [batch-size, choices, sequence]
         assert len(input_ids.shape) == 3
         assert len(position_ids.shape) == 4
-        assert len(attention_mask.shape) == 3
 
         # Reshape and treat choice dimension the same as batch.
-        num_choices = input_ids.shape[1]
+        batch_size, num_choices = input_ids.shape[:2]
         input_ids = input_ids.view(-1, input_ids.size(-1))
-        attention_mask = attention_mask.view(-1, attention_mask.size(-1))
+        attention_mask = attention_mask.view(-1, *attention_mask.size()[2:])
         position_ids = position_ids.view(-1, *position_ids.size()[2:])
 
-        extended_attention_mask = bert_extended_attention_mask(attention_mask)
-
-        outputs, *mems = self.model(input_ids, position_ids, extended_attention_mask)
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
         # Output.
-        attention_mask = attention_mask.unsqueeze(-1)
-        avg_output = (outputs * attention_mask).sum(dim=1) / attention_mask.sum(dim=-2)
-        pooled_output = torch.tanh(self.pool_layer(avg_output))
+        output = outputs[
+            torch.arange(batch_size * num_choices, dtype=attention_mask.dtype,
+                         device=attention_mask.device), attention_mask]
+        pooled_output = torch.tanh(self.pool_layer(output))
         multichoice_output = self.multichoice_dropout(pooled_output)
         multichoice_logits = self.multichoice_head(multichoice_output)
 

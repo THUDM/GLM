@@ -30,15 +30,15 @@ def clean_text(text):
     return text
 
 
-def build_sample(ids, types, paddings, label, unique_id):
+def build_sample(ids, positions, masks, label, unique_id):
     """Convert to numpy and return a sample consumed by the batch producer."""
 
     ids_np = np.array(ids, dtype=np.int64)
-    types_np = np.array(types, dtype=np.int64)
-    paddings_np = np.array(paddings, dtype=np.int64)
+    positions_np = np.array(positions, dtype=np.int64)
+    masks_np = np.array(masks, dtype=np.int64)
     sample = ({'text': ids_np,
-               'types': types_np,
-               'padding_mask': paddings_np,
+               'position': positions_np,
+               'mask': masks_np,
                'label': int(label),
                'uid': int(unique_id)})
 
@@ -59,62 +59,41 @@ def build_tokens_types_paddings_from_text(text_a, text_b,
                                                 tokenizer.sep, tokenizer.pad)
 
 
-def build_tokens_types_paddings_from_ids(text_a_ids, text_b_ids, max_seq_length,
-                                         cls_id=None, sep_id=None, pad_id=None):
+def build_tokens_types_paddings_from_ids(text_a_ids, max_seq_length, mask_id, start_id, pad_id, cls_id=None):
     """Build token types and paddings, trim if needed, and pad if needed."""
 
     ids = []
-    types = []
-    paddings = []
 
     # [CLS].
     if cls_id is not None:
         ids.append(cls_id)
-        types.append(0)
-        paddings.append(1)
 
     # A.
-    len_text_a = len(text_a_ids)
     ids.extend(text_a_ids)
-    types.extend([0] * len_text_a)
-    paddings.extend([1] * len_text_a)
-
-    # [SEP].
-    if sep_id is not None:
-        ids.append(sep_id)
-        types.append(0)
-        paddings.append(1)
-
-    # B.
-    if text_b_ids is not None:
-        len_text_b = len(text_b_ids)
-        ids.extend(text_b_ids)
-        types.extend([1] * len_text_b)
-        paddings.extend([1] * len_text_b)
 
     # Cap the size.
-    trimmed = False
-    if len(ids) >= max_seq_length:
-        max_seq_length_m1 = max_seq_length - 1
+    if len(ids) > max_seq_length - 3:
+        max_seq_length_m1 = max_seq_length - 3
         ids = ids[0:max_seq_length_m1]
-        types = types[0:max_seq_length_m1]
-        paddings = paddings[0:max_seq_length_m1]
-        trimmed = True
 
-    # [SEP].
-    if sep_id is not None and ((text_b_ids is not None) or trimmed):
-        ids.append(sep_id)
-        if text_b_ids is None:
-            types.append(0)
-        else:
-            types.append(1)
-        paddings.append(1)
+    # Mask
+    mask_position = len(ids)
+    ids.append(mask_id)
+    ids.append(pad_id)
+    position_ids = list(range(len(ids)))
+    block_position_ids = [0] * len(ids)
+
+    mask = len(ids)
+    ids.append(start_id)
+    position_ids.append(mask_position)
+    block_position_ids.append(1)
 
     # Padding.
     padding_length = max_seq_length - len(ids)
     if padding_length > 0:
         ids.extend([pad_id] * padding_length)
-        types.extend([pad_id] * padding_length)
-        paddings.extend([0] * padding_length)
+        position_ids.extend([position_ids[-1]] * padding_length)
+        block_position_ids.extend(range(2, padding_length + 2))
 
-    return ids, types, paddings
+    position_ids = [position_ids, block_position_ids]
+    return ids, position_ids, mask

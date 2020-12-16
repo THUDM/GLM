@@ -87,7 +87,7 @@ def calculate_correct_answers(name, model, dataloader, epoch, output_predictions
             ids = []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
-            tokens, types, labels_, position_ids, attention_mask = process_batch(batch, args)
+            tokens, labels_, position_ids, attention_mask = process_batch(batch, args)
             logits, *mems = model(tokens, position_ids, attention_mask)
             # Add output predictions.
             if output_predictions:

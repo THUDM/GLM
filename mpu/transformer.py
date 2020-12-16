@@ -546,19 +546,25 @@ class GPT2ParallelTransformer(torch.nn.Module):
         memory_length = mems[0].size(1) if mems else 0
         key_length = query_length + memory_length
         # attention mask is the beginning postion of B region, \in [0, query_len)
-        is_scalar = isinstance(attention_mask, int) or (torch.is_tensor(attention_mask) and torch.numel(
-            attention_mask) == 1)
+        is_scalar = torch.numel(attention_mask) == 1
+        is_sep = is_scalar or torch.numel(attention_mask) == batch_size
         if self.performer:
             assert is_scalar, 'attention_mask should be a scalar to indicate the seperation position.'
             assert memory_length == 0, 'Do not support transformer-xl.'
-        if is_scalar:
-            sep = attention_mask.item() if torch.is_tensor(attention_mask) else attention_mask
+        if is_sep:
+            sep = attention_mask.expand(batch_size)
 
             # conventional transformer
             def build_mask_matrix(seq_length, sep, memory_length=0):
                 m = hidden_states.new_ones((1, seq_length, seq_length))
                 m = torch.tril(m)
-                m[0, :, :sep] = 1
+                if is_scalar:
+                    m[0, :, :sep] = 1
+                else:
+                    m = m.expand(batch_size, -1, -1)
+                    ids = torch.arange(seq_length, device=sep.device, dtype=sep.dtype).view(1, -1)
+                    mask = ids < sep.view(-1, 1)
+                    m = m.masked_fill(mask.unsqueeze(1).expand_as(m), 1)
                 if memory_length > 0:
                     m = torch.cat((hidden_states.new_ones((1, seq_length, memory_length)), m), dim=2)
                 m = m.unsqueeze(1)

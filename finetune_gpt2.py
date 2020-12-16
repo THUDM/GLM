@@ -1,5 +1,7 @@
 import os
 import sys
+from datetime import datetime
+from utils import get_sample_writer
 from arguments import get_args
 
 # coding=utf-8
@@ -40,17 +42,20 @@ from fp16 import FP16_Module
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
     tokens = batch['text'].long().cuda().contiguous()
-    types = batch['types'].long().cuda().contiguous()
+    position_ids = batch['position'].long().cuda().contiguous()
     labels = batch['label'].long().cuda().contiguous()
-    attention_mask = batch['padding_mask'].float().cuda().contiguous()
-    if args.fp16:
-        attention_mask = attention_mask.half()
-    position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
-    block_position_ids = tokens.new_zeros(tokens.size(-1)).unsqueeze(0).unsqueeze(0).expand_as(tokens)
-    position_ids = position_ids.unsqueeze(0).unsqueeze(0).expand_as(tokens)
-    position_ids = torch.stack((position_ids, block_position_ids), dim=2)
+    attention_mask = batch['mask'].long().cuda().contiguous()
+    # if args.fp16:
+    #     attention_mask = attention_mask.half()
+    # position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
+    # block_position_ids = tokens.new_zeros(tokens.size(-1)).unsqueeze(0).unsqueeze(0).expand_as(tokens)
+    # position_ids = position_ids.unsqueeze(0).unsqueeze(0).expand_as(tokens)
+    # position_ids = torch.stack((position_ids, block_position_ids), dim=2)
 
-    return tokens, types, labels, position_ids, attention_mask
+    return tokens, labels, position_ids, attention_mask
+
+
+tokenizer = None
 
 
 def cross_entropy_forward_step(batch, model, args, timers, mems):
@@ -61,7 +66,7 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
         batch_ = next(batch)
     except BaseException:
         batch_ = batch
-    tokens, types, labels, position_ids, attention_mask = process_batch(batch_, args)
+    tokens, labels, position_ids, attention_mask = process_batch(batch_, args)
     timers('batch generator').stop()
 
     # Forward model.
@@ -126,7 +131,7 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
 
 
 def _train(model, optimizer, lr_scheduler, forward_step,
-           train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers):
+           train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers, summary_writer=None):
     """Train the model."""
 
     # Turn on training mode which enables dropout.
@@ -168,7 +173,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 learning_rate = optimizer.param_groups[0]['lr']
                 avg_lm_loss = total_lm_loss.item() / args.log_interval
                 elapsed_time = timers('interval time').elapsed()
-                report_iteration_metrics(None, optimizer, learning_rate, avg_lm_loss,
+                report_iteration_metrics(summary_writer, optimizer, learning_rate, avg_lm_loss,
                                          elapsed_time * 1000.0 / args.log_interval, args.iteration, args.train_iters,
                                          args)
                 total_lm_loss = 0.0
@@ -181,7 +186,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             if args.eval_interval and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
                 evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, False,
-                                           forward_step_func=cross_entropy_forward_step)
+                                           forward_step_func=cross_entropy_forward_step, summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
         if args.save:
@@ -201,8 +206,12 @@ def finetune(args, train_valid_datasets_provider, model_type,
              forward_step=cross_entropy_forward_step,
              end_of_epoch_callback_provider=None):
     """Main finetune function used across all tasks."""
+    global tokenizer
     timers = Timers()
     tokenizer = prepare_tokenizer(args)
+    args.experiment_name = "-".join((args.experiment_name, args.task, datetime.now().strftime("%m-%d-%H-%M")))
+    if args.save:
+        args.save = os.path.join(args.save, args.experiment_name)
     # Train and validation data loaders.
     timers('train/valid/test dataset/dataloder').start()
     train_dataloader, valid_dataloader = None, None
@@ -211,7 +220,6 @@ def finetune(args, train_valid_datasets_provider, model_type,
         train_dataloader, valid_dataloader = _build_train_valid_dataloaders(
             train_dataset, valid_dataset, args)
     timers('train/valid/test dataset/dataloder').stop()
-
     # Build calback function.
     timers('callback function').start()
     end_of_epoch_callback, end_of_train_callback = None, None
@@ -241,6 +249,11 @@ def finetune(args, train_valid_datasets_provider, model_type,
         if args.fp16:
             optimizer._model_params_to_master_params()
     timers('pretrained checkpoint').stop()
+    args.iteration = 0
+    summary_writer = None
+    if torch.distributed.get_rank() == 0:
+        summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name,
+                                           iteration=args.iteration)
 
     # Print setup timing.
     print_rank_0('done with setups ...')
@@ -251,7 +264,8 @@ def finetune(args, train_valid_datasets_provider, model_type,
     # Finetune the model.
     if args.epochs > 0:
         best_iteration = _train(model, optimizer, lr_scheduler, forward_step,
-                                train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers)
+                                train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers,
+                                summary_writer=summary_writer)
         if best_iteration is not None and end_of_train_callback is not None:
             args.load = os.path.join(args.save, str(best_iteration))
             load_checkpoint(model, optimizer, lr_scheduler, args)

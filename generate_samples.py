@@ -293,7 +293,11 @@ def generate_samples(model, tokenizer, args, device):
                         position_ids[0, mask_position + 1:] += args.out_seq_length
                 _, *mems = model(tokens, position_ids, attention_mask, *mems)
                 for mask_position in mask_positions:
-                    tokens, mems = sample_sequence(model, tokenizer, tokens, position_ids[0, mask_position].item(),
+                    if args.no_block_position:
+                        position = position_ids[0, mask_position].item()
+                    else:
+                        position = mask_position
+                    tokens, mems = sample_sequence(model, tokenizer, tokens, position,
                                                    args, device, mems=mems, end_tokens=end_tokens)
             else:
                 tokens, _ = sample_sequence(model, tokenizer, context_tokens_tensor, context_length, args, device)
