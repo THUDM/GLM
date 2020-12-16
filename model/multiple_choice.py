@@ -31,7 +31,6 @@ class MultipleChoice(torch.nn.Module):
         self.model = language_model
 
         # Multi-choice head.
-        self.pool_layer = torch.nn.Linear(hidden_size, hidden_size)
         self.multichoice_dropout = torch.nn.Dropout(hidden_dropout)
         self.multichoice_head = torch.nn.Linear(hidden_size, 1)
 
@@ -54,8 +53,7 @@ class MultipleChoice(torch.nn.Module):
         output = outputs[
             torch.arange(batch_size * num_choices, dtype=attention_mask.dtype,
                          device=attention_mask.device), attention_mask]
-        pooled_output = torch.tanh(self.pool_layer(output))
-        multichoice_output = self.multichoice_dropout(pooled_output)
+        multichoice_output = self.multichoice_dropout(output)
         multichoice_logits = self.multichoice_head(multichoice_output)
 
         # Reshape back to separate choices.
