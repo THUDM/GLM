@@ -26,10 +26,10 @@ from finetune_gpt2 import build_data_loader
 from finetune_gpt2 import process_batch
 
 
-def accuracy_func_provider(single_dataset_provider, args):
+def accuracy_func_provider(single_dataset_provider, args, is_test=False):
     """Provide function that calculates accuracies."""
     # Build dataloaders.
-    datapaths = args.valid_data
+    datapaths = args.test_data if is_test else args.valid_data
     dataloaders = []
     for datapath in datapaths:
         dataset = single_dataset_provider(datapath)
@@ -47,8 +47,7 @@ def accuracy_func_provider(single_dataset_provider, args):
             named_predictions = []
             names = 'predictions'
         for name, dataloader in dataloaders:
-            output = calculate_correct_answers(name, model, dataloader,
-                                               epoch, output_predictions)
+            output = calculate_correct_answers(name, model, dataloader, epoch, output_predictions, args)
             if not output_predictions:
                 correct_ans, total_count = output
             else:
@@ -65,6 +64,7 @@ def accuracy_func_provider(single_dataset_provider, args):
             assert args.load is not None
             filename = os.path.join(args.load, names + '.pt')
             torch.save(named_predictions, filename)
+        return percent
 
     return metrics_func
 
@@ -87,8 +87,8 @@ def calculate_correct_answers(name, model, dataloader, epoch, output_predictions
             ids = []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
-            tokens, types, labels_, attention_mask = process_batch(batch, args)
-            logits = model(tokens, attention_mask, types)
+            tokens, types, labels_, position_ids, attention_mask = process_batch(batch, args)
+            logits, *mems = model(tokens, position_ids, attention_mask)
             # Add output predictions.
             if output_predictions:
                 softmaxes.extend(torch.nn.Softmax(dim=-1)(

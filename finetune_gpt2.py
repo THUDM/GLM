@@ -83,7 +83,7 @@ def build_data_loader(dataset, batch_size, num_workers, drop_last):
     world_size = mpu.get_data_parallel_world_size()
     rank = mpu.get_data_parallel_rank()
     sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset, num_replicas=world_size, rank=rank)
+        dataset, num_replicas=world_size, rank=rank, shuffle=True)
 
     # Data loader. Note that batch size is the per GPU batch size.
     data_loader = torch.utils.data.DataLoader(dataset,
@@ -112,7 +112,7 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
     """Traing and validation dataloaders."""
     print_rank_0('building train and validation dataloaders ...')
     # Training dataset.
-    train_dataloader = build_data_loader(train_dataset, args.batch_size, args.num_workers, False)
+    train_dataloader = build_data_loader(train_dataset, args.batch_size, args.num_workers, True)
     # Set the training iterations.
     args.train_iters_per_epoch = len(train_dataloader)
     args.train_iters = args.epochs * args.train_iters_per_epoch
@@ -135,6 +135,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     # Tracking loss.
     args.iteration = 0
     total_lm_loss = 0.0
+    best_accuracy, best_iteration = 0, None
     # Starting epoch and iteration
     start_epoch = args.iteration // args.train_iters_per_epoch
     start_iteration = args.iteration % args.train_iters_per_epoch
@@ -188,7 +189,12 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None:
-            end_of_epoch_callback(model, epoch)
+            accuracy = end_of_epoch_callback(model, epoch)
+            if best_iteration is None or accuracy > best_accuracy:
+                best_iteration = args.iteration
+                best_accuracy = accuracy
+                print_rank_0(f"Found best accuracy {best_accuracy} at {best_iteration}")
+    return best_iteration
 
 
 def finetune(args, train_valid_datasets_provider, model_type,
@@ -208,9 +214,10 @@ def finetune(args, train_valid_datasets_provider, model_type,
 
     # Build calback function.
     timers('callback function').start()
-    end_of_epoch_callback = None
+    end_of_epoch_callback, end_of_train_callback = None, None
     if end_of_epoch_callback_provider is not None:
-        end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer)
+        end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=False)
+        end_of_train_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=True)
     timers('callback function').stop()
 
     # Build model, optimizer and learning rate scheduler.
@@ -243,13 +250,17 @@ def finetune(args, train_valid_datasets_provider, model_type,
 
     # Finetune the model.
     if args.epochs > 0:
-        _train(model, optimizer, lr_scheduler, forward_step,
-               train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers)
+        best_iteration = _train(model, optimizer, lr_scheduler, forward_step,
+                                train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers)
+        if best_iteration is not None and end_of_train_callback is not None:
+            args.load = os.path.join(args.save, str(best_iteration))
+            load_checkpoint(model, optimizer, lr_scheduler, args)
+            end_of_train_callback(model, epoch=-1, output_predictions=False)
     # Or just evaluate.
     else:
-        if end_of_epoch_callback is not None:
+        if end_of_train_callback is not None:
             print_rank_0('evaluation only mode, setting epoch to -1')
-            end_of_epoch_callback(model, epoch=-1, output_predictions=True)
+            end_of_train_callback(model, epoch=-1, output_predictions=False)
 
     print_rank_0('done :-)')
 

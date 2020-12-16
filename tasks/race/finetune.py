@@ -30,14 +30,14 @@ def train_valid_datasets_provider(args, tokenizer):
     return train_dataset, valid_dataset
 
 
-def metrics_func_provider(args, tokenizer):
+def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
 
     def single_dataset_provider(datapath):
         name = datapath.split('RACE')[-1].strip('/').replace('/', '-')
         return RaceDataset(name, [datapath], tokenizer, args.seq_length)
 
-    return accuracy_func_provider(single_dataset_provider, args)
+    return accuracy_func_provider(single_dataset_provider, args, is_test=is_test)
 
 
 def main(args):
