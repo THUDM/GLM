@@ -27,11 +27,10 @@ from configure_data import prepare_tokenizer
 from utils import print_rank_0
 from utils import Timers
 import mpu
-from pretrain_gpt2 import setup_model_and_optimizer
+from train_utils import setup_model_and_optimizer, train_step
 from utils import load_checkpoint, save_checkpoint
 from pretrain_gpt2 import report_iteration_metrics
 from pretrain_gpt2 import evaluate_and_print_results
-from pretrain_gpt2 import train_step
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
 from model import PyTorchDistributedDataParallel as TorchDDP
@@ -185,7 +184,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             # Evaluation
             if args.eval_interval and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
-                evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, False,
+                evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, verbose=False,
                                            forward_step_func=cross_entropy_forward_step, summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.

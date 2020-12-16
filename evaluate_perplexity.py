@@ -16,30 +16,20 @@
 """Sample Generate GPT2"""
 
 import os
-import random
-import numpy as np
 import torch
 import torch.nn.functional as F
-import argparse
 import time
-from datetime import datetime
 from arguments import get_args
 from utils import Timers
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
-from pretrain_gpt2 import get_train_val_test_data
 from pretrain_gpt2 import get_masks_and_position_ids
 from utils import load_checkpoint, get_checkpoint_iteration
 from data_utils import make_tokenizer
-from configure_data import configure_data
 import mpu
-import deepspeed
 
-from fp16 import FP16_Module
-from model import GPT2Model
-from model import DistributedDataParallel as DDP
 from utils import print_rank_0
-from pretrain_gpt2 import get_model
+from train_utils import get_model
 
 
 def setup_model(args):

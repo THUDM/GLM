@@ -28,180 +28,17 @@ import deepspeed
 from contextlib import ExitStack
 from arguments import get_args
 from configure_data import configure_data, prepare_tokenizer
-from fp16 import FP16_Module
-from fp16 import FP16_Optimizer
-from learning_rates import AnnealingLR
-from model import GPT2Model, MultipleChoice
-from model import gpt2_get_params_for_weight_decay_optimization
-from model import PyTorchDistributedDataParallel as TorchDDP
-from model import DistributedDataParallel as LocalDDP
 import mpu
-from apex.optimizers import FusedAdam as Adam
+
+from train_utils import setup_model_and_optimizer, train_step
 from utils import Timers
 from utils import save_checkpoint
 from utils import load_checkpoint
 from utils import report_memory
 from utils import print_args
-from utils import print_params_min_max_norm
 from utils import print_rank_0
 from utils import get_sample_writer
 import torch.distributed as dist
-
-
-def get_model(args, model_type=None):
-    """Build the model."""
-    output_predict = True
-    if model_type == "multiple_choice":
-        output_predict = False
-    print_rank_0('building GPT2 model ...')
-    model = GPT2Model(num_layers=args.num_layers,
-                      vocab_size=args.vocab_size,
-                      hidden_size=args.hidden_size,
-                      num_attention_heads=args.num_attention_heads,
-                      embedding_dropout_prob=args.hidden_dropout,
-                      attention_dropout_prob=args.attention_dropout,
-                      output_dropout_prob=args.hidden_dropout,
-                      max_sequence_length=args.max_position_embeddings,
-                      max_memory_length=args.mem_length,
-                      checkpoint_activations=args.checkpoint_activations,
-                      checkpoint_num_layers=args.checkpoint_num_layers,
-                      parallel_output=True,
-                      relative_encoding=args.transformer_xl,
-                      type_encoding=args.block_lm and args.no_block_position,
-                      block_position_encoding=args.block_lm and not args.no_block_position,
-                      output_predict=output_predict)
-
-    if model_type is not None:
-        if model_type == 'multiple_choice':
-            model = MultipleChoice(model, args.hidden_size, args.hidden_dropout)
-        else:
-            raise NotImplementedError(model_type)
-
-    if mpu.get_data_parallel_rank() == 0:
-        print(' > number of parameters on model parallel rank {}: {}'.format(
-            mpu.get_model_parallel_rank(),
-            sum([p.nelement() for p in model.parameters()])), flush=True)
-
-    # To prevent OOM for model sizes that cannot fit in GPU memory in full precision
-    if hasattr(args, "deepspeed") and args.deepspeed and args.fp16:
-        model.half()
-
-    # GPU allocation.
-    model.cuda(torch.cuda.current_device())
-
-    # Fp16 conversion.
-    if args.fp16:
-        model = FP16_Module(model)
-
-    # Wrap model for distributed training.
-    if not args.deepspeed:
-        if args.DDP_impl == 'torch':
-            i = torch.cuda.current_device()
-            model = TorchDDP(model, device_ids=[i], output_device=i,
-                             process_group=mpu.get_data_parallel_group())
-        else:
-            model = LocalDDP(model)
-
-    return model
-
-
-def get_optimizer_param_groups(model):
-    # Build parameter groups (weight decay and non-decay).
-    while isinstance(model, (LocalDDP, TorchDDP, FP16_Module)):
-        model = model.module
-    param_groups = gpt2_get_params_for_weight_decay_optimization(model)
-
-    # Add model parallel attribute if it is not set.
-    for param_group in param_groups:
-        for param in param_group['params']:
-            if not hasattr(param, 'model_parallel'):
-                param.model_parallel = False
-
-    return param_groups
-
-
-def get_optimizer(param_groups, args):
-    """Set up the optimizer."""
-    if args.cpu_optimizer:
-        # Apex FusedAdam uses decoupled weight decay so use the same here
-        if args.cpu_torch_adam:
-            cpu_adam_optimizer = torch.optim.AdamW
-        else:
-            # TODO add option for decoupled weight decay in DeepCPUAdam
-            from deepspeed.ops.adam import DeepSpeedCPUAdam
-            cpu_adam_optimizer = DeepSpeedCPUAdam
-        optimizer = cpu_adam_optimizer(param_groups,
-                                       lr=args.lr, weight_decay=args.weight_decay)
-    else:
-        # Use FusedAdam.
-        optimizer = Adam(param_groups,
-                         lr=args.lr, weight_decay=args.weight_decay)
-
-    print(f'Optimizer = {optimizer.__class__.__name__}')
-    if hasattr(args, "deepspeed") and args.deepspeed:
-        raise NotImplementedError
-        # fp16 wrapper is not required for DeepSpeed.
-        # return optimizer
-
-    # Wrap into fp16 optimizer.
-    if args.fp16:
-        optimizer = FP16_Optimizer(optimizer,
-                                   static_loss_scale=args.loss_scale,
-                                   dynamic_loss_scale=args.dynamic_loss_scale,
-                                   dynamic_loss_args={
-                                       'scale_window': args.loss_scale_window,
-                                       'min_scale': args.min_scale,
-                                       'delayed_shift': args.hysteresis})
-
-    return optimizer
-
-
-def get_learning_rate_scheduler(optimizer, args):
-    """Build the learning rate scheduler."""
-
-    # Add linear learning rate scheduler.
-    if args.lr_decay_iters is not None:
-        num_iters = args.lr_decay_iters
-    else:
-        num_iters = args.train_iters
-    num_iters = max(1, num_iters)
-    init_step = -1
-    warmup_iter = args.warmup * num_iters
-    lr_scheduler = AnnealingLR(optimizer,
-                               start_lr=args.lr,
-                               warmup_iter=warmup_iter,
-                               num_iters=num_iters,
-                               decay_style=args.lr_decay_style,
-                               last_iter=init_step,
-                               decay_ratio=args.lr_decay_ratio)
-
-    return lr_scheduler
-
-
-def setup_model_and_optimizer(args, model_type=None):
-    """Setup model and optimizer."""
-
-    model = get_model(args, model_type=model_type)
-    param_groups = get_optimizer_param_groups(model)
-
-    if args.train_data is not None or args.train_data_path is not None:
-        if args.deepspeed:
-            print_rank_0("DeepSpeed is enabled.")
-
-            model, optimizer, _, _ = deepspeed.initialize(
-                model=model,
-                model_parameters=param_groups,
-                args=args,
-                mpu=mpu,
-                dist_init_required=False
-            )
-        else:
-            optimizer = get_optimizer(param_groups, args)
-        lr_scheduler = get_learning_rate_scheduler(optimizer, args)
-    else:
-        optimizer, lr_scheduler = None, None
-
-    return model, optimizer, lr_scheduler
 
 
 def get_masks_and_position_ids(data,
@@ -391,113 +228,6 @@ def forward_step(data_iterator, model, args, timers, mems):
     return loss, mems, mode
 
 
-def backward_step(optimizer, model, lm_loss, args, timers):
-    """Backward step."""
-
-    # Total loss.
-    loss = lm_loss
-
-    # Backward pass.
-    if args.deepspeed:
-        model.backward(loss)
-    else:
-        optimizer.zero_grad()
-        if args.fp16:
-            optimizer.backward(loss, update_master_grads=False)
-        else:
-            loss.backward()
-
-    reduced_losses = lm_loss.view(1)
-    torch.distributed.all_reduce(reduced_losses.data)
-    reduced_losses.data = reduced_losses.data / args.world_size
-    lm_loss_reduced = reduced_losses
-
-    if args.deepspeed:
-        # DeepSpeed backward propagation already addressed all reduce communication.
-        # Reset the timer to avoid breaking timer logs below.
-        timers('allreduce').reset()
-    else:
-        if not args.DDP_impl == 'torch':
-            timers('allreduce').start()
-            model.allreduce_params(reduce_after=False,
-                                   fp32_allreduce=args.fp32_allreduce)
-            timers('allreduce').stop()
-
-    # Update master gradients.
-    if not args.deepspeed:
-        if args.fp16:
-            optimizer.update_master_grads()
-
-        # Clipping gradients helps prevent the exploding gradient.
-        if args.clip_grad > 0:
-            if not args.fp16:
-                mpu.clip_grad_norm(model.parameters(), args.clip_grad)
-            else:
-                optimizer.clip_master_grads(args.clip_grad)
-
-    return lm_loss_reduced
-
-
-def see_memory_usage(message, force=False):
-    if not force:
-        return
-    dist.barrier()
-    if dist.get_rank() == 0:
-        print(message)
-        print("Memory Allocated ", torch.cuda.memory_allocated() / (1024 * 1024 * 1024), "GigaBytes")
-        print("Max Memory Allocated ", torch.cuda.max_memory_allocated() / (1024 * 1024 * 1024), "GigaBytes")
-        print("Cache Allocated ", torch.cuda.memory_cached() / (1024 * 1024 * 1024), "GigaBytes")
-        print("Max cache Allocated ", torch.cuda.max_memory_cached() / (1024 * 1024 * 1024), "GigaBytes")
-        print(" ")
-        # input("Press Any Key To Continue ..")
-
-
-def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, mems=None, forward_step_func=None):
-    """Single training step."""
-    if forward_step_func is None:
-        forward_step_func = forward_step
-    lm_loss_total, count = 0.0, 0
-    while True:
-        # Forward model for one step.
-        timers('forward').start()
-        lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
-        timers('forward').stop()
-
-        # print_rank_0("loss is {}".format(lm_loss))
-
-        # Calculate gradients, reduce across processes, and clip.
-        timers('backward').start()
-        lm_loss_total += backward_step(optimizer, model, lm_loss, args, timers)
-        count += 1
-        timers('backward').stop()
-
-        # Update parameters.
-        skipped_iter, complete = 0, False
-        timers('optimizer').start()
-        if args.deepspeed:
-            if model.is_gradient_accumulation_boundary():
-                model.step()
-                complete = True
-                if not (args.fp16 and optimizer.overflow):
-                    lr_scheduler.step()
-                else:
-                    skipped_iter = 1
-            else:
-                model.step()
-        else:
-            optimizer.step()
-            complete = True
-            # Update learning rate.
-            if not (args.fp16 and optimizer.overflow):
-                lr_scheduler.step()
-            else:
-                skipped_iter = 1
-        timers('optimizer').stop()
-        if complete:
-            break
-    return lm_loss_total / count, skipped_iter, mems
-
-
 def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
     log_string = ' iteration {:8d}/{:8d} |'.format(step, total_step)
     log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time)
@@ -556,7 +286,7 @@ def train(model, optimizer, lr_scheduler,
                                                  model,
                                                  optimizer,
                                                  lr_scheduler,
-                                                 args, timers, mems)
+                                                 args, timers, mems=mems, forward_step_func=forward_step)
         skipped_iters += skipped_iter
         args.iteration += 1
 
@@ -590,16 +320,14 @@ def train(model, optimizer, lr_scheduler,
         if args.eval_interval and args.iteration % args.eval_interval == 0 and args.do_valid:
             prefix = 'iteration {}'.format(args.iteration)
             evaluate_and_print_results(
-                prefix, val_data_iterator, model, args, timers, False, step=args.iteration,
-                summary_writer=summary_writer)
+                prefix, val_data_iterator, model, args, timers, verbose=False, step=args.iteration,
+                summary_writer=summary_writer, forward_step_func=forward_step)
 
     return args.iteration, skipped_iters
 
 
-def evaluate(data_iterator, model, args, timers, verbose=False, forward_step_func=None):
+def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=False):
     """Evaluation."""
-    if forward_step_func is None:
-        forward_step_func = forward_step
     # Turn on evaluation mode which disables dropout.
     model.eval()
 
@@ -645,9 +373,9 @@ def evaluate(data_iterator, model, args, timers, verbose=False, forward_step_fun
 
 
 def evaluate_and_print_results(prefix, data_iterator, model,
-                               args, timers, verbose=False, step=None, summary_writer=None, forward_step_func=None):
+                               args, timers, forward_step_func, verbose=False, step=None, summary_writer=None):
     """Helper function to evaluate and dump results on screen."""
-    lm_loss, gpt_loss, bert_loss = evaluate(data_iterator, model, args, timers, verbose,
+    lm_loss, gpt_loss, bert_loss = evaluate(data_iterator, model, args, timers, verbose=verbose,
                                             forward_step_func=forward_step_func)
 
     lm_ppl = math.exp(min(20, lm_loss))
@@ -824,7 +552,7 @@ def main():
         if args.do_valid:
             prefix = 'the end of training for val data'
             val_loss = evaluate_and_print_results(prefix, val_data_iterator,
-                                                  model, args, timers, False)
+                                                  model, args, timers, verbose=False, forward_step_func=forward_step)
 
     if args.save and iteration != 0:
         save_checkpoint(iteration, model, optimizer, lr_scheduler, args)
@@ -838,7 +566,7 @@ def main():
         # Run on test data.
         prefix = 'the end of training for test data'
         evaluate_and_print_results(prefix, test_data_iterator,
-                                   model, args, timers, True)
+                                   model, args, timers, verbose=True, forward_step_func=forward_step)
 
 
 if __name__ == "__main__":
