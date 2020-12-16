@@ -35,9 +35,9 @@ from utils import Timers
 from utils import save_checkpoint
 from utils import load_checkpoint
 from utils import report_memory
-from utils import print_args
+from utils import print_and_save_args
 from utils import print_rank_0
-from utils import get_sample_writer
+from utils import get_sample_writer, get_log_dir
 import torch.distributed as dist
 
 
@@ -510,10 +510,11 @@ def main():
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         print('Pretrain GPT2 model')
-        print_args(args)
+        log_dir = None
         if args.train_iters > 0:
-            summary_writer = get_sample_writer(base=args.summary_dir, name=args.experiment_name,
-                                               iteration=args.iteration)
+            log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
+            summary_writer = get_sample_writer(log_dir=log_dir, iteration=args.iteration)
+        print_and_save_args(args, verbose=True, log_dir=log_dir)
 
     # Resume data loader if necessary.
     if args.resume_dataloader:

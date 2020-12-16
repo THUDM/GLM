@@ -20,6 +20,7 @@ import random
 import time
 import numpy as np
 import torch
+import json
 
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from fp16 import FP16_Optimizer
@@ -29,11 +30,15 @@ from tensorboardX import SummaryWriter
 SUMMARY_WRITER_DIR_NAME = 'runs'
 
 
-def get_sample_writer(name, base="..", iteration=0):
+def get_log_dir(name, base):
+    return os.path.join(base, SUMMARY_WRITER_DIR_NAME, name)
+
+
+def get_sample_writer(log_dir, iteration=0):
     """Returns a tensorboard summary writer
     """
     return SummaryWriter(
-        log_dir=os.path.join(base, SUMMARY_WRITER_DIR_NAME, name), purge_step=iteration)
+        log_dir=log_dir, purge_step=iteration)
 
 
 def print_rank_0(message):
@@ -44,13 +49,23 @@ def print_rank_0(message):
         print(message, flush=True)
 
 
-def print_args(args):
+def print_and_save_args(args, verbose=True, log_dir=None):
     """Print arguments."""
-
-    print('arguments:', flush=True)
-    for arg in vars(args):
-        dots = '.' * (29 - len(arg))
-        print('  {} {} {}'.format(arg, dots, getattr(args, arg)), flush=True)
+    if verbose:
+        print('arguments:', flush=True)
+        for arg in vars(args):
+            dots = '.' * (29 - len(arg))
+            print('  {} {} {}'.format(arg, dots, getattr(args, arg)), flush=True)
+    if log_dir is not None:
+        json_file = os.path.join(log_dir, "config.json")
+        with open(json_file, "w") as output:
+            json.dump(vars(args), output)
+        if args.deepspeed and args.deepspeed_config is not None:
+            with open(args.deepspeed_config) as file:
+                deepspeed_config = json.load(file)
+            deepspeed_json_file = os.path.join(log_dir, "ds_config.json")
+            with open(deepspeed_json_file, "w") as output:
+                json.dump(deepspeed_config, output)
 
 
 def print_params_min_max_norm(optimizer, iteration):
