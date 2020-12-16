@@ -207,7 +207,8 @@ def split_ds(ds, split=[.8, .2, .0], shuffle=True):
     ds_len = len(ds)
     inds = np.arange(ds_len)
     if shuffle:
-        np.random.shuffle(inds)
+        rng = np.random.RandomState(1234)
+        rng.shuffle(inds)
     start_idx = 0
     residual_idx = 0
     rtn_ds = [None] * len(split)
