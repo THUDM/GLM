@@ -1,6 +1,6 @@
 import torch
 import torch.utils.data
-import mpu
+# import mpu
 import random
 import numpy as np
 from scipy.stats import poisson
@@ -30,8 +30,10 @@ class ConstructBlockStrategy:
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
-        self.rank = mpu.get_data_parallel_rank()
-        self.world_size = mpu.get_data_parallel_world_size()
+        # self.rank = mpu.get_data_parallel_rank()
+        # self.world_size = mpu.get_data_parallel_world_size()
+        self.rank = 0
+        self.world_size = 1
         prob_normalizer = bert_prob + gpt_prob
         self.bert_prob = bert_prob / prob_normalizer
         self.gpt_prob = gpt_prob / prob_normalizer
@@ -44,7 +46,7 @@ class ConstructBlockStrategy:
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):
-        blank_length = total_length - sum(span_lengths) - 1
+        blank_length = total_length - sum(span_lengths)
         m = blank_length - len(span_lengths) + 1
         places = [rng.randrange(m + 1) for _ in range(len(span_lengths))]
         places.sort()

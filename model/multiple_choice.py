@@ -25,9 +25,9 @@ from .gpt2_modeling import init_method_normal
 
 class MultipleChoice(torch.nn.Module):
 
-    def __init__(self, language_model, hidden_size, hidden_dropout):
+    def __init__(self, language_model, hidden_size, hidden_dropout, pool_token):
         super(MultipleChoice, self).__init__()
-
+        self.pool_token = pool_token
         self.model = language_model
 
         # Multi-choice head.
@@ -51,9 +51,16 @@ class MultipleChoice(torch.nn.Module):
 
         outputs, *mems = self.model(input_ids, position_ids, attention_mask)
         # Output.
-        output = outputs[
-            torch.arange(batch_size * num_choices, dtype=attention_mask.dtype,
-                         device=attention_mask.device), attention_mask]
+        if self.pool_token == 'start':
+            output = outputs[
+                torch.arange(batch_size * num_choices, dtype=attention_mask.dtype,
+                             device=attention_mask.device), attention_mask]
+        elif self.pool_token == 'pad':
+            output = outputs[
+                torch.arange(batch_size * num_choices, dtype=attention_mask.dtype,
+                             device=attention_mask.device), attention_mask - 1]
+        else:
+            output = outputs[:, 0]
         output = torch.tanh(self.pool_layer(output))
         multichoice_output = self.multichoice_dropout(output)
         multichoice_logits = self.multichoice_head(multichoice_output)

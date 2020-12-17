@@ -42,17 +42,24 @@ from fp16 import FP16_Module
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
     tokens = batch['text'].long().cuda().contiguous()
-    position_ids = batch['position'].long().cuda().contiguous()
-    labels = batch['label'].long().cuda().contiguous()
-    attention_mask = batch['mask'].long().cuda().contiguous()
+    if args.pretrained_bert:
+        types = batch['types'].long().cuda().contiguous()
+        labels = batch['label'].long().cuda().contiguous()
+        attention_mask = batch['padding_mask'].float().cuda().contiguous()
+        if args.fp16:
+            attention_mask = attention_mask.half()
+        return tokens, types, labels, attention_mask
+    else:
+        position_ids = batch['position'].long().cuda().contiguous()
+        labels = batch['label'].long().cuda().contiguous()
+        attention_mask = batch['mask'].long().cuda().contiguous()
+        return tokens, labels, position_ids, attention_mask
     # if args.fp16:
     #     attention_mask = attention_mask.half()
     # position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
     # block_position_ids = tokens.new_zeros(tokens.size(-1)).unsqueeze(0).unsqueeze(0).expand_as(tokens)
     # position_ids = position_ids.unsqueeze(0).unsqueeze(0).expand_as(tokens)
     # position_ids = torch.stack((position_ids, block_position_ids), dim=2)
-
-    return tokens, labels, position_ids, attention_mask
 
 
 tokenizer = None
@@ -66,11 +73,17 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
         batch_ = next(batch)
     except BaseException:
         batch_ = batch
-    tokens, labels, position_ids, attention_mask = process_batch(batch_, args)
+
+    data = process_batch(batch_, args)
     timers('batch generator').stop()
 
     # Forward model.
-    logits, *mems = model(tokens, position_ids, attention_mask)
+    if args.pretrained_bert:
+        tokens, types, labels, attention_mask = data
+        logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
+    else:
+        tokens, labels, position_ids, attention_mask = process_batch(batch_, args)
+        logits, *mems = model(tokens, position_ids, attention_mask)
 
     # Cross-entropy loss.
     loss_func = torch.nn.CrossEntropyLoss()

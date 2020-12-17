@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from utils import print_rank_0
 from tasks.data_utils import build_sample
-from tasks.data_utils import build_tokens_types_paddings_from_ids
+from tasks.data_utils import build_block_input_from_ids, build_bert_input_from_ids
 from tasks.data_utils import clean_text
 
 NUM_CHOICES = 4
@@ -16,8 +16,7 @@ MAX_QA_LENGTH = 128
 
 class RaceDataset(Dataset):
 
-    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length,
-                 max_qa_length=MAX_QA_LENGTH):
+    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length, max_qa_length=MAX_QA_LENGTH, is_bert=False):
 
         self.dataset_name = dataset_name
         print_rank_0(' > building RACE dataset for {}:'.format(
@@ -32,7 +31,7 @@ class RaceDataset(Dataset):
         for datapath in datapaths:
             self.samples.extend(process_single_datapath(datapath, tokenizer,
                                                         max_qa_length,
-                                                        max_seq_length))
+                                                        max_seq_length, is_bert=is_bert))
 
         print_rank_0('  >> total number of samples: {}'.format(
             len(self.samples)))
@@ -44,7 +43,7 @@ class RaceDataset(Dataset):
         return self.samples[idx]
 
 
-def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
+def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, is_bert=False):
     """Read in RACE files, combine, clean-up, tokenize, and convert to
     samples."""
 
@@ -87,9 +86,10 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
                     assert len(choices[qi]) == NUM_CHOICES
 
                     # For each question, build num-choices samples.
-                    ids_list = []
-                    positions_list = []
-                    mask_list = []
+                    if is_bert:
+                        ids_list, types_list, paddings_list = [], [], []
+                    else:
+                        ids_list, positions_list, mask_list = [], [], []
                     for ci in range(NUM_CHOICES):
                         choice = choices[qi][ci]
                         # Merge with choice.
@@ -102,24 +102,37 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length):
                         qa = "Question: " + qa
                         # Tokenize.
                         qa_ids = tokenizer.EncodeAsIds(qa).tokenization
-                        # Trim if needed.
                         if len(qa_ids) > max_qa_length:
                             qa_ids = qa_ids[0:max_qa_length]
+                        # Trim if needed.
+                        if is_bert:
+                            # Build the sample.
+                            ids, types, paddings = build_bert_input_from_ids(qa_ids, context_ids, max_seq_length,
+                                                                             tokenizer.get_command('ENC').Id,
+                                                                             tokenizer.get_command('sep').Id,
+                                                                             tokenizer.get_command('pad').Id)
+                            ids_list.append(ids)
+                            types_list.append(types)
+                            paddings_list.append(paddings)
+                        else:
+                            input_ids = context_ids + qa_ids
+                            # Build the sample.
+                            ids, position_ids, mask \
+                                = build_block_input_from_ids(input_ids, max_seq_length, cls_id=None,
+                                                             mask_id=tokenizer.get_command('MASK').Id,
+                                                             start_id=tokenizer.get_command('sop').Id,
+                                                             pad_id=tokenizer.get_command('pad').Id)
 
-                        input_ids = context_ids + qa_ids
-                        # Build the sample.
-                        ids, position_ids, mask \
-                            = build_tokens_types_paddings_from_ids(input_ids, max_seq_length, cls_id=None,
-                                                                   mask_id=tokenizer.get_command('MASK').Id,
-                                                                   start_id=tokenizer.get_command('sop').Id,
-                                                                   pad_id=tokenizer.get_command('pad').Id)
-
-                        ids_list.append(ids)
-                        positions_list.append(position_ids)
-                        mask_list.append(mask)
-
+                            ids_list.append(ids)
+                            positions_list.append(position_ids)
+                            mask_list.append(mask)
                     # Convert to numpy and add to samples
-                    samples.append(build_sample(ids_list, positions_list, mask_list, label, num_samples))
+                    if is_bert:
+                        samples.append(build_sample(ids_list, types=types_list, paddings=paddings_list, label=label,
+                                                    unique_id=num_samples))
+                    else:
+                        samples.append(build_sample(ids_list, positions=positions_list, masks=mask_list, label=label,
+                                                    unique_id=num_samples))
                     num_samples += 1
 
     elapsed_time = time.time() - start_time

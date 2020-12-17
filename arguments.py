@@ -48,6 +48,8 @@ def add_model_config_args(parser):
                        help='layer norm epsilon')
     group.add_argument('--hidden-dropout', type=float, default=0.1,
                        help='dropout probability for hidden state transformer')
+    group.add_argument('--output-dropout', type=float, default=0.1,
+                       help='dropout probability for pooled output')
     group.add_argument('--max-position-embeddings', type=int, default=512,
                        help='maximum number of position embeddings to use')
     group.add_argument('--vocab-size', type=int, default=30522,
@@ -106,7 +108,6 @@ def add_training_args(parser):
 
     group.add_argument('--experiment-name', type=str, default="gpt-345M",
                        help="The experiment name for summary and checkpoint")
-    group.add_argument('--task', type=str, help='Task name.')
     group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
     group.add_argument('--batch-size', type=int, default=4,
                        help='Data Loader batch size')
@@ -316,6 +317,14 @@ def add_data_args(parser):
                        help='Use (rough) absolute positions instead of block positions')
 
     return parser
+
+
+def add_finetune_config_args(parser):
+    group = parser.add_argument_group('finetune', 'finetune configurations')
+    group.add_argument('--task', type=str, help='Task name.')
+    group.add_argument('--load-pretrained', type=str, help="Load pretrained model")
+    group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
+                       help='The token to pool the sequence representation')
 
 
 def get_args():

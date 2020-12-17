@@ -8,37 +8,47 @@ from fp16 import FP16_Module, FP16_Optimizer
 from learning_rates import AnnealingLR
 from model import GPT2Model, MultipleChoice, PyTorchDistributedDataParallel as TorchDDP, \
     DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
+from model.modeling import BertForMultipleChoice
 from utils import print_rank_0
 
 
 def get_model(args, model_type=None):
     """Build the model."""
-    output_predict = True
-    if model_type == "multiple_choice":
-        output_predict = False
     print_rank_0('building GPT2 model ...')
-    model = GPT2Model(num_layers=args.num_layers,
-                      vocab_size=args.vocab_size,
-                      hidden_size=args.hidden_size,
-                      num_attention_heads=args.num_attention_heads,
-                      embedding_dropout_prob=args.hidden_dropout,
-                      attention_dropout_prob=args.attention_dropout,
-                      output_dropout_prob=args.hidden_dropout,
-                      max_sequence_length=args.max_position_embeddings,
-                      max_memory_length=args.mem_length,
-                      checkpoint_activations=args.checkpoint_activations,
-                      checkpoint_num_layers=args.checkpoint_num_layers,
-                      parallel_output=True,
-                      relative_encoding=args.transformer_xl,
-                      type_encoding=args.block_lm and args.no_block_position,
-                      block_position_encoding=args.block_lm and not args.no_block_position,
-                      output_predict=output_predict)
-
-    if model_type is not None:
-        if model_type == 'multiple_choice':
-            model = MultipleChoice(model, args.hidden_size, args.hidden_dropout)
+    if args.pretrained_bert:
+        if model_type == "multiple_choice":
+            model = BertForMultipleChoice.from_pretrained(args.tokenizer_model_type,
+                                                          cache_dir=args.cache_dir,
+                                                          fp32_layernorm=args.fp32_layernorm,
+                                                          fp32_embedding=args.fp32_embedding,
+                                                          layernorm_epsilon=args.layernorm_epsilon)
         else:
-            raise NotImplementedError(model_type)
+            raise NotImplementedError
+    else:
+        output_predict = True
+        if model_type == "multiple_choice":
+            output_predict = False
+        model = GPT2Model(num_layers=args.num_layers,
+                          vocab_size=args.vocab_size,
+                          hidden_size=args.hidden_size,
+                          num_attention_heads=args.num_attention_heads,
+                          embedding_dropout_prob=args.hidden_dropout,
+                          attention_dropout_prob=args.attention_dropout,
+                          output_dropout_prob=args.hidden_dropout,
+                          max_sequence_length=args.max_position_embeddings,
+                          max_memory_length=args.mem_length,
+                          checkpoint_activations=args.checkpoint_activations,
+                          checkpoint_num_layers=args.checkpoint_num_layers,
+                          parallel_output=True,
+                          relative_encoding=args.transformer_xl,
+                          type_encoding=args.block_lm and args.no_block_position,
+                          block_position_encoding=args.block_lm and not args.no_block_position,
+                          output_predict=output_predict)
+        if model_type is not None:
+            if model_type == 'multiple_choice':
+                model = MultipleChoice(model, args.hidden_size, args.output_dropout)
+            else:
+                raise NotImplementedError(model_type)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(

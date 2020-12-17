@@ -89,8 +89,12 @@ def calculate_correct_answers(name, model, dataloader, epoch, output_predictions
             ids = []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
-            tokens, labels_, position_ids, attention_mask = process_batch(batch, args)
-            logits, *mems = model(tokens, position_ids, attention_mask)
+            if args.pretrained_bert:
+                tokens, types, labels_, attention_mask = process_batch(batch, args)
+                logits = model(tokens, token_type_ids=types, attention_mask=attention_mask)
+            else:
+                tokens, labels_, position_ids, attention_mask = process_batch(batch, args)
+                logits, *mems = model(tokens, position_ids, attention_mask)
             # Add output predictions.
             if output_predictions:
                 softmaxes.extend(torch.nn.Softmax(dim=-1)(

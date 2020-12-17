@@ -24,8 +24,8 @@ from tasks.race.dataset import RaceDataset
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = RaceDataset('training', args.train_data, tokenizer, args.seq_length)
-    valid_dataset = RaceDataset('validation', args.valid_data, tokenizer, args.seq_length)
+    train_dataset = RaceDataset('training', args.train_data, tokenizer, args.seq_length, is_bert=args.pretrained_bert)
+    valid_dataset = RaceDataset('validation', args.valid_data, tokenizer, args.seq_length, is_bert=args.pretrained_bert)
 
     return train_dataset, valid_dataset
 
@@ -35,7 +35,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     def single_dataset_provider(datapath):
         name = datapath.split('RACE')[-1].strip('/').replace('/', '-')
-        return RaceDataset(name, [datapath], tokenizer, args.seq_length)
+        return RaceDataset(name, [datapath], tokenizer, args.seq_length, is_bert=args.pretrained_bert)
 
     return accuracy_func_provider(single_dataset_provider, args, is_test=is_test)
 
