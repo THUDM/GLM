@@ -251,12 +251,13 @@ def finetune(args, train_valid_datasets_provider, model_type,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if args.load is not None:
+    if args.load_pretrained is not None:
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module
         if isinstance(module, FP16_Module):
             module = module.module
+        args.load = args.load_pretrained
         load_checkpoint(module.model, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.

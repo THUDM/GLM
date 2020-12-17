@@ -46,7 +46,7 @@ def get_model(args, model_type=None):
                           output_predict=output_predict)
         if model_type is not None:
             if model_type == 'multiple_choice':
-                model = MultipleChoice(model, args.hidden_size, args.output_dropout)
+                model = MultipleChoice(model, args.hidden_size, args.output_dropout, args.pool_token)
             else:
                 raise NotImplementedError(model_type)
 

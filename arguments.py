@@ -322,9 +322,11 @@ def add_data_args(parser):
 def add_finetune_config_args(parser):
     group = parser.add_argument_group('finetune', 'finetune configurations')
     group.add_argument('--task', type=str, help='Task name.')
-    group.add_argument('--load-pretrained', type=str, help="Load pretrained model")
+    group.add_argument('--load-pretrained', type=str, help="Load pretrained model", default=None)
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
-                       help='The token to pool the sequence representation')
+                       help='The token to pool the sequence representation', default='start')
+
+    return parser
 
 
 def get_args():
@@ -337,6 +339,7 @@ def get_args():
     parser = add_evaluation_args(parser)
     parser = add_text_generate_args(parser)
     parser = add_data_args(parser)
+    parser = add_finetune_config_args(parser)
 
     # Include DeepSpeed configuration arguments
     parser = deepspeed.add_config_arguments(parser)

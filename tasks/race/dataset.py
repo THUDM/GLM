@@ -16,7 +16,7 @@ MAX_QA_LENGTH = 128
 
 class RaceDataset(Dataset):
 
-    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length, max_qa_length=MAX_QA_LENGTH, is_bert=False):
+    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length, max_qa_length=MAX_QA_LENGTH, is_bert=False, pool_token=None):
 
         self.dataset_name = dataset_name
         print_rank_0(' > building RACE dataset for {}:'.format(
@@ -31,7 +31,7 @@ class RaceDataset(Dataset):
         for datapath in datapaths:
             self.samples.extend(process_single_datapath(datapath, tokenizer,
                                                         max_qa_length,
-                                                        max_seq_length, is_bert=is_bert))
+                                                        max_seq_length, is_bert=is_bert, pool_token=pool_token))
 
         print_rank_0('  >> total number of samples: {}'.format(
             len(self.samples)))
@@ -43,7 +43,7 @@ class RaceDataset(Dataset):
         return self.samples[idx]
 
 
-def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, is_bert=False):
+def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, pool_token, is_bert=False):
     """Read in RACE files, combine, clean-up, tokenize, and convert to
     samples."""
 
@@ -121,7 +121,8 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, 
                                 = build_block_input_from_ids(input_ids, max_seq_length, cls_id=None,
                                                              mask_id=tokenizer.get_command('MASK').Id,
                                                              start_id=tokenizer.get_command('sop').Id,
-                                                             pad_id=tokenizer.get_command('pad').Id)
+                                                             pad_id=tokenizer.get_command('pad').Id,
+                                                             pool_token=pool_token)
 
                             ids_list.append(ids)
                             positions_list.append(position_ids)
