@@ -59,8 +59,10 @@ class MultipleChoice(torch.nn.Module):
             output = outputs[
                 torch.arange(batch_size * num_choices, dtype=attention_mask.dtype,
                              device=attention_mask.device), attention_mask - 1]
-        else:
+        elif self.pool_token == 'cls':
             output = outputs[:, 0]
+        else:
+            raise NotImplementedError
         output = torch.tanh(self.pool_layer(output))
         multichoice_output = self.multichoice_dropout(output)
         multichoice_logits = self.multichoice_head(multichoice_output)
