@@ -82,7 +82,7 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
         tokens, types, labels, attention_mask = data
         logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
     else:
-        tokens, labels, position_ids, attention_mask = process_batch(batch_, args)
+        tokens, labels, position_ids, attention_mask = data
         logits, *mems = model(tokens, position_ids, attention_mask)
 
     # Cross-entropy loss.
