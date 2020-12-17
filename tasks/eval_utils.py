@@ -38,7 +38,7 @@ def accuracy_func_provider(single_dataset_provider, args, is_test=False):
             drop_last=(mpu.get_data_parallel_world_size() > 1))
         dataloaders.append((dataset.dataset_name, dataloader))
 
-    def metrics_func(model, epoch, output_predictions=False):
+    def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
         print_rank_0('calculating metrics ...')
         correct = 0
         total = 0
@@ -59,6 +59,8 @@ def accuracy_func_provider(single_dataset_provider, args, is_test=False):
         percent = float(correct) * 100.0 / float(total)
         print_rank_0(' >> |epoch: {}| overall: correct / total = {} / {} = '
                      '{:.4f} %'.format(epoch, correct, total, percent))
+        if summary_writer is not None and epoch >= 0 and not is_test:
+            summary_writer.add_scalar(f'Train/valid_accuracy', percent, epoch)
 
         if output_predictions and torch.distributed.get_rank() == 0:
             assert args.load is not None

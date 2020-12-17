@@ -22,6 +22,7 @@ from arguments import get_args
 """Finetune utilities."""
 
 import torch
+import torch.utils.data
 from configure_data import prepare_tokenizer
 
 from utils import print_rank_0
@@ -184,8 +185,9 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             # Evaluation
             if args.eval_interval and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
-                evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, verbose=False,
-                                           forward_step_func=cross_entropy_forward_step, summary_writer=summary_writer)
+                evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, step=args.iteration,
+                                           verbose=False, forward_step_func=cross_entropy_forward_step,
+                                           summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
         if args.save:
@@ -193,7 +195,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None:
-            accuracy = end_of_epoch_callback(model, epoch)
+            accuracy = end_of_epoch_callback(model, epoch, summary_writer=summary_writer)
             if best_iteration is None or accuracy > best_accuracy:
                 best_iteration = args.iteration
                 best_accuracy = accuracy
@@ -269,6 +271,7 @@ def finetune(args, train_valid_datasets_provider, model_type,
         if best_iteration is not None and end_of_train_callback is not None:
             args.load = os.path.join(args.save, str(best_iteration))
             load_checkpoint(model, optimizer, lr_scheduler, args)
+        if end_of_train_callback is not None:
             end_of_train_callback(model, epoch=-1, output_predictions=False)
     # Or just evaluate.
     else:
