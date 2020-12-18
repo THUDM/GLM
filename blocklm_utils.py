@@ -25,7 +25,7 @@ def index_in_list(lst, val, start=None):
 
 
 class ConstructBlockStrategy:
-    def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.5, block_ratio=0.15,
+    def __init__(self, args, tokenizer, bert_prob=1.0, gpt_prob=0.0, min_gpt_ratio=0.5, block_ratio=0.15,
                  average_block_length=3, max_block_length=40, average_gap_length=3, block_position_encoding=True):
         self.args = args
         self.tokenizer = tokenizer
