@@ -105,7 +105,7 @@ class GPT2Model(torch.nn.Module):
 
             return (mpu.gather_from_model_parallel_region(logits_parallel), *hidden_layers)
         else:
-            return logits, *hidden_layers
+            return (logits, *hidden_layers)
 
 
 def gpt2_get_params_for_weight_decay_optimization(module):

@@ -66,7 +66,7 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
                              require n to be divisible by number of GPUs
                              used to parallelize the model. Also, we
                              require hidden size to be divisible by n.
-        dropout_prob: dropout probability for the attention scores.
+        attention_dropout_prob: dropout probability for the attention scores.
         init_method: weight initialization.
         output_layer_init_method: output layer initialization. If None, use
                                   `init_method`.
@@ -646,7 +646,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
         if self.max_memory_length > 0:
             mem_layers = self.update_mems(mem_layers, mems)
 
-        return output, *mem_layers
+        return (output, *mem_layers)
 
     def update_mems(self, hiddens, mems):
         memory_length = mems[0].size(1) if mems else 0
