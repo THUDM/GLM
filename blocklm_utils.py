@@ -102,6 +102,7 @@ class ConstructBlockStrategy:
     def generate_blocked_data(self, sample, masked_lengths, attention_mask, rng):
         rng.shuffle(masked_lengths)
         tokens, loss_masks = sample['text'], sample['loss_mask']
+        assert tokens[0] == self.tokenizer.get_command('ENC').Id
         block_spans = self.sample_span_in_document(tokens, masked_lengths, rng)
         if len(block_spans) < len(masked_lengths):
             return None, None, None, None

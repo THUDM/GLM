@@ -157,7 +157,7 @@ def setup_model_and_optimizer(args, model_type=None):
     model = get_model(args, model_type=model_type)
     param_groups = get_optimizer_param_groups(model)
 
-    if args.train_data is not None or args.train_data_path is not None:
+    if args.train_data is not None:
         if args.deepspeed:
             print_rank_0("DeepSpeed is enabled.")
 
