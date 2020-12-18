@@ -25,7 +25,7 @@ def index_in_list(lst, val, start=None):
 
 
 class ConstructBlockStrategy:
-    def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.5, block_ratio=0.2,
+    def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, min_gpt_ratio=0.5, block_ratio=0.15,
                  average_block_length=3, max_block_length=40, average_gap_length=3, block_position_encoding=True):
         self.args = args
         self.tokenizer = tokenizer
@@ -66,6 +66,8 @@ class ConstructBlockStrategy:
         last_index = len(tokens)
         documents = []
         for index in reversed(indices):
+            if tokens[index + 1] == self.tokenizer.get_command('ENC').Id:
+                index += 1
             documents.append((index + 1, last_index - index - 1))
             last_index = index
         documents.sort(key=lambda x: x[1])
@@ -194,7 +196,7 @@ class ConstructBlockStrategy:
             #     end_index = start_index + 1
             # division = rng.randrange(start_index, end_index)
             if True in multiple_docs or rng.random() < 1.0:
-                generation_length = rng.randint(self.min_generation_length, len(samples[0]['text']))
+                generation_length = rng.randint(self.min_generation_length, len(samples[0]['text'] - 1))
                 division = len(samples[0]['text']) - generation_length
                 for sample in samples:
                     tokens, loss_masks = sample['text'], sample['loss_mask']

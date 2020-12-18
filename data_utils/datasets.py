@@ -601,7 +601,7 @@ class BlockDataset(data.Dataset):
 
         # truncate or pad tokens
         num_tokens = len(tokens)
-        tokens_to_strip = num_tokens - self.max_seq_len
+        tokens_to_strip = num_tokens - self.max_seq_len + 1
 
         # randomly choose a position for start
         if tokens_to_strip > 0:
@@ -614,9 +614,9 @@ class BlockDataset(data.Dataset):
                     while strip_left_tokens < len(tokens) and not self.contains_sentence_end(
                             tokens[strip_left_tokens - 1]):
                         strip_left_tokens += 1
-            tokens = tokens[strip_left_tokens:]
-            loss_mask = loss_mask[strip_left_tokens:]
-            if len(tokens) == 1 and tokens[0] == self.tokenizer.get_command('eos').Id:
+            tokens = [self.tokenizer.get_command('ENC').Id] + tokens[strip_left_tokens:]
+            loss_mask = [0] + loss_mask[strip_left_tokens:]
+            if len(tokens) == 2 and tokens[1] == self.tokenizer.get_command('eos').Id:
                 tokens, loss_mask = [], []
             strip_right_rokens = len(tokens) - self.max_seq_len
             if strip_right_rokens > 0:
@@ -627,8 +627,8 @@ class BlockDataset(data.Dataset):
             while len(tokens) < self.max_seq_len:
                 data_idx = self.get_weighted_samples(rng)
                 new_tokens, new_loss_mask = self.getidx(data_idx)
-                tokens += new_tokens
-                loss_mask += new_loss_mask
+                tokens += [self.tokenizer.get_command('ENC').Id] + new_tokens
+                loss_mask += [0] + new_loss_mask
             tokens = tokens[:self.max_seq_len]
             loss_mask = loss_mask[:self.max_seq_len]
 
