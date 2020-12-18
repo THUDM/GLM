@@ -1,10 +1,10 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/root/data/checkpoints/block-lm-blank12-11-05-38
+CHECKPOINT_PATH=/root/data/checkpoints/block-lm-large12-13-01-57
 MPSIZE=1
-NLAYERS=12
-NHIDDEN=768
-NATT=12
+NLAYERS=24
+NHIDDEN=1024
+NATT=16
 MAXSEQLEN=512
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
@@ -29,13 +29,11 @@ MASTER_PORT=${MASTER_PORT} python generate_samples.py \
        --num-attention-heads $NATT \
        --max-position-embeddings 512 \
        --tokenizer-type BertWordPieceTokenizer \
-       --tokenizer-model-type bert-base-uncased \
+       --tokenizer-model-type bert-large-uncased \
        --fp16 \
        --cache-dir cache \
        --out-seq-length $MAXSEQLEN \
        --seq-length 512 \
        --temperature $TEMP \
        --top_k $TOPK \
-       --top_p $TOPP \
-       --num-beams 4 \
-       --length-penalty 0.4
+       --top_p $TOPP
