@@ -25,7 +25,7 @@ gpt_options=" \
        --lr-decay-style cosine \
        --lr-decay-iters 120000 \
        --lr-decay-ratio 0.05 \
-       --warmup .01 \
+       --warmup .05 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
