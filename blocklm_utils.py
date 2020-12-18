@@ -66,9 +66,10 @@ class ConstructBlockStrategy:
         last_index = len(tokens)
         documents = []
         for index in reversed(indices):
-            if tokens[index + 1] == self.tokenizer.get_command('ENC').Id:
-                index += 1
-            documents.append((index + 1, last_index - index - 1))
+            start_index = index
+            if start_index + 1 < len(tokens) and tokens[start_index + 1] == self.tokenizer.get_command('ENC').Id:
+                start_index += 1
+            documents.append((start_index + 1, last_index - start_index - 1))
             last_index = index
         documents.sort(key=lambda x: x[1])
         for i, (offset, length) in enumerate(documents):

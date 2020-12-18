@@ -622,6 +622,9 @@ class BlockDataset(data.Dataset):
             if strip_right_rokens > 0:
                 tokens = tokens[:-strip_right_rokens]
                 loss_mask = loss_mask[:-strip_right_rokens]
+        else:
+            tokens = [self.tokenizer.get_command('ENC').Id] + tokens
+            loss_mask = [0] + loss_mask
         # Sample multiple documents
         if self.sample_across_doc:
             while len(tokens) < self.max_seq_len:
