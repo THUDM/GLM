@@ -211,7 +211,7 @@ def make_loaders(args, tokenizer):
     train, valid, test = None, None, None
 
     if args.train_data is not None:
-        train, tokenizer = data_utils.make_dataset(**data_set_args)
+        train = data_utils.make_dataset(**data_set_args)
         if data_utils.should_split(split):
             train, valid, test = train
         eval_set_args['tokenizer'] = tokenizer
@@ -219,11 +219,11 @@ def make_loaders(args, tokenizer):
     # make training and val dataset if necessary
     if valid is None and args.valid_data is not None:
         eval_set_args['path'] = args.valid_data
-        valid, tokenizer = data_utils.make_dataset(**eval_set_args)
+        valid = data_utils.make_dataset(**eval_set_args)
         eval_set_args['tokenizer'] = tokenizer
     if test is None and args.test_data is not None:
         eval_set_args['path'] = args.test_data
-        test, tokenizer = data_utils.make_dataset(**eval_set_args)
+        test = data_utils.make_dataset(**eval_set_args)
 
     # wrap datasets with data loader
     if train is not None and args.batch_size > 0:
@@ -243,7 +243,7 @@ def make_loaders(args, tokenizer):
     else:
         args.do_test = False
 
-    return (train, valid, test), tokenizer
+    return train, valid, test
 
 
 def get_split(args):

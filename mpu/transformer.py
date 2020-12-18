@@ -552,8 +552,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
             assert is_scalar, 'attention_mask should be a scalar to indicate the seperation position.'
             assert memory_length == 0, 'Do not support transformer-xl.'
         if is_sep:
-            sep = attention_mask.expand(batch_size)
-
+            if is_scalar:
+                sep = attention_mask.item()
             # conventional transformer
             def build_mask_matrix(seq_length, sep, memory_length=0):
                 m = hidden_states.new_ones((1, seq_length, seq_length))

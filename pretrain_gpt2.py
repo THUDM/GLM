@@ -173,7 +173,7 @@ def get_batch(data_iterator, args, timers):
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
-# tokenizer = None
+tokenizer = None
 
 
 def forward_step(data_iterator, model, args, timers, mems):
@@ -185,33 +185,35 @@ def forward_step(data_iterator, model, args, timers, mems):
         data_iterator, args, timers)
     timers('batch generator').stop()
 
-    # def print_masked_text(batch_id):
-    #     if not args.no_block_position:
-    #         position_ids = position_ids[:, 0]
-    #         block_position_ids = position_ids[:, 1]
-    #     output_tokens = []
-    #     sep = attention_mask.item()
-    #     for i, token in enumerate(tokens[batch_id, :sep].tolist()):
-    #         token = tokenizer.IdToToken(token)
-    #         if token == '[MASK]':
-    #             token = f"[{position_ids[batch_id, i].item()}]"
-    #         output_tokens.append(token)
-    #     print(" ".join(output_tokens))
-    #     last_index = None
-    #     last_position = None
-    #     for i in range(sep, tokens.size(1)):
-    #         if (not args.no_block_position and block_position_ids[batch_id, i] == 1) or (args.no_block_position and (
-    #                 last_position is None or position_ids[batch_id, i] != last_position + 1)):
-    #             if last_index is not None:
-    #                 print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), ";",
-    #                       tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
-    #                       position_ids[batch_id, last_index: i].tolist())
-    #             last_index = i
-    #         last_position = position_ids[batch_id, i]
-    #     if last_index is not None:
-    #         print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
-    #               tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
-    #               position_ids[batch_id, last_index:].tolist())
+    def print_masked_text(batch_id):
+        if not args.no_block_position:
+            block_position_ids = position_ids[:, 1]
+            position_ids_ = position_ids[:, 0]
+        else:
+            position_ids_ = position_ids
+        output_tokens = []
+        sep = attention_mask.item()
+        for i, token in enumerate(tokens[batch_id, :sep].tolist()):
+            token = tokenizer.IdToToken(token)
+            if token == '[MASK]':
+                token = f"[{position_ids_[batch_id, i].item()}]"
+            output_tokens.append(token)
+        print(" ".join(output_tokens))
+        last_index = None
+        last_position = None
+        for i in range(sep, tokens.size(1)):
+            if (not args.no_block_position and block_position_ids[batch_id, i] == 1) or (args.no_block_position and (
+                    last_position is None or position_ids_[batch_id, i] != last_position + 1)):
+                if last_index is not None:
+                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), ";",
+                          tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
+                          position_ids_[batch_id, last_index: i].tolist())
+                last_index = i
+            last_position = position_ids_[batch_id, i]
+        if last_index is not None:
+            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
+                  tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
+                  position_ids_[batch_id, last_index:].tolist())
 
     if tokens.size(1) <= args.seq_length + 1:
         mode = 'gpt'
@@ -448,12 +450,11 @@ def get_train_val_test_data(args, tokenizer):
     """Load the data on rank zero and boradcast number of tokens to all GPUS."""
 
     (train_data, val_data, test_data) = (None, None, None)
-    # global tokenizer
     # Data loader only on rank 0 of each model parallel group.
     if mpu.get_model_parallel_rank() == 0:
         data_config = configure_data()
         data_config.set_defaults(data_set_type='Block' if args.block_lm else 'GPT2', transpose=False)
-        (train_data, val_data, test_data) = data_config.apply(args, tokenizer)
+        train_data, val_data, test_data = data_config.apply(args, tokenizer)
 
         data_counts = torch.cuda.LongTensor([int(args.do_train), int(args.do_valid), int(args.do_test)])
     else:
@@ -494,6 +495,7 @@ def main():
     set_random_seed(args.seed)
 
     # Data stuff.
+    global tokenizer
     tokenizer = prepare_tokenizer(args)
     train_data, val_data, test_data, = get_train_val_test_data(args, tokenizer)
 
