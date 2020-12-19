@@ -70,4 +70,4 @@ class MultipleChoice(torch.nn.Module):
         # Reshape back to separate choices.
         multichoice_logits = multichoice_logits.view(-1, num_choices)
 
-        return multichoice_logits, *mems
+        return (multichoice_logits, *mems)

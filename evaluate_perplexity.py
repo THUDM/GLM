@@ -54,8 +54,7 @@ def setup_model(args):
             checkpoint = torch.load(path)
             model.load_state_dict(checkpoint["module"])
         else:
-            _ = load_checkpoint(
-                model, None, None, args, load_optimizer_states=False)
+            _ = load_checkpoint(model, None, None, args)
     # if args.deepspeed:
     #     model = model.module
 

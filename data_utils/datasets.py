@@ -189,7 +189,7 @@ class SplitDataset(data.Dataset):
             yield self.wrapped_data[idx]
 
 
-def split_ds(ds, split=[.8, .2, .0], shuffle=True):
+def split_ds(ds, split=None, shuffle=True):
     """
     Split a dataset into subsets given proportions of how
     much to allocate per split. If a split is 0% returns None for that split.
@@ -199,6 +199,8 @@ def split_ds(ds, split=[.8, .2, .0], shuffle=True):
         split (1D array-like): proportions to split `ds`. `sum(splits) != 0`
         shuffle (boolean): Randomly split dataset. Default: True
     """
+    if split is None:
+        split = [.8, .2, .0]
     split_sum = sum(split)
     if split_sum == 0:
         raise Exception('Split cannot sum to 0.')

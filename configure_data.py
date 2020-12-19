@@ -28,8 +28,10 @@ import mpu
 
 class DataConfig:
 
-    def __init__(self, defaults={}):
+    def __init__(self, defaults=None):
         super(DataConfig, self).__init__()
+        if defaults is None:
+            defaults = {}
         self.defaults = defaults
 
     def apply(self, args, tokenizer):
