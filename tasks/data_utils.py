@@ -74,6 +74,8 @@ def build_block_input_from_ids(text_a_ids, max_seq_length, mask_id=None, start_i
         raise NotImplementedError(pool_token)
     ids = []
 
+    if pool_token == 'cls':
+        assert cls_id is not None
     # [CLS].
     if cls_id is not None:
         ids.append(cls_id)

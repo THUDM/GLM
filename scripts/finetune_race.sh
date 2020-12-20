@@ -11,7 +11,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 TRAIN_DATA="/root/data/RACE/train/middle /root/data/RACE/train/high"
 VALID_DATA="/root/data/RACE/dev/middle /root/data/RACE/dev/high"
 TEST_DATA="/root/data/RACE/test/middle /root/data/RACE/test/high"
-PRETRAINED_CHECKPOINT=/root/data/checkpoints/block-lm-blank12-11-05-38
+PRETRAINED_CHECKPOINT=/root/data/checkpoints/block-lm-blank-cls12-18-12-50
 CHECKPOINT_PATH=/root/data/checkpoints
 EXPERIMENT_NAME=block-lm-blank
 COMMON_TASK_ARGS="--block-lm \
@@ -43,7 +43,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $COMMON_TASK_ARGS \
        $COMMON_TASK_ARGS_EXT \
        --tokenizer-type BertWordPieceTokenizer \
-       --pool-token pad \
+       --pool-token cls \
        --epochs 5 \
        --batch-size 4 \
        --lr 1.5e-5 \

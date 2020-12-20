@@ -16,7 +16,8 @@ MAX_QA_LENGTH = 128
 
 class RaceDataset(Dataset):
 
-    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length, max_qa_length=MAX_QA_LENGTH, is_bert=False, pool_token=None):
+    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length, max_qa_length=MAX_QA_LENGTH, is_bert=False,
+                 pool_token=None):
 
         self.dataset_name = dataset_name
         print_rank_0(' > building RACE dataset for {}:'.format(
@@ -118,7 +119,8 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, 
                             input_ids = context_ids + qa_ids
                             # Build the sample.
                             ids, position_ids, mask \
-                                = build_block_input_from_ids(input_ids, max_seq_length, cls_id=None,
+                                = build_block_input_from_ids(input_ids, max_seq_length,
+                                                             cls_id=tokenizer.get_command('ENC').Id,
                                                              mask_id=tokenizer.get_command('MASK').Id,
                                                              start_id=tokenizer.get_command('sop').Id,
                                                              pad_id=tokenizer.get_command('pad').Id,
