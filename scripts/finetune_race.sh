@@ -5,7 +5,7 @@ NNODES=1
 NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
-
+DATESTR=$(date +"%m-%d-%H-%M")
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
 TRAIN_DATA="/root/data/RACE/train/middle /root/data/RACE/train/high"
@@ -35,6 +35,7 @@ COMMON_TASK_ARGS_EXT="--train-data $TRAIN_DATA \
                       --eval-iters 100 \
                       --weight-decay 1.0e-1"
 
+mkdir logs
 #MASTER_PORT=${MASTER_PORT} python finetune_gpt2.py \
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --experiment-name ${EXPERIMENT_NAME} \
@@ -43,9 +44,10 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $COMMON_TASK_ARGS \
        $COMMON_TASK_ARGS_EXT \
        --tokenizer-type BertWordPieceTokenizer \
-       --pool-token cls \
+       --pool-token start \
        --epochs 5 \
        --batch-size 4 \
        --lr 1.5e-5 \
        --lr-decay-style linear \
-       --warmup 0.06
+       --warmup 0.06 \
+       2>&1 | tee logs/log-${DATESTR}.txt
