@@ -49,6 +49,13 @@ def process_batch(batch, args):
         if args.fp16:
             attention_mask = attention_mask.half()
         return tokens, types, labels, attention_mask
+    elif args.cloze_eval:
+        target_ids = batch['target'].long().cuda().contiguous()
+        logit_mask = batch['logit_mask'].long().cuda().contiguous()
+        position_ids = batch['position'].long().cuda().contiguous()
+        labels = batch['label'].long().cuda().contiguous()
+        attention_mask = batch['mask'].long().cuda().contiguous()
+        return tokens, labels, position_ids, attention_mask, target_ids, logit_mask
     else:
         position_ids = batch['position'].long().cuda().contiguous()
         labels = batch['label'].long().cuda().contiguous()
@@ -81,6 +88,27 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
     if args.pretrained_bert:
         tokens, types, labels, attention_mask = data
         logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
+    elif args.cloze_eval:
+        tokens, labels, position_ids, attention_mask, target_ids, logit_mask = data
+
+        def print_masked_text(batch_id, choice_id):
+            output_tokens = []
+            sep = attention_mask[batch_id, choice_id].item()
+            for i, token in enumerate(tokens[batch_id, choice_id, :sep].tolist()):
+                token = tokenizer.IdToToken(token)
+                if token == '[MASK]':
+                    token = f"[{position_ids[batch_id, choice_id, 0, i].item()}]"
+                output_tokens.append(token)
+            print(" ".join(output_tokens))
+            target_positions = []
+            for i in range(sep, tokens.size(-1)):
+                if logit_mask[batch_id, choice_id, i]:
+                    target_positions.append(i)
+            print(target_positions, tokenizer.DecodeIds(tokens[batch_id, choice_id, target_positions].tolist()),
+                  tokenizer.DecodeIds(target_ids[batch_id, choice_id, target_positions].tolist()),
+                  position_ids[batch_id, choice_id, :, target_positions])
+
+        logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
     else:
         tokens, labels, position_ids, attention_mask = data
         logits, *mems = model(tokens, position_ids, attention_mask)

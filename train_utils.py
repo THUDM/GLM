@@ -26,7 +26,7 @@ def get_model(args, model_type=None):
             raise NotImplementedError
     else:
         output_predict = True
-        if model_type == "multiple_choice":
+        if model_type == "multiple_choice" and not args.cloze_eval:
             output_predict = False
         model = GPT2Model(num_layers=args.num_layers,
                           vocab_size=args.vocab_size,
@@ -46,7 +46,8 @@ def get_model(args, model_type=None):
                           output_predict=output_predict)
         if model_type is not None:
             if model_type == 'multiple_choice':
-                model = MultipleChoice(model, args.hidden_size, args.output_dropout, args.pool_token)
+                model = MultipleChoice(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                       cloze_format=args.cloze_eval)
             else:
                 raise NotImplementedError(model_type)
 

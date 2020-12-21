@@ -30,7 +30,8 @@ def clean_text(text):
     return text
 
 
-def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None):
+def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
+                 logit_mask=None):
     """Convert to numpy and return a sample consumed by the batch producer."""
 
     ids_np = np.array(ids, dtype=np.int64)
@@ -47,6 +48,12 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
     if masks is not None:
         masks_np = np.array(masks, dtype=np.int64)
         sample['mask'] = masks_np
+    if target is not None:
+        target_np = np.array(target, dtype=np.int64)
+        sample['target'] = target_np
+    if logit_mask is not None:
+        logit_mask_np = np.array(logit_mask, dtype=np.int64)
+        sample['logit_mask'] = logit_mask_np
     if unique_id is not None:
         sample['uid'] = int(unique_id)
     return sample
@@ -97,7 +104,7 @@ def build_block_input_from_ids(text_a_ids, max_seq_length, mask_id=None, start_i
     ids.append(pad_id)
     position_ids = list(range(len(ids)))
     block_position_ids = [0] * len(ids)
-    mask = len(ids)
+    sep = len(ids)
     if pool_token == 'start':
         ids.append(start_id)
         position_ids.append(mask_position)
@@ -110,7 +117,7 @@ def build_block_input_from_ids(text_a_ids, max_seq_length, mask_id=None, start_i
         block_position_ids.extend(range(2, padding_length + 2))
 
     position_ids = [position_ids, block_position_ids]
-    return ids, position_ids, mask
+    return ids, position_ids, sep
 
 
 def build_bert_input_from_ids(text_a_ids, text_b_ids, max_seq_length, cls_id, sep_id, pad_id):

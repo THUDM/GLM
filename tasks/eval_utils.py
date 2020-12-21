@@ -92,6 +92,9 @@ def calculate_correct_answers(name, model, dataloader, epoch, output_predictions
             if args.pretrained_bert:
                 tokens, types, labels_, attention_mask = process_batch(batch, args)
                 logits = model(tokens, token_type_ids=types, attention_mask=attention_mask)
+            elif args.cloze_eval:
+                tokens, labels_, position_ids, attention_mask, target_ids, logit_mask = process_batch(batch, args)
+                logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
             else:
                 tokens, labels_, position_ids, attention_mask = process_batch(batch, args)
                 logits, *mems = model(tokens, position_ids, attention_mask)

@@ -208,8 +208,6 @@ def add_evaluation_args(parser):
                        help='Maximum number of predictions to use for '
                             'evaluation. Defaults to '
                             'math.ceil(`--eval-seq-length`*.15/10)*10')
-    group.add_argument('--cloze-eval', action='store_true',
-                       help='Evaluation dataset from `--valid-data` is a cloze task')
     group.add_argument('--eval-hf', action='store_true',
                        help='perform evaluation with huggingface openai model.'
                             'use `--load` to specify weights path to be loaded')
@@ -325,6 +323,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--load-pretrained', type=str, help="Load pretrained model", default=None)
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
                        help='The token to pool the sequence representation', default='start')
+    group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
 
     return parser
 

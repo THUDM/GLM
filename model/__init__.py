@@ -18,4 +18,4 @@ from .gpt2_modeling import gpt2_get_params_for_weight_decay_optimization
 from .gpt2_modeling import GPT2Model
 from .model import BertModel
 from .model import get_params_for_weight_decay_optimization
-from .multiple_choice import MultipleChoice
+from .downstream import MultipleChoice
