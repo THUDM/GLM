@@ -1,10 +1,10 @@
 #!/bin/bash
 
-CHECKPOINT_PATH=/root/data/checkpoints/block-lm-large12-13-01-57
+CHECKPOINT_PATH=/root/data/checkpoints/block-lm-blank-cls12-18-12-50
 MPSIZE=1
-NLAYERS=24
-NHIDDEN=1024
-NATT=16
+NLAYERS=12
+NHIDDEN=768
+NATT=12
 MAXSEQLEN=512
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 

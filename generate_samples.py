@@ -223,8 +223,10 @@ def read_context(tokenizer, args, output):
                 raw_text += ' [MASK]'
             output.write(raw_text)
             context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
-            if args.block_lm and not raw_text.endswith('[MASK]'):
-                context_tokens = context_tokens + [tokenizer.get_command('eos').Id]
+            if args.block_lm:
+                context_tokens = [tokenizer.get_command('ENC').Id] + context_tokens
+                if not raw_text.endswith('[MASK]'):
+                    context_tokens = context_tokens + [tokenizer.get_command('eos').Id]
             context_length = len(context_tokens)
 
             if context_length >= args.seq_length:
