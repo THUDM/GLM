@@ -44,9 +44,10 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $COMMON_TASK_ARGS_EXT \
        --tokenizer-type BertWordPieceTokenizer \
        --pool-token start \
-       --epochs 5 \
-       --batch-size 4 \
-       --lr 1.5e-5 \
+       --epochs 20 \
+       --batch-size 16 \
+       --lr 1e-5 \
        --lr-decay-style linear \
        --warmup 0.06 \
+       --cloze-eval \
        2>&1 | tee logs/log-${DATESTR}.txt
