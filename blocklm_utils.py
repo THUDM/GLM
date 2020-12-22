@@ -72,7 +72,7 @@ class ConstructBlockStrategy:
             if start_index + 1 < len(tokens) and tokens[start_index + 1] == self.tokenizer.get_command('ENC').Id:
                 start_index += 1
             length = last_index - start_index - 1
-            if last_index == len(tokens):
+            if last_index == len(tokens) and length > 0:
                 length -= 1
             documents.append((start_index + 1, length))
             last_index = index
