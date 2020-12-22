@@ -201,7 +201,7 @@ class ConstructBlockStrategy:
             # if end_index < start_index + 1:
             #     end_index = start_index + 1
             # division = rng.randrange(start_index, end_index)
-            generation_length = rng.randint(self.min_generation_length, len(samples[0]['text'] - 2))
+            generation_length = rng.randint(self.min_generation_length, len(samples[0]['text']) - 2)
             attention_mask = self.args.seq_length - generation_length + 1
             for sample in samples:
                 multiple_doc = index_in_list(sample['text'], self.tokenizer.get_command('eos').Id) not in [-1, len(
