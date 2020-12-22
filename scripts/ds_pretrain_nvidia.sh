@@ -15,7 +15,7 @@ OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_SOCKET_IFNAME=ib0 NCCL_NET_
 HOST_FILE_PATH="/root/code/config/hostfile"
 
 mkdir logs
-run_cmd="${OPTIONS_NCCL} deepspeed --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} pretrain_gpt2.py ${gpt_options}" 2>&1 | tee logs/log-${DATESTR}.txt
+run_cmd="${OPTIONS_NCCL} deepspeed --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} pretrain_gpt2.py ${gpt_options} 2>&1 | tee logs/log-${DATESTR}.txt"
 echo ${run_cmd}
 eval ${run_cmd}
 
