@@ -71,14 +71,17 @@ class ConstructBlockStrategy:
             start_index = index
             if start_index + 1 < len(tokens) and tokens[start_index + 1] == self.tokenizer.get_command('ENC').Id:
                 start_index += 1
-            documents.append((start_index + 1, last_index - start_index - 1))
+            length = last_index - start_index - 1
+            if last_index == len(tokens):
+                length -= 1
+            documents.append((start_index + 1, length))
             last_index = index
         documents.sort(key=lambda x: x[1])
         for i, (offset, length) in enumerate(documents):
             if i == len(documents) - 1:
                 current_masked_length, current_count = 0, 0
                 while mask_index + current_count < len(masked_lengths) and masked_lengths[
-                    mask_index + current_count] + current_masked_length + current_count + 1 <= length:
+                    mask_index + current_count] + current_masked_length + current_count <= length:
                     current_masked_length += masked_lengths[mask_index + current_count]
                     current_count += 1
                 if current_count > 0:
@@ -238,6 +241,8 @@ class ConstructBlockStrategy:
                     target_batch.append(targets)
                     loss_mask_batch.append(loss_masks)
                     position_id_batch.append(position_ids)
+                    if tokens is None:
+                        print(sample, generation_length, multiple_doc)
         return {'text': torch.tensor(token_batch, dtype=torch.long),
                 'target': torch.tensor(target_batch, dtype=torch.long),
                 'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long),

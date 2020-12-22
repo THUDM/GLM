@@ -23,7 +23,7 @@ def main():
     strategy = ConstructBlockStrategy(args, None, block_ratio=0.4)
     counts = np.array([0] * 10)
     for _ in range(10000):
-        spans = strategy.sample_span_in_document(np.array([1, 2, 3, 0, 4, 5, 6, 7, 0, 8], dtype=np.long), [1, 1],
+        spans = strategy.sample_span_in_document(np.array([1, 2, 3, 0, 4, 5, 6, 7, 9, 0], dtype=np.long), [1, 1],
                                                  random.Random())
         for start, end in spans:
             counts[start: end] += 1
