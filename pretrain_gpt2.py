@@ -215,7 +215,7 @@ def forward_step(data_iterator, model, args, timers, mems):
                   tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
                   position_ids_[batch_id, last_index:].tolist())
 
-    if tokens.size(1) <= args.seq_length + 1:
+    if tokens.size(1) <= args.seq_length + 2:
         mode = 'gpt'
     else:
         mode = 'bert'
