@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from utils import print_rank_0
 from tasks.data_utils import build_sample
-from tasks.data_utils import build_block_input_from_ids, build_bert_input_from_ids
+from tasks.data_utils import build_input_from_ids
 from tasks.data_utils import clean_text
 
 NUM_CHOICES = 4
@@ -75,10 +75,7 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, 
                 assert len(questions) == len(choices)
 
                 mask_id = tokenizer.get_command('MASK').Id
-                eos_id = tokenizer.get_command('eos').Id
-                sop_id = tokenizer.get_command('sop').Id
                 eop_id = tokenizer.get_command('eop').Id
-                cls_id = tokenizer.get_command('ENC').Id
 
                 # Context: clean up and convert to ids.
                 context = clean_text(context)
@@ -108,42 +105,24 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, 
                                 left, right = question.split('_', maxsplit=1)
                                 left_ids, right_ids = tokenizer.EncodeAsIds(left).tokenization, tokenizer.EncodeAsIds(
                                     right).tokenization
-                                mask_position = len(left_ids)
                                 q_ids = left_ids + [mask_id] + right_ids
                             else:
                                 q_ids = tokenizer.EncodeAsIds(question).tokenization
-                                mask_position = len(q_ids)
                                 q_ids = q_ids + [mask_id]
                             answer_ids = tokenizer.EncodeAsIds(choice).tokenization
-                            answer_ids = [sop_id] + answer_ids + [eop_id]
-                            if len(q_ids) + len(answer_ids) > max_qa_length + 1:
-                                if max_qa_length + 1 - len(q_ids) < 2:
+                            answer_ids = answer_ids + [eop_id]
+                            if len(q_ids) + len(answer_ids) > max_qa_length:
+                                if max_qa_length - len(q_ids) <= 0:
                                     q_ids = q_ids[:max_qa_length - 1]
-                                strip_tokens = len(q_ids) + len(answer_ids) - max_qa_length - 1
+                                strip_tokens = len(q_ids) + len(answer_ids) - max_qa_length
                                 answer_ids = answer_ids[:-strip_tokens]
-                            if len(context_ids) + 1 + len(q_ids) + len(answer_ids) > max_seq_length:
-                                context_ids = context_ids[:max_seq_length - len(q_ids) - len(answer_ids) - 1]
-                            mask_position += len(context_ids) + 1
-                            ids = [cls_id] + context_ids + q_ids + [eos_id]
-                            sep = len(ids)
-                            position_ids = list(range(len(ids)))
-                            block_position_ids = [0] * len(ids)
-                            loss_masks = [0] * len(ids)
-                            target_ids = [0] * len(ids)
-                            ids = ids + answer_ids[:-1]
-                            position_ids = position_ids + [mask_position] * (len(answer_ids) - 1)
-                            block_position_ids += range(1, len(answer_ids))
-                            loss_masks += [1] * (len(answer_ids) - 1)
-                            target_ids += answer_ids[1:]
+                            if len(context_ids) + len(q_ids) + len(answer_ids) + 2 > max_seq_length:
+                                context_ids = context_ids[:max_seq_length - len(q_ids) - len(answer_ids) - 2]
+                            ids = context_ids + q_ids
                             # Padding.
-                            padding_length = max_seq_length - len(ids)
-                            if padding_length > 0:
-                                ids.extend([eos_id] * padding_length)
-                                position_ids.extend([position_ids[-1]] * padding_length)
-                                block_position_ids.extend(range(2, padding_length + 2))
-                                loss_masks += [0] * padding_length
-                                target_ids += [0] * padding_length
-                            position_ids = [position_ids, block_position_ids]
+                            data = build_input_from_ids(ids, None, answer_ids, max_seq_length, tokenizer, add_cls=True,
+                                                        add_sep=False)
+                            ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                             ids_list.append(ids)
                             positions_list.append(position_ids)
                             sep_list.append(sep)
@@ -163,27 +142,22 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, 
                             # Trim if needed.
                             if is_bert:
                                 # Build the sample.
-                                ids, types, paddings = build_bert_input_from_ids(qa_ids, context_ids, max_seq_length,
-                                                                                 tokenizer.get_command('ENC').Id,
-                                                                                 tokenizer.get_command('sep').Id,
-                                                                                 tokenizer.get_command('pad').Id)
+                                data = build_input_from_ids(qa_ids, context_ids, None, max_seq_length,
+                                                            tokenizer, add_cls=True, add_sep=True)
+                                ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                                 ids_list.append(ids)
                                 types_list.append(types)
                                 paddings_list.append(paddings)
                             else:
                                 input_ids = context_ids + qa_ids
                                 # Build the sample.
-                                ids, position_ids, mask \
-                                    = build_block_input_from_ids(input_ids, max_seq_length,
-                                                                 cls_id=tokenizer.get_command('ENC').Id,
-                                                                 mask_id=tokenizer.get_command('MASK').Id,
-                                                                 start_id=tokenizer.get_command('sop').Id,
-                                                                 pad_id=tokenizer.get_command('pad').Id,
-                                                                 pool_token=pool_token)
-
+                                data = build_input_from_ids(input_ids, None, None, max_seq_length, tokenizer,
+                                                            add_cls=True, add_sep=False,
+                                                            add_piece=pool_token == 'start')
+                                ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                                 ids_list.append(ids)
                                 positions_list.append(position_ids)
-                                sep_list.append(mask)
+                                sep_list.append(sep)
                     # Convert to numpy and add to samples
                     if is_bert:
                         samples.append(build_sample(ids_list, types=types_list, paddings=paddings_list, label=label,
