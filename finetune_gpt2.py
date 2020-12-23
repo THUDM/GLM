@@ -291,6 +291,12 @@ def finetune(args, train_valid_datasets_provider, model_type,
         # master parameters are also updated.
         if args.fp16:
             optimizer._model_params_to_master_params()
+    elif args.load is not None:
+        load_checkpoint(model, optimizer, lr_scheduler, args)
+        # This is critical when only model is loaded. We should make sure
+        # master parameters are also updated.
+        if args.fp16:
+            optimizer._model_params_to_master_params()
     timers('pretrained checkpoint').stop()
     args.iteration = 0
     summary_writer = None

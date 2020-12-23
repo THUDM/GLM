@@ -62,7 +62,8 @@ class MultipleChoice(torch.nn.Module):
             batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
             logits = outputs[batch_ids, seq_ids, target_ids]
             multichoice_logits = (logits * logit_mask).sum(dim=1)
-            multichoice_logits = multichoice_logits / logit_mask.sum(dim=1)
+            # multichoice_logits = multichoice_logits / logit_mask.sum(dim=1)
+            multichoice_logits = multichoice_logits / logit_mask.sum(dim=1).max(dim=0, keepdim=True).values
         else:
             if self.pool_token == 'start':
                 output = outputs[
