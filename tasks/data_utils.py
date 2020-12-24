@@ -64,65 +64,16 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
     return sample
 
 
-def build_tokens_types_paddings_from_text(text_a, text_b,
-                                          tokenizer, max_seq_length):
-    """Build token types and paddings, trim if needed, and pad if needed."""
-
-    text_a_ids = tokenizer.tokenize(text_a)
-    text_b_ids = None
-    if text_b is not None:
-        text_b_ids = tokenizer.tokenize(text_b)
-
-    return build_block_input_from_ids(text_a_ids, text_b_ids,
-                                      max_seq_length, tokenizer.cls,
-                                      tokenizer.sep, tokenizer.pad)
-
-
-def build_block_input_from_ids(text_a_ids, max_seq_length, mask_id=None, start_id=None, pad_id=None, cls_id=None,
-                               pool_token='start'):
-    """Build token types and paddings, trim if needed, and pad if needed."""
-
-    if pool_token not in ['start', 'cls', 'pad']:
-        raise NotImplementedError(pool_token)
-    ids = []
-
-    if pool_token == 'cls':
-        assert cls_id is not None
-    # [CLS].
-    if cls_id is not None:
-        ids.append(cls_id)
-
-    # A.
-    ids.extend(text_a_ids)
-    if pool_token == 'start':
-        # Cap the size.
-        if len(ids) > max_seq_length - 3:
-            max_seq_length_m1 = max_seq_length - 3
-            ids = ids[0:max_seq_length_m1]
-        # Mask
-        mask_position = len(ids)
-        ids.append(mask_id)
-    elif pool_token == 'pad' or pool_token == 'cls':
-        if len(ids) > max_seq_length - 1:
-            max_seq_length_m1 = max_seq_length - 1
-            ids = ids[:max_seq_length_m1]
-    ids.append(pad_id)
-    position_ids = list(range(len(ids)))
-    block_position_ids = [0] * len(ids)
-    sep = len(ids)
-    if pool_token == 'start':
-        ids.append(start_id)
-        position_ids.append(mask_position)
-        block_position_ids.append(1)
-    # Padding.
-    padding_length = max_seq_length - len(ids)
-    if padding_length > 0:
-        ids.extend([pad_id] * padding_length)
-        position_ids.extend([position_ids[-1]] * padding_length)
-        block_position_ids.extend(range(2, padding_length + 2))
-
-    position_ids = [position_ids, block_position_ids]
-    return ids, position_ids, sep
+def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_sep, add_piece):
+    num_tokens = 0
+    if add_cls:
+        num_tokens += 1
+    if text_b_ids and add_sep:
+        num_tokens += 1
+    num_tokens += 1
+    if not answer_ids and add_piece:
+        num_tokens += 1
+    return num_tokens
 
 
 def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tokenizer, add_cls=True, add_sep=False,
@@ -145,13 +96,13 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     ids.extend(text_a_ids)
     types.extend([0] * len_text_a)
     paddings.extend([1] * len_text_a)
-    # SEP
-    if add_sep:
-        ids.append(sep_id)
-        types.append(0)
-        paddings.append(1)
     # B
     if text_b_ids is not None:
+        # SEP
+        if add_sep:
+            ids.append(sep_id)
+            types.append(0)
+            paddings.append(1)
         len_text_b = len(text_b_ids)
         ids.extend(text_b_ids)
         types.extend([1] * len_text_b)
@@ -190,7 +141,7 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
             loss_masks.extend([1] * len(answer_ids))
         else:
             target_ids.append(0)
-            loss_masks.append(0)
+            loss_masks.append(1)
     # Padding.
     padding_length = max_seq_length - len(ids)
     if padding_length > 0:
