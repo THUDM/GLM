@@ -25,7 +25,7 @@ def index_in_list(lst, val, start=None):
 
 
 class ConstructBlockStrategy:
-    def __init__(self, args, tokenizer, bert_prob=0.5, gpt_prob=0.5, infill_prob=0.5, min_gpt_ratio=0.5,
+    def __init__(self, args, tokenizer, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
                  block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
                  block_position_encoding=True):
         self.args = args
@@ -35,9 +35,9 @@ class ConstructBlockStrategy:
         self.world_size = mpu.get_data_parallel_world_size()
         # self.rank = 0
         # self.world_size = 1
-        prob_normalizer = bert_prob + gpt_prob
-        self.bert_prob = bert_prob / prob_normalizer
-        self.gpt_prob = gpt_prob / prob_normalizer
+        assert 0.0 <= bert_prob <= 1.0
+        self.bert_prob = bert_prob
+        self.gpt_prob = 1 - bert_prob
         self.infill_prob = infill_prob
         self.min_generation_length = int(min_gpt_ratio * args.seq_length)
         self.block_ratio = block_ratio
