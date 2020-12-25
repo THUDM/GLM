@@ -17,10 +17,34 @@
 
 import torch
 import torch.nn
+from .gpt2_modeling import GPT2Model
 
-from utils import print_rank_0
-from .modeling import bert_extended_attention_mask
-from .gpt2_modeling import init_method_normal
+
+class ClozeModel(torch.nn.Module):
+    def __init__(self, language_model, take_softmax=True, normalize='none'):
+        super(ClozeModel, self).__init__()
+        self.model = language_model
+        self.take_softmax = take_softmax
+        self.normalize = normalize
+
+    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
+        assert len(input_ids.shape) == 2
+        assert len(target_ids.shape) == 2
+        assert len(logit_mask.shape) == 2
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+        if self.take_softmax:
+            outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
+        batch_ids = torch.arange(target_ids.size(0), dtype=torch.long, device=target_ids.device)
+        batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
+        seq_ids = torch.arange(target_ids.size(-1), dtype=torch.long, device=target_ids.device)
+        seq_ids = seq_ids.unsqueeze(0).expand_as(target_ids)
+        logits = outputs[batch_ids, seq_ids, target_ids]
+        logits = (logits * logit_mask).sum(dim=1)
+        if self.normalize == 'mean':
+            logits = logits / logit_mask.sum(dim=1)
+        elif self.normalize == 'max':
+            logits = logits / logit_mask.sum(dim=1).max(dim=0, keepdim=True).values
+        return (logits, *mems)
 
 
 class MultipleChoice(torch.nn.Module):
@@ -54,6 +78,7 @@ class MultipleChoice(torch.nn.Module):
         outputs, *mems = self.model(input_ids, position_ids, attention_mask)
         # Output.
         if self.cloze_foramt:
+            # outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
             target_ids = target_ids.view(-1, target_ids.size(-1))
             logit_mask = logit_mask.view(-1, logit_mask.size(-1))
             seq_ids = torch.arange(target_ids.size(-1), dtype=torch.long, device=target_ids.device)
@@ -62,8 +87,8 @@ class MultipleChoice(torch.nn.Module):
             batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
             logits = outputs[batch_ids, seq_ids, target_ids]
             multichoice_logits = (logits * logit_mask).sum(dim=1)
-            # multichoice_logits = multichoice_logits / logit_mask.sum(dim=1)
-            multichoice_logits = multichoice_logits / logit_mask.sum(dim=1).max(dim=0, keepdim=True).values
+            multichoice_logits = multichoice_logits / logit_mask.sum(dim=1)
+            # multichoice_logits = multichoice_logits / logit_mask.sum(dim=1).max(dim=0, keepdim=True).values
         else:
             if self.pool_token == 'start':
                 output = outputs[
