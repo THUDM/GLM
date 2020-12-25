@@ -13,6 +13,7 @@
 """
 This file contains the pattern-verbalizer pairs (PVPs) for all tasks.
 """
+import copy
 import random
 import string
 from abc import ABC, abstractmethod
@@ -113,6 +114,30 @@ class PVP(ABC):
 
         if self.is_multi_token:
             answers = self.get_answers(example)
+            ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+            for answer in answers:
+                this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
+                answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+                self.truncate(this_parts_a, this_parts_b, answer_ids, max_length=self.max_seq_length)
+                tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
+                tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+                data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
+                                            add_cls=True, add_sep=False, add_piece=True)
+                ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                ids_list.append(ids)
+                positions_list.append(position_ids)
+                sep_list.append(sep)
+                target_list.append(target_ids)
+                mask_list.append(loss_masks)
+            label = example.label
+            if len(label) == 0:
+                label = self.label_list.index(label[0])
+            else:
+                label = [self.label_list.index(l) for l in label]
+            sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                                  logit_mask=mask_list, target=target_list,
+                                  unique_id=example.guid)
+            return sample
         else:
             self.truncate(parts_a, parts_b, [], max_length=self.max_seq_length)
 
@@ -125,7 +150,7 @@ class PVP(ABC):
                     input_ids += tokens_b
                 if labeled:
                     mask_idx = input_ids.index(self.mask_id)
-                    assert mask_idx >= 0, 'sequence of input_ids must contain a mask token'
+                    assert mask_idx == 1, 'sequence of input_ids must contain a mask token'
                     assert len(self.verbalize(example.label)) == 1, 'priming only supports one verbalization per label'
                     verbalizer = self.verbalize(example.label)[0]
                     verbalizer_id = get_verbalization_ids(verbalizer, self.tokenizer, force_single_token=True)
@@ -218,6 +243,10 @@ class PVP(ABC):
 
 
 class CopaPVP(PVP):
+    @property
+    def is_multi_token(self):
+        return True
+
     def get_answers(self, example: InputExample):
         choice1 = self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -248,6 +277,10 @@ class CopaPVP(PVP):
 
 
 class WscPVP(PVP):
+    @property
+    def is_multi_token(self):
+        return True
+
     def get_answers(self, example: InputExample):
         target = example.meta['span1_text']
         return [target]
@@ -276,6 +309,10 @@ class WscPVP(PVP):
 
 
 class RecordPVP(PVP):
+    @property
+    def is_multi_token(self):
+        return True
+
     def get_answers(self, example: InputExample):
         choices = example.meta['candidates']
         return choices
