@@ -110,223 +110,6 @@ class DataProcessor(ABC):
         pass
 
 
-class MnliProcessor(DataProcessor):
-    """Processor for the MultiNLI data set (GLUE version)."""
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(MnliProcessor._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
-
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(MnliProcessor._read_tsv(os.path.join(data_dir, "dev_matched.tsv")), "dev_matched")
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
-        return self.get_train_examples(data_dir)
-
-    def get_labels(self):
-        return ["contradiction", "entailment", "neutral"]
-
-    @staticmethod
-    def _create_examples(lines: List[List[str]], set_type: str) -> List[InputExample]:
-        examples = []
-
-        for (i, line) in enumerate(lines):
-            if i == 0:
-                continue
-            guid = "%s-%s" % (set_type, line[0])
-            text_a = line[8]
-            text_b = line[9]
-            label = line[-1]
-
-            example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
-            examples.append(example)
-
-        return examples
-
-    @staticmethod
-    def _read_tsv(input_file, quotechar=None):
-        with open(input_file, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                lines.append(line)
-            return lines
-
-
-class MnliMismatchedProcessor(MnliProcessor):
-    """Processor for the MultiNLI mismatched data set (GLUE version)."""
-
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_mismatched.tsv")), "dev_mismatched")
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-
-class AgnewsProcessor(DataProcessor):
-    """Processor for the AG news data set."""
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.csv"), "train")
-
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.csv"), "dev")
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
-        return self.get_train_examples(data_dir)
-
-    def get_labels(self):
-        return ["1", "2", "3", "4"]
-
-    @staticmethod
-    def _create_examples(path: str, set_type: str) -> List[InputExample]:
-        examples = []
-
-        with open(path) as f:
-            reader = csv.reader(f, delimiter=',')
-            for idx, row in enumerate(reader):
-                label, headline, body = row
-                guid = "%s-%s" % (set_type, idx)
-                text_a = headline.replace('\\', ' ')
-                text_b = body.replace('\\', ' ')
-
-                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
-                examples.append(example)
-
-        return examples
-
-
-class YahooAnswersProcessor(DataProcessor):
-    """Processor for the Yahoo Answers data set."""
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.csv"), "train")
-
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.csv"), "dev")
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
-        return self.get_train_examples(data_dir)
-
-    def get_labels(self):
-        return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-
-    @staticmethod
-    def _create_examples(path: str, set_type: str) -> List[InputExample]:
-        examples = []
-
-        with open(path, encoding='utf8') as f:
-            reader = csv.reader(f, delimiter=',')
-            for idx, row in enumerate(reader):
-                label, question_title, question_body, answer = row
-                guid = "%s-%s" % (set_type, idx)
-                text_a = ' '.join([question_title.replace('\\n', ' ').replace('\\', ' '),
-                                   question_body.replace('\\n', ' ').replace('\\', ' ')])
-                text_b = answer.replace('\\n', ' ').replace('\\', ' ')
-
-                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
-                examples.append(example)
-
-        return examples
-
-
-class YelpPolarityProcessor(DataProcessor):
-    """Processor for the YELP binary classification set."""
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.csv"), "train")
-
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.csv"), "dev")
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
-        return self.get_train_examples(data_dir)
-
-    def get_labels(self):
-        return ["1", "2"]
-
-    @staticmethod
-    def _create_examples(path: str, set_type: str) -> List[InputExample]:
-        examples = []
-
-        with open(path) as f:
-            reader = csv.reader(f, delimiter=',')
-            for idx, row in enumerate(reader):
-                label, body = row
-                guid = "%s-%s" % (set_type, idx)
-                text_a = body.replace('\\n', ' ').replace('\\', ' ')
-
-                example = InputExample(guid=guid, text_a=text_a, label=label)
-                examples.append(example)
-
-        return examples
-
-
-class YelpFullProcessor(YelpPolarityProcessor):
-    """Processor for the YELP full classification set."""
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-    def get_labels(self):
-        return ["1", "2", "3", "4", "5"]
-
-
-class XStanceProcessor(DataProcessor):
-    """Processor for the X-Stance data set."""
-
-    def __init__(self, language: str = None):
-        if language is not None:
-            assert language in ['de', 'fr']
-        self.language = language
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"))
-
-    def get_dev_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"))
-
-    def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
-
-    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
-        return self.get_train_examples(data_dir)
-
-    def get_labels(self):
-        return ["FAVOR", "AGAINST"]
-
-    def _create_examples(self, path: str) -> List[InputExample]:
-        examples = []
-
-        with open(path, encoding='utf8') as f:
-            for line in f:
-                example_json = json.loads(line)
-                label = example_json['label']
-                id_ = example_json['id']
-                text_a = example_json['question']
-                text_b = example_json['comment']
-                language = example_json['language']
-
-                if self.language is not None and language != self.language:
-                    continue
-
-                example = InputExample(guid=id_, text_a=text_a, text_b=text_b, label=label)
-                examples.append(example)
-
-        return examples
-
-
 class RteProcessor(DataProcessor):
     """Processor for the RTE data set."""
 
@@ -751,6 +534,223 @@ class RecordProcessor(DataProcessor):
         print_rank_0(
             f"Returning {len(examples)} examples corresponding to {len(question_indices)} questions with label "
             f"distribution {list(label_distribution.items())}")
+        return examples
+
+
+class MnliProcessor(DataProcessor):
+    """Processor for the MultiNLI data set (GLUE version)."""
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(MnliProcessor._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(MnliProcessor._read_tsv(os.path.join(data_dir, "dev_matched.tsv")), "dev_matched")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
+        return self.get_train_examples(data_dir)
+
+    def get_labels(self):
+        return ["contradiction", "entailment", "neutral"]
+
+    @staticmethod
+    def _create_examples(lines: List[List[str]], set_type: str) -> List[InputExample]:
+        examples = []
+
+        for (i, line) in enumerate(lines):
+            if i == 0:
+                continue
+            guid = "%s-%s" % (set_type, line[0])
+            text_a = line[8]
+            text_b = line[9]
+            label = line[-1]
+
+            example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            examples.append(example)
+
+        return examples
+
+    @staticmethod
+    def _read_tsv(input_file, quotechar=None):
+        with open(input_file, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
+            lines = []
+            for line in reader:
+                lines.append(line)
+            return lines
+
+
+class MnliMismatchedProcessor(MnliProcessor):
+    """Processor for the MultiNLI mismatched data set (GLUE version)."""
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_mismatched.tsv")), "dev_mismatched")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+
+class AgnewsProcessor(DataProcessor):
+    """Processor for the AG news data set."""
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.csv"), "train")
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "test.csv"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
+        return self.get_train_examples(data_dir)
+
+    def get_labels(self):
+        return ["1", "2", "3", "4"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+
+        with open(path) as f:
+            reader = csv.reader(f, delimiter=',')
+            for idx, row in enumerate(reader):
+                label, headline, body = row
+                guid = "%s-%s" % (set_type, idx)
+                text_a = headline.replace('\\', ' ')
+                text_b = body.replace('\\', ' ')
+
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+                examples.append(example)
+
+        return examples
+
+
+class YahooAnswersProcessor(DataProcessor):
+    """Processor for the Yahoo Answers data set."""
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.csv"), "train")
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "test.csv"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
+        return self.get_train_examples(data_dir)
+
+    def get_labels(self):
+        return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+
+        with open(path, encoding='utf8') as f:
+            reader = csv.reader(f, delimiter=',')
+            for idx, row in enumerate(reader):
+                label, question_title, question_body, answer = row
+                guid = "%s-%s" % (set_type, idx)
+                text_a = ' '.join([question_title.replace('\\n', ' ').replace('\\', ' '),
+                                   question_body.replace('\\n', ' ').replace('\\', ' ')])
+                text_b = answer.replace('\\n', ' ').replace('\\', ' ')
+
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+                examples.append(example)
+
+        return examples
+
+
+class YelpPolarityProcessor(DataProcessor):
+    """Processor for the YELP binary classification set."""
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.csv"), "train")
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "test.csv"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
+        return self.get_train_examples(data_dir)
+
+    def get_labels(self):
+        return ["1", "2"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+
+        with open(path) as f:
+            reader = csv.reader(f, delimiter=',')
+            for idx, row in enumerate(reader):
+                label, body = row
+                guid = "%s-%s" % (set_type, idx)
+                text_a = body.replace('\\n', ' ').replace('\\', ' ')
+
+                example = InputExample(guid=guid, text_a=text_a, label=label)
+                examples.append(example)
+
+        return examples
+
+
+class YelpFullProcessor(YelpPolarityProcessor):
+    """Processor for the YELP full classification set."""
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_labels(self):
+        return ["1", "2", "3", "4", "5"]
+
+
+class XStanceProcessor(DataProcessor):
+    """Processor for the X-Stance data set."""
+
+    def __init__(self, language: str = None):
+        if language is not None:
+            assert language in ['de', 'fr']
+        self.language = language
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.jsonl"))
+
+    def get_dev_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "test.jsonl"))
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        raise NotImplementedError()
+
+    def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
+        return self.get_train_examples(data_dir)
+
+    def get_labels(self):
+        return ["FAVOR", "AGAINST"]
+
+    def _create_examples(self, path: str) -> List[InputExample]:
+        examples = []
+
+        with open(path, encoding='utf8') as f:
+            for line in f:
+                example_json = json.loads(line)
+                label = example_json['label']
+                id_ = example_json['id']
+                text_a = example_json['question']
+                text_b = example_json['comment']
+                language = example_json['language']
+
+                if self.language is not None and language != self.language:
+                    continue
+
+                example = InputExample(guid=id_, text_a=text_a, text_b=text_b, label=label)
+                examples.append(example)
+
         return examples
 
 
