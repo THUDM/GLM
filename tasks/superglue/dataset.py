@@ -25,6 +25,7 @@ from torch.utils.data import Dataset
 
 from tasks.data_utils import InputExample
 from utils import print_rank_0
+from .pvp import PVPS
 
 METRICS = {
     "cb": ["acc", "f1-macro"],
@@ -42,7 +43,7 @@ SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
 
 
 class GlueDataset(Dataset):
-    def __init__(self, task_name, split, data_dir, tokenizer):
+    def __init__(self, task_name, split, data_dir, tokenizer, max_seq_length):
         processor = PROCESSORS[task_name]()
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
@@ -65,9 +66,16 @@ class GlueDataset(Dataset):
         print_rank_0(
             f"Returning {len(examples)} {split} examples with label dist.: {list(label_distribution.items())}")
         self.samples = []
+        pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length)
         for example in examples:
-            text_a_ids = tokenizer.EncodeAsIds(example.text_a).tokenization
-            text_b_ids = tokenizer.EncodeAsIds(example.text_b).tokenization
+            sample = pvp.encode(example)
+            self.samples.append(sample)
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
 
 
 class DataProcessor(ABC):
