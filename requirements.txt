@@ -15,6 +15,7 @@ matplotlib==3.3.3
 mpi4py==3.0.3
 tldextract==3.1.0
 deepspeed>=0.3.0
+scipy
 tqdm
 tensorboardX
 filelock
