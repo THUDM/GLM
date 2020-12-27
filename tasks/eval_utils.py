@@ -22,7 +22,7 @@ import torch
 
 from utils import print_rank_0
 import mpu
-from finetune_gpt2 import build_data_loader
+from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
 
 

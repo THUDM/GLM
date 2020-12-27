@@ -1,6 +1,7 @@
 import os
-import sys
 from datetime import datetime
+
+from tasks.data_utils import build_data_loader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
 from arguments import get_args
 
@@ -27,7 +28,6 @@ from configure_data import prepare_tokenizer
 
 from utils import print_rank_0
 from utils import Timers
-import mpu
 from train_utils import setup_model_and_optimizer, train_step
 from utils import load_checkpoint, save_checkpoint
 from pretrain_gpt2 import report_iteration_metrics
@@ -120,27 +120,6 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
     # Reduce loss for logging.
 
     return loss, mems, 'bert'
-
-
-def build_data_loader(dataset, batch_size, num_workers, drop_last):
-    """Data loader. Note that batch-size is the local (per GPU) batch-size."""
-
-    # Sampler.
-    world_size = mpu.get_data_parallel_world_size()
-    rank = mpu.get_data_parallel_rank()
-    sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset, num_replicas=world_size, rank=rank, shuffle=True)
-
-    # Data loader. Note that batch size is the per GPU batch size.
-    data_loader = torch.utils.data.DataLoader(dataset,
-                                              batch_size=batch_size,
-                                              sampler=sampler,
-                                              shuffle=False,
-                                              num_workers=num_workers,
-                                              drop_last=drop_last,
-                                              pin_memory=True)
-
-    return data_loader
 
 
 def _build_infinite_size_dataloader(dataloader):

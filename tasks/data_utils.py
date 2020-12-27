@@ -22,6 +22,11 @@ import re
 from typing import Dict, List, Optional
 
 import numpy as np
+import torch
+import torch.utils.data
+from torch.utils.data.dataloader import default_collate
+
+import mpu
 
 
 def clean_text(text):
@@ -35,33 +40,52 @@ def clean_text(text):
     return text
 
 
-def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
-                 logit_mask=None):
-    """Convert to numpy and return a sample consumed by the batch producer."""
+class InputExample(object):
+    """A raw input example consisting of one or two segments of text and a label"""
 
-    ids_np = np.array(ids, dtype=np.int64)
-    sample = {'text': ids_np, 'label': int(label)}
-    if types is not None:
-        types_np = np.array(types, dtype=np.int64)
-        sample['types'] = types_np
-    if paddings is not None:
-        paddings_np = np.array(paddings, dtype=np.int64)
-        sample['padding_mask'] = paddings_np
-    if positions is not None:
-        positions_np = np.array(positions, dtype=np.int64)
-        sample['position'] = positions_np
-    if masks is not None:
-        masks_np = np.array(masks, dtype=np.int64)
-        sample['mask'] = masks_np
-    if target is not None:
-        target_np = np.array(target, dtype=np.int64)
-        sample['target'] = target_np
-    if logit_mask is not None:
-        logit_mask_np = np.array(logit_mask, dtype=np.int64)
-        sample['logit_mask'] = logit_mask_np
-    if unique_id is not None:
-        sample['uid'] = int(unique_id)
-    return sample
+    def __init__(self, guid, text_a, text_b=None, label=None, logits=None, meta: Optional[Dict] = None, idx=-1):
+        """
+        Create a new InputExample.
+
+        :param guid: a unique textual identifier
+        :param text_a: the sequence of text
+        :param text_b: an optional, second sequence of text
+        :param label: an optional label
+        :param logits: an optional list of per-class logits
+        :param meta: an optional dictionary to store arbitrary meta information
+        :param idx: an optional numeric index
+        """
+        self.guid = guid
+        self.text_a = text_a
+        self.text_b = text_b
+        self.label = label
+        self.logits = logits
+        self.idx = idx
+        self.meta = meta if meta else {}
+
+    def __repr__(self):
+        return str(self.to_json_string())
+
+    def to_dict(self):
+        """Serialize this instance to a Python dictionary."""
+        output = copy.deepcopy(self.__dict__)
+        return output
+
+    def to_json_string(self):
+        """Serialize this instance to a JSON string."""
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
+    @staticmethod
+    def load_examples(path: str) -> List['InputExample']:
+        """Load a set of input examples from a file"""
+        with open(path, 'rb') as fh:
+            return pickle.load(fh)
+
+    @staticmethod
+    def save_examples(examples: List['InputExample'], path: str) -> None:
+        """Save a set of input examples to a file"""
+        with open(path, 'wb') as fh:
+            pickle.dump(examples, fh)
 
 
 def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_sep, add_piece):
@@ -156,49 +180,72 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     return ids, types, paddings, position_ids, sep, target_ids, loss_masks
 
 
-class InputExample(object):
-    """A raw input example consisting of one or two segments of text and a label"""
+def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
+                 logit_mask=None):
+    """Convert to numpy and return a sample consumed by the batch producer."""
 
-    def __init__(self, guid, text_a, text_b=None, label=None, logits=None, meta: Optional[Dict] = None, idx=-1):
-        """
-        Create a new InputExample.
+    ids_np = np.array(ids, dtype=np.int64)
+    sample = {'text': ids_np, 'label': int(label)}
+    if types is not None:
+        types_np = np.array(types, dtype=np.int64)
+        sample['types'] = types_np
+    if paddings is not None:
+        paddings_np = np.array(paddings, dtype=np.int64)
+        sample['padding_mask'] = paddings_np
+    if positions is not None:
+        positions_np = np.array(positions, dtype=np.int64)
+        sample['position'] = positions_np
+    if masks is not None:
+        masks_np = np.array(masks, dtype=np.int64)
+        sample['mask'] = masks_np
+    if target is not None:
+        target_np = np.array(target, dtype=np.int64)
+        sample['target'] = target_np
+    if logit_mask is not None:
+        logit_mask_np = np.array(logit_mask, dtype=np.int64)
+        sample['logit_mask'] = logit_mask_np
+    if unique_id is not None:
+        sample['uid'] = unique_id
+    return sample
 
-        :param guid: a unique textual identifier
-        :param text_a: the sequence of text
-        :param text_b: an optional, second sequence of text
-        :param label: an optional label
-        :param logits: an optional list of per-class logits
-        :param meta: an optional dictionary to store arbitrary meta information
-        :param idx: an optional numeric index
-        """
-        self.guid = guid
-        self.text_a = text_a
-        self.text_b = text_b
-        self.label = label
-        self.logits = logits
-        self.idx = idx
-        self.meta = meta if meta else {}
 
-    def __repr__(self):
-        return str(self.to_json_string())
+def my_collate(batch):
+    new_batch = [{key: value for key, value in sample.items() if key != 'uid'} for sample in batch]
+    text_list = [sample['text'] for sample in batch]
+    choice_nums = list(map(len, text_list))
 
-    def to_dict(self):
-        """Serialize this instance to a Python dictionary."""
-        output = copy.deepcopy(self.__dict__)
-        return output
+    def pad_choice_dim(data, choice_num):
+        if len(data) < choice_num:
+            data = np.concatenate([data] + [data[0:1]] * (choice_num - len(data)))
+        return data
 
-    def to_json_string(self):
-        """Serialize this instance to a JSON string."""
-        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+    if choice_nums.count(choice_nums[0]) != len(choice_nums):
+        max_choice_num = max(choice_nums)
+        new_batch = [{key: pad_choice_dim(value, max_choice_num) for key, value in sample.items()} for sample in batch]
+    new_batch = default_collate(new_batch)
+    if 'uid' in batch[0]:
+        uid_list = [sample['uid'] for sample in batch]
+        new_batch['uid'] = uid_list
+    return new_batch
 
-    @staticmethod
-    def load_examples(path: str) -> List['InputExample']:
-        """Load a set of input examples from a file"""
-        with open(path, 'rb') as fh:
-            return pickle.load(fh)
 
-    @staticmethod
-    def save_examples(examples: List['InputExample'], path: str) -> None:
-        """Save a set of input examples to a file"""
-        with open(path, 'wb') as fh:
-            pickle.dump(examples, fh)
+def build_data_loader(dataset, batch_size, num_workers, drop_last, shuffle=True):
+    """Data loader. Note that batch-size is the local (per GPU) batch-size."""
+
+    # Sampler.
+    world_size = mpu.get_data_parallel_world_size()
+    rank = mpu.get_data_parallel_rank()
+    sampler = torch.utils.data.distributed.DistributedSampler(
+        dataset, num_replicas=world_size, rank=rank, shuffle=shuffle)
+
+    # Data loader. Note that batch size is the per GPU batch size.
+    data_loader = torch.utils.data.DataLoader(dataset,
+                                              batch_size=batch_size,
+                                              sampler=sampler,
+                                              shuffle=False,
+                                              num_workers=num_workers,
+                                              drop_last=drop_last,
+                                              pin_memory=True,
+                                              collate_fn=my_collate)
+
+    return data_loader

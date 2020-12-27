@@ -118,6 +118,7 @@ class PVP(ABC):
             for answer in answers:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                 answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+                answer_ids = answer_ids + [tokenizer.get_command('eos').Id]
                 self.truncate(this_parts_a, this_parts_b, answer_ids, max_length=self.max_seq_length)
                 tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                 tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
@@ -627,7 +628,7 @@ def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Uni
            corresponds to multiple tokens.
     :return: either the list of token ids or the single token id corresponding to this word
     """
-    ids = tokenizer.EncodeAsIds(word)
+    ids = tokenizer.EncodeAsIds(word).tokenization
     if not force_single_token:
         return ids
     assert len(ids) == 1, \
