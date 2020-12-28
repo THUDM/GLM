@@ -12,9 +12,9 @@ gpt_options=" \
        --hidden-size 1024 \
        --num-attention-heads 16 \
        --seq-length 512 \
-       --max-position-embeddings 1024 \
+       --max-position-embeddings 512 \
        --save /root/data/checkpoints \
-       --train-iters 100000 \
+       --train-iters 200000 \
        --resume-dataloader \
        --train-data bert-large \
        --lazy-loader \
@@ -23,9 +23,9 @@ gpt_options=" \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \
-       --lr-decay-iters 80000 \
+       --lr-decay-iters 160000 \
        --lr-decay-ratio 0.05 \
-       --warmup .01 \
+       --warmup .05 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
