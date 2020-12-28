@@ -26,7 +26,8 @@ from collections import OrderedDict
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
     train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length)
-    valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length)
+    valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length,
+                                for_train=True)
 
     return train_dataset, valid_dataset
 
