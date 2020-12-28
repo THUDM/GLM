@@ -352,10 +352,6 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
             if args.deepspeed and args.deepspeed_activation_checkpointing:
                 deepspeed.checkpointing.reset()
 
-            # Reduce across processes.
-            torch.distributed.all_reduce(lm_loss.data)
-            lm_loss.data = lm_loss.data / args.world_size
-
             lm_loss = lm_loss.data.detach().float().item()
             total_lm_loss += lm_loss
             if mode == 'gpt':
@@ -367,10 +363,13 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
 
     # Move model back to the train mode.
     model.train()
-
-    total_lm_loss /= args.eval_iters
-    total_gpt_loss = total_gpt_loss / gpt_iters if gpt_iters > 0 else 0
-    total_mask_loss = total_mask_loss / mask_iters if mask_iters > 0 else 0
+    # Reduce across processes.
+    loss_data = torch.cuda.FloatTensor([total_lm_loss, total_gpt_loss, total_mask_loss, gpt_iters, mask_iters])
+    torch.distributed.all_reduce(loss_data)
+    loss_data = loss_data.tolist()
+    total_lm_loss = loss_data[0] / args.eval_iters / args.world_size
+    total_gpt_loss = loss_data[1] / loss_data[3] if loss_data[3] > 0 else 0
+    total_mask_loss = loss_data[2] / loss_data[4] if loss_data[4] > 0 else 0
     return total_lm_loss, total_gpt_loss, total_mask_loss
 
 
