@@ -345,7 +345,7 @@ def get_args():
     parser = deepspeed.add_config_arguments(parser)
 
     args = parser.parse_args()
-    if not args.train_data:
+    if not args.train_data and not args.data_dir:
         print('WARNING: No training data specified')
 
     args.cuda = torch.cuda.is_available()
