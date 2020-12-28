@@ -28,7 +28,7 @@ class ClozeModel(torch.nn.Module):
         self.length_penalty = length_penalty
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
-        num_choices = 1
+        num_choices = None
         if len(input_ids.shape) == 3:
             batch_size, num_choices = input_ids.shape[:2]
             input_ids = input_ids.reshape(-1, input_ids.size(-1))
@@ -47,7 +47,7 @@ class ClozeModel(torch.nn.Module):
         logits = (logits * logit_mask).sum(dim=1)
         if self.length_penalty > 0.0:
             logits = logits / logit_mask.sum(dim=1) ** self.length_penalty
-        if num_choices > 1:
+        if num_choices is not None:
             logits = logits.view(-1, num_choices)
         return (logits, *mems)
 
@@ -64,7 +64,7 @@ class PoolingModel(torch.nn.Module):
         self.multichoice_head = torch.nn.Linear(hidden_size, num_class)
 
     def forward(self, input_ids, position_ids, attention_mask):
-        num_choices = 1
+        num_choices = None
         if len(input_ids.shape) == 3:
             assert self.num_class == 1
             batch_size, num_choices = input_ids.shape[:2]
@@ -85,6 +85,6 @@ class PoolingModel(torch.nn.Module):
         output = torch.tanh(self.pool_layer(output))
         multichoice_output = self.multichoice_dropout(output)
         logits = self.multichoice_head(multichoice_output)
-        if num_choices > 1:
+        if num_choices is not None:
             logits = logits.view(-1, num_choices)
         return (logits, *mems)
