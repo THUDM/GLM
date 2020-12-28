@@ -131,10 +131,7 @@ class PVP(ABC):
                 target_list.append(target_ids)
                 mask_list.append(loss_masks)
             label = example.label
-            if len(label) == 0:
-                label = self.label_list.index(label[0])
-            else:
-                label = [self.label_list.index(l) for l in label]
+            label = self.label_list.index(label[0])
             sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
                                   logit_mask=mask_list, target=target_list,
                                   unique_id=example.guid)
@@ -178,6 +175,8 @@ class PVP(ABC):
                  max_length: int):
         """Truncate two sequences of text to a predefined total maximum length"""
         total_len = self._seq_length(parts_a) + self._seq_length(parts_b)
+        if answer:
+            total_len += len(answer)
         total_len += num_special_tokens_to_add(parts_a, parts_b, answer, add_cls=True, add_sep=False, add_piece=True)
         num_tokens_to_remove = total_len - max_length
 
@@ -322,7 +321,7 @@ class RecordPVP(PVP):
         premise = self.shortenable(example.text_a)
 
         assert '@placeholder' in example.text_b, f'question "{example.text_b}" does not contain a @placeholder token'
-        question = example.text_b.replace('@placeholder', self.mask + " ")
+        question = example.text_b.replace('@placeholder', " " + self.mask + " ")
         return [premise, question], []
 
     def verbalize(self, label) -> List[str]:

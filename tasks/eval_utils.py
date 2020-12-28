@@ -24,54 +24,76 @@ from utils import print_rank_0
 import mpu
 from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
+from collections import OrderedDict
 
 
-def accuracy_func_provider(single_dataset_provider, args, is_test=False):
+def accuracy_metric(predictions, labels, examples):
+    count = 0
+    assert len(predictions) == len(labels)
+    for prediction, label in zip(predictions, labels):
+        count += prediction == label
+    return count * 100.0
+
+
+def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False):
     """Provide function that calculates accuracies."""
     # Build dataloaders.
-    datapaths = args.test_data if is_test else args.valid_data
+    if is_test:
+        datapaths = args.test_data if args.test_data is not None else ['test']
+    else:
+        datapaths = args.valid_data if args.valid_data is not None else ['dev']
     dataloaders = []
     for datapath in datapaths:
         dataset = single_dataset_provider(datapath)
         dataloader = build_data_loader(
             dataset, args.batch_size, num_workers=args.num_workers,
-            drop_last=(mpu.get_data_parallel_world_size() > 1))
+            drop_last=(mpu.get_data_parallel_world_size() > 1), shuffle=False)
         dataloaders.append((dataset.dataset_name, dataloader))
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
         print_rank_0('calculating metrics ...')
-        correct = 0
+        score_dict = OrderedDict([(key, 0.0) for key in metric_dict])
         total = 0
         if output_predictions:
             assert mpu.get_data_parallel_world_size() == 1
             named_predictions = []
             names = 'predictions'
         for name, dataloader in dataloaders:
-            output = calculate_correct_answers(name, model, dataloader, epoch, output_predictions, args)
+            examples = None
+            if hasattr(dataloader.dataset, "examples"):
+                examples = dataloader.dataset.examples
+            output = evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions,
+                                      args)
             if not output_predictions:
-                correct_ans, total_count = output
+                single_dict, total_count = output
             else:
-                correct_ans, total_count, predictions = output
+                single_dict, total_count, predictions = output
                 named_predictions.append((name, predictions))
                 names += '_' + name
-            correct += correct_ans
+            for key in score_dict:
+                score_dict[key] += single_dict[key]
             total += total_count
-        percent = float(correct) * 100.0 / float(total)
-        print_rank_0(' >> |epoch: {}| overall: correct / total = {} / {} = '
-                     '{:.4f} %'.format(epoch, correct, total, percent))
-        if summary_writer is not None and epoch >= 0 and not is_test:
-            summary_writer.add_scalar(f'Train/valid_accuracy', percent, epoch)
+        score_dict = {key: score / float(total) for key, score in score_dict.items()}
+        output_str = ' >> |epoch: {}| overall: total = {}'.format(epoch, total)
+        for key, score in score_dict.items():
+            output_str += " {} = {:.4f}".format(key, score)
+            if summary_writer is not None and epoch >= 0 and not is_test:
+                summary_writer.add_scalar(f'Train/valid_{key}', score, epoch)
+        print_rank_0(output_str)
 
         if output_predictions and torch.distributed.get_rank() == 0:
             assert args.load is not None
             filename = os.path.join(args.load, names + '.pt')
             torch.save(named_predictions, filename)
-        return percent
+        return score_dict
 
     return metrics_func
 
 
-def calculate_correct_answers(name, model, dataloader, epoch, output_predictions, args):
+segment_length = 10
+
+
+def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
 
@@ -80,7 +102,7 @@ def calculate_correct_answers(name, model, dataloader, epoch, output_predictions
     with torch.no_grad():
         # For all the batches in the dataset.
         total = 0
-        correct = 0
+        score_dict = {key: 0.0 for key in metric_dict}
         if output_predictions:
             # This option is only possible when data parallel size is 1.
             assert mpu.get_data_parallel_world_size() == 1
@@ -89,43 +111,68 @@ def calculate_correct_answers(name, model, dataloader, epoch, output_predictions
             ids = []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
+            data = process_batch(batch, args)
             if args.pretrained_bert:
-                tokens, types, labels_, attention_mask = process_batch(batch, args)
-                logits = model(tokens, token_type_ids=types, attention_mask=attention_mask)
+                tokens, types, labels_, attention_mask = data['text'], data['types'], data['label'], data[
+                    'attention_mask']
+                inputs = [tokens, types, attention_mask]
             elif args.cloze_eval:
-                tokens, labels_, position_ids, attention_mask, target_ids, logit_mask = process_batch(batch, args)
-                logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+                tokens, labels_, position_ids = data['text'], data['label'], data['position']
+                attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
+                inputs = [tokens, position_ids, attention_mask, target_ids, logit_mask]
             else:
-                tokens, labels_, position_ids, attention_mask = process_batch(batch, args)
-                logits, *mems = model(tokens, position_ids, attention_mask)
+                tokens, labels_, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
+                    'attention_mask']
+                inputs = [tokens, position_ids, attention_mask]
+            if inputs[0].size(1) > segment_length:
+                logit_list = []
+                for i in range((inputs[0].size(1) - 1) // segment_length + 1):
+                    input_batch = [arg[:, i * segment_length: (i + 1) * segment_length] for arg in inputs]
+                    logits, *mems = model(*input_batch)
+                    logit_list.append(logits)
+                logits = torch.cat(logit_list, dim=1)
+            else:
+                logits, *mems = model(*inputs)
+            if "loss_mask" in data:
+                loss_mask = data["loss_mask"]
+                logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
+            uid_list = batch['uid']
+            if isinstance(uid_list, torch.Tensor):
+                uid_list = uid_list.cpu().numpy().tolist()
             # Add output predictions.
             if output_predictions:
                 softmaxes.extend(torch.nn.Softmax(dim=-1)(
                     logits.float()).data.cpu().numpy().tolist())
                 labels.extend(labels_.data.cpu().numpy().tolist())
-                ids.extend(batch['uid'].cpu().numpy().tolist())
+                ids.extend(uid_list)
+            example_batch = None
+            if examples is not None:
+                example_batch = [examples[uid] for uid in uid_list]
             # Compute the correct answers.
             predicted = torch.argmax(logits, dim=-1)
-            corrects = (predicted == labels_)
+            for key, metric in metric_dict.items():
+                score_dict[key] += metric(predicted.tolist(), labels_.tolist(), example_batch)
             # Add to the counters.
             total += labels_.size(0)
-            correct += corrects.sum().item()
     model.train()
 
     # Reduce.
-    unreduced = torch.cuda.LongTensor([correct, total])
-    torch.distributed.all_reduce(unreduced,
-                                 group=mpu.get_data_parallel_group())
+    keys = list(score_dict.keys())
+    keys.sort()
+    unreduced = [score_dict[key] for key in keys] + [total]
+    unreduced = torch.cuda.FloatTensor(unreduced)
+    torch.distributed.all_reduce(unreduced, group=mpu.get_data_parallel_group())
 
     # Print on screen.
-    correct_ans = unreduced[0].item()
-    total_count = unreduced[1].item()
-    percent = float(correct_ans) * 100.0 / float(total_count)
+    unreduced = unreduced.tolist()
+    for i, key in enumerate(keys):
+        score_dict[key] = unreduced[i]
+    total_count = unreduced[-1]
     elapsed_time = time.time() - start_time
-    print_rank_0(' > |epoch: {}| metrics for {}: correct / total '
-                 '= {} / {} = {:.4f} %, elapsed time (sec): {:.3f}'.format(epoch, name, correct_ans, total_count,
-                                                                           percent, elapsed_time))
-
+    output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total_count)
+    for key, value in score_dict.items():
+        output_str += " {} = {:.4f} %".format(key, value / total_count)
+    output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
     if output_predictions:
-        return correct_ans, total_count, (softmaxes, labels, ids)
-    return correct_ans, total_count
+        return score_dict, total_count, (softmaxes, labels, ids)
+    return score_dict, total_count

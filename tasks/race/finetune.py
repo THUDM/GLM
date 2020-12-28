@@ -19,6 +19,8 @@ from utils import print_rank_0
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
 from tasks.race.dataset import RaceDataset
+from tasks.eval_utils import accuracy_metric
+from collections import OrderedDict
 
 
 def train_valid_datasets_provider(args, tokenizer):
@@ -38,8 +40,8 @@ def metrics_func_provider(args, tokenizer, is_test):
         name = datapath.split('RACE')[-1].strip('/').replace('/', '-')
         return RaceDataset(name, [datapath], tokenizer, args.seq_length, is_bert=args.pretrained_bert,
                            pool_token=args.pool_token, cloze_format=args.cloze_eval)
-
-    return accuracy_func_provider(single_dataset_provider, args, is_test=is_test)
+    metric_dict = OrderedDict([('accuracy', accuracy_metric)])
+    return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test)
 
 
 def main(args):

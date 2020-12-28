@@ -41,26 +41,28 @@ from fp16 import FP16_Module
 
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
-    tokens = batch['text'].long().cuda().contiguous()
-    if args.pretrained_bert:
-        types = batch['types'].long().cuda().contiguous()
-        labels = batch['label'].long().cuda().contiguous()
+    new_batch = {'text': batch['text'].long().cuda().contiguous(), 'label': batch['label'].long().cuda().contiguous()}
+    if "types" in batch:
+        new_batch["types"] = batch['types'].long().cuda().contiguous()
+    if "padding_mask" in batch:
         attention_mask = batch['padding_mask'].float().cuda().contiguous()
         if args.fp16:
             attention_mask = attention_mask.half()
-        return tokens, types, labels, attention_mask
-    elif args.cloze_eval:
-        target_ids = batch['target'].long().cuda().contiguous()
-        logit_mask = batch['logit_mask'].long().cuda().contiguous()
-        position_ids = batch['position'].long().cuda().contiguous()
-        labels = batch['label'].long().cuda().contiguous()
+        new_batch["attention_mask"] = attention_mask
+    elif "mask" in batch:
         attention_mask = batch['mask'].long().cuda().contiguous()
-        return tokens, labels, position_ids, attention_mask, target_ids, logit_mask
-    else:
-        position_ids = batch['position'].long().cuda().contiguous()
-        labels = batch['label'].long().cuda().contiguous()
-        attention_mask = batch['mask'].long().cuda().contiguous()
-        return tokens, labels, position_ids, attention_mask
+        new_batch["attention_mask"] = attention_mask
+    if "target" in batch:
+        new_batch["target"] = batch['target'].long().cuda().contiguous()
+    if "logit_mask" in batch:
+        new_batch["logit_mask"] = batch['logit_mask'].long().cuda().contiguous()
+    if "position" in batch:
+        new_batch["position"] = batch['position'].long().cuda().contiguous()
+    if "loss_mask" in batch:
+        new_batch["loss_mask"] = batch["loss_mask"].float().cuda().contiguous()
+        if args.fp16:
+            new_batch['loss_mask'] = new_batch['loss_mask'].half()
+    return new_batch
     # if args.fp16:
     #     attention_mask = attention_mask.half()
     # position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
@@ -86,10 +88,11 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
 
     # Forward model.
     if args.pretrained_bert:
-        tokens, types, labels, attention_mask = data
+        tokens, types, labels, attention_mask = data['text'], data['types'], data['label'], data['attention_mask']
         logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
     elif args.cloze_eval:
-        tokens, labels, position_ids, attention_mask, target_ids, logit_mask = data
+        tokens, labels, position_ids = data['text'], data['label'], data['position']
+        attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
 
         def print_masked_text(batch_id, choice_id):
             output_tokens = []
@@ -110,11 +113,15 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
 
         logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
     else:
-        tokens, labels, position_ids, attention_mask = data
+        tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
+            'attention_mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
 
     # Cross-entropy loss.
     loss_func = torch.nn.CrossEntropyLoss()
+    if "loss_mask" in data:
+        loss_mask = data["loss_mask"]
+        logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
     loss = loss_func(logits.contiguous().float(), labels)
 
     # Reduce loss for logging.
@@ -160,7 +167,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     # Tracking loss.
     args.iteration = 0
     total_lm_loss = 0.0
-    best_accuracy, best_iteration = 0, None
+    best_score, best_iteration = 0, None
     # Starting epoch and iteration
     start_epoch = args.iteration // args.train_iters_per_epoch
     start_iteration = args.iteration % args.train_iters_per_epoch
@@ -215,11 +222,13 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None:
-            accuracy = end_of_epoch_callback(model, epoch, summary_writer=summary_writer)
-            if best_iteration is None or accuracy > best_accuracy:
+            score_dict = end_of_epoch_callback(model, epoch, summary_writer=summary_writer)
+            validation_metric = args.validation_metric if args.validation_metric else list(score_dict.keys())[0]
+            validation_score = score_dict[validation_metric]
+            if best_iteration is None or validation_score > best_score:
                 best_iteration = args.iteration
-                best_accuracy = accuracy
-                print_rank_0(f"Found best accuracy {best_accuracy} at {best_iteration}")
+                best_score = validation_score
+                print_rank_0(f"Found best accuracy {best_score} at {best_iteration}")
     return best_iteration
 
 
@@ -245,7 +254,8 @@ def finetune(args, train_valid_datasets_provider, model_type,
     timers('callback function').start()
     end_of_epoch_callback, end_of_train_callback = None, None
     if end_of_epoch_callback_provider is not None:
-        end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=False)
+        if args.epochs > 0:
+            end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=False)
         end_of_train_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=True)
     timers('callback function').stop()
 
@@ -322,9 +332,13 @@ if __name__ == '__main__':
 
     # Random seeds for reproducability.
     set_random_seed(args.seed)
+    from tasks.superglue.dataset import PROCESSORS
 
+    superglue_tasks = list(PROCESSORS.keys())
     if args.task == 'RACE':
         from tasks.race.finetune import main
+    elif args.task.lower() in superglue_tasks:
+        from tasks.superglue.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
 

@@ -71,23 +71,23 @@ class MultipleChoice(torch.nn.Module):
 
         # Reshape and treat choice dimension the same as batch.
         batch_size, num_choices = input_ids.shape[:2]
-        input_ids = input_ids.view(-1, input_ids.size(-1))
-        attention_mask = attention_mask.view(-1, *attention_mask.size()[2:])
-        position_ids = position_ids.view(-1, *position_ids.size()[2:])
+        input_ids = input_ids.reshape(-1, input_ids.size(-1))
+        attention_mask = attention_mask.reshape(-1, *attention_mask.size()[2:])
+        position_ids = position_ids.reshape(-1, *position_ids.size()[2:])
 
         outputs, *mems = self.model(input_ids, position_ids, attention_mask)
         # Output.
         if self.cloze_foramt:
-            # outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
-            target_ids = target_ids.view(-1, target_ids.size(-1))
-            logit_mask = logit_mask.view(-1, logit_mask.size(-1))
+            outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
+            target_ids = target_ids.reshape(-1, target_ids.size(-1))
+            logit_mask = logit_mask.reshape(-1, logit_mask.size(-1))
             seq_ids = torch.arange(target_ids.size(-1), dtype=torch.long, device=target_ids.device)
             seq_ids = seq_ids.unsqueeze(0).expand_as(target_ids)
             batch_ids = torch.arange(target_ids.size(0), dtype=torch.long, device=target_ids.device)
             batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
             logits = outputs[batch_ids, seq_ids, target_ids]
             multichoice_logits = (logits * logit_mask).sum(dim=1)
-            multichoice_logits = multichoice_logits / logit_mask.sum(dim=1)
+            # multichoice_logits = multichoice_logits / logit_mask.sum(dim=1)
             # multichoice_logits = multichoice_logits / logit_mask.sum(dim=1).max(dim=0, keepdim=True).values
         else:
             if self.pool_token == 'start':

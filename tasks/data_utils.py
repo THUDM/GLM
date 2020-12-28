@@ -221,7 +221,14 @@ def my_collate(batch):
 
     if choice_nums.count(choice_nums[0]) != len(choice_nums):
         max_choice_num = max(choice_nums)
-        new_batch = [{key: pad_choice_dim(value, max_choice_num) for key, value in sample.items()} for sample in batch]
+        for i, sample in enumerate(new_batch):
+            for key, value in sample.items():
+                if key != 'label':
+                    sample[key] = pad_choice_dim(value, max_choice_num)
+                else:
+                    sample[key] = value
+            sample['loss_mask'] = np.array([1] * choice_nums[i] + [0] * (max_choice_num - choice_nums[i]),
+                                           dtype=np.float32)
     new_batch = default_collate(new_batch)
     if 'uid' in batch[0]:
         uid_list = [sample['uid'] for sample in batch]

@@ -48,7 +48,7 @@ class GlueDataset(Dataset):
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
         )
-
+        self.dataset_name = f"{task_name}-{split}"
         if split == DEV_SET:
             examples = processor.get_dev_examples(data_dir)
         elif split == TEST_SET:
@@ -66,10 +66,12 @@ class GlueDataset(Dataset):
         print_rank_0(
             f"Returning {len(examples)} {split} examples with label dist.: {list(label_distribution.items())}")
         self.samples = []
+        examples.sort(key=lambda x: len(x.meta["candidates"]))
         pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length)
         for example in examples:
             sample = pvp.encode(example)
             self.samples.append(sample)
+        self.examples = {example.guid: example for example in examples}
 
     def __len__(self):
         return len(self.samples)
@@ -513,7 +515,7 @@ class RecordProcessor(DataProcessor):
                                 'answers': [answer]
                             }
                             ex_idx = [idx, question_idx, answer_idx]
-                            example = InputExample(guid=guid, text_a=text, text_b=question, label="1", meta=meta,
+                            example = InputExample(guid=guid, text_a=text, text_b=question, label="0", meta=meta,
                                                    idx=ex_idx)
                             examples.append(example)
 

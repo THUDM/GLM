@@ -6,7 +6,8 @@ script_dir=$(dirname $script_path)
 config_json="$script_dir/ds_config.json"
 gpt_options=" \
        --block-lm \
-       --experiment-name block-lm-base \
+       --bert-prob 1.0 \
+       --experiment-name block-lm-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 12 \
        --hidden-size 768 \

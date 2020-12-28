@@ -8,12 +8,10 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 DATESTR=$(date +"%m-%d-%H-%M")
 DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port $MASTER_PORT"
 
-TRAIN_DATA="/root/data/RACE/train/middle /root/data/RACE/train/high"
-VALID_DATA="/root/data/RACE/dev/middle /root/data/RACE/dev/high"
-TEST_DATA="/root/data/RACE/test/middle /root/data/RACE/test/high"
+DATA_PATH="/root/data/superglue/ReCoRD"
 PRETRAINED_CHECKPOINT=/root/data/checkpoints/block-lm-blank-cls12-18-12-50
 CHECKPOINT_PATH=/root/data/checkpoints
-EXPERIMENT_NAME=block-lm-blank
+EXPERIMENT_NAME=record-test
 COMMON_TASK_ARGS="--block-lm \
                   --num-layers 12 \
                   --hidden-size 768 \
@@ -22,9 +20,7 @@ COMMON_TASK_ARGS="--block-lm \
                   --max-position-embeddings 512 \
                   --tokenizer-model-type bert-base-uncased"
 
-COMMON_TASK_ARGS_EXT="--train-data $TRAIN_DATA \
-                      --valid-data $VALID_DATA \
-                      --test-data $TEST_DATA \
+COMMON_TASK_ARGS_EXT="--data-dir $DATA_PATH \
                       --load-pretrained $PRETRAINED_CHECKPOINT \
                       --checkpoint-activations \
                       --save-interval 10000 \
@@ -38,13 +34,13 @@ mkdir logs
 #MASTER_PORT=${MASTER_PORT} python finetune_gpt2.py \
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --experiment-name ${EXPERIMENT_NAME} \
-       --task RACE \
+       --task ReCoRD \
        --finetune \
        $COMMON_TASK_ARGS \
        $COMMON_TASK_ARGS_EXT \
        --tokenizer-type BertWordPieceTokenizer \
        --pool-token start \
-       --epochs 10 \
+       --epochs 5 \
        --batch-size 8 \
        --lr 1e-5 \
        --lr-decay-style linear \

@@ -7,11 +7,9 @@ from __future__ import print_function
 from collections import Counter
 import string
 import re
-import argparse
-import json
-import sys
 from tasks.data_utils import InputExample
 from typing import List
+import functools
 
 
 def normalize_answer(s):
@@ -58,29 +56,17 @@ def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
     return max(scores_for_ground_truths)
 
 
-def evaluate(examples: List[InputExample], predictions, verbose=False):
-    f1 = exact_match = total = 0
-    correct_ids = []
-    for example in examples:
-        total += 1
-        if example.guid not in predictions:
-            message = 'Unanswered question {} will receive score 0.'.format(example.guid)
-            print(message, file=sys.stderr)
-            continue
-
+def evaluate(predictions, labels, examples: List[InputExample], metric):
+    assert len(examples) == len(predictions)
+    score = 0.0
+    for example, prediction in zip(examples, predictions):
         ground_truths = example.meta["answers"]
-        prediction = predictions[example.guid]
+        prediction = example.meta["candidates"][prediction]
 
-        _exact_match = metric_max_over_ground_truths(exact_match_score, prediction, ground_truths)
-        if int(_exact_match) == 1:
-            correct_ids.append(example.guid)
-        exact_match += _exact_match
+        score += metric_max_over_ground_truths(metric, prediction, ground_truths)
+    score = 100.0 * score
+    return score
 
-        f1 += metric_max_over_ground_truths(f1_score, prediction, ground_truths)
 
-    exact_match = 100.0 * exact_match / total
-    f1 = 100.0 * f1 / total
-    if verbose:
-        print('* Exact_match: {}\n* F1: {}'.format(exact_match, f1))
-
-    return {'exact_match': exact_match, 'f1': f1}, correct_ids
+exact_match_metric = functools.partial(evaluate, metric=exact_match_score)
+f1_metric = functools.partial(evaluate, metric=f1_score)

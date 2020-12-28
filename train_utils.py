@@ -101,7 +101,6 @@ def get_optimizer(param_groups, args):
         if args.cpu_torch_adam:
             cpu_adam_optimizer = torch.optim.AdamW
         else:
-            # TODO add option for decoupled weight decay in DeepCPUAdam
             from deepspeed.ops.adam import DeepSpeedCPUAdam
             cpu_adam_optimizer = DeepSpeedCPUAdam
         optimizer = cpu_adam_optimizer(param_groups,
@@ -158,7 +157,7 @@ def setup_model_and_optimizer(args, model_type=None):
     model = get_model(args, model_type=model_type)
     param_groups = get_optimizer_param_groups(model)
 
-    if args.train_data is not None:
+    if args.train_data is not None or args.data_dir is not None:
         if args.deepspeed:
             print_rank_0("DeepSpeed is enabled.")
 

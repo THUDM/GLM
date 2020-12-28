@@ -245,7 +245,11 @@ def add_data_args(parser):
     group.add_argument('--train-data', nargs='+', default=None,
                        help='Whitespace separated filenames or corpora names '
                             'for training.')
-
+    group.add_argument('--valid-data', nargs='*', default=None,
+                       help="""Filename for validation data.""")
+    group.add_argument('--test-data', nargs='*', default=None,
+                       help="""Filename for testing""")
+    group.add_argument('--data-dir', type=str, default=None, help="The data path to all the data files")
     group.add_argument('--use-npy-data-loader', action='store_true',
                        help='Use the numpy data loader. If set, then'
                             'train-data-path, val-data-path, and test-data-path'
@@ -260,13 +264,9 @@ def add_data_args(parser):
     group.add_argument('--eval-text-key', default=None,
                        help='key to use to extract text from '
                             'json/csv evaluation datasets')
-    group.add_argument('--valid-data', nargs='*', default=None,
-                       help="""Filename for validation data.""")
     group.add_argument('--split', default='1000,1,1',
                        help='comma-separated list of proportions for training,'
                             ' validation, and test split')
-    group.add_argument('--test-data', nargs='*', default=None,
-                       help="""Filename for testing""")
 
     group.add_argument('--lazy-loader', action='store_true',
                        help='whether to lazy read the data set')
@@ -325,7 +325,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
                        help='The token to pool the sequence representation', default='start')
     group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
-
+    group.add_argument('--validation-metric', type=str, default=None)
     return parser
 
 
