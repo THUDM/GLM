@@ -63,7 +63,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             if hasattr(dataloader.dataset, "examples"):
                 examples = dataloader.dataset.examples
             output = evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions,
-                                      args)
+                                      args, labeled=dataloader.dataset.labeled)
             if not output_predictions:
                 single_dict, total_count = output
             else:
@@ -93,7 +93,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
 segment_length = 10
 
 
-def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions, args):
+def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions, args, labeled=True):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
 
@@ -150,8 +150,9 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, outp
                 example_batch = [examples[uid] for uid in uid_list]
             # Compute the correct answers.
             predicted = torch.argmax(logits, dim=-1)
-            for key, metric in metric_dict.items():
-                score_dict[key] += metric(predicted.tolist(), labels_.tolist(), example_batch)
+            if labeled:
+                for key, metric in metric_dict.items():
+                    score_dict[key] += metric(predicted.tolist(), labels_.tolist(), example_batch)
             # Add to the counters.
             total += labels_.size(0)
     model.train()
