@@ -35,8 +35,8 @@ class RaceDataset(Dataset):
                                                         max_seq_length, is_bert=is_bert, pool_token=pool_token,
                                                         cloze_format=cloze_format))
 
-        print_rank_0('  >> total number of samples: {}'.format(
-            len(self.samples)))
+        print_rank_0('  >> total number of samples: {}'.format(len(self.samples)))
+        self.labeled = True
 
     def __len__(self):
         return len(self.samples)

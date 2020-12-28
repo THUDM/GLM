@@ -205,10 +205,6 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                                          args)
                 total_lm_loss = 0.0
 
-            # Checkpointing
-            if args.save and args.save_interval and args.iteration % args.save_interval == 0:
-                save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
-
             # Evaluation
             if args.eval_interval and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
@@ -228,7 +224,10 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             if best_iteration is None or validation_score > best_score:
                 best_iteration = args.iteration
                 best_score = validation_score
-                print_rank_0(f"Found best accuracy {best_score} at {best_iteration}")
+                print_rank_0(f"Found best {validation_metric} {best_score} at {best_iteration}")
+                if torch.distributed.get_rank() == 0:
+                    with open(os.path.join(args.save, "best_checkpointed_iteration.txt"), "w") as output:
+                        output.write(str(best_iteration))
     return best_iteration
 
 

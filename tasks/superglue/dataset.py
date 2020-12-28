@@ -61,6 +61,10 @@ class GlueDataset(Dataset):
                 example.label = processor.get_labels()[0]
         else:
             raise ValueError(f"'split' must be one of {SPLIT_TYPES}, got '{split}' instead")
+        if split == TEST_SET:
+            self.labeled = False
+        else:
+            self.labeled = True
 
         label_distribution = Counter(example.label for example in examples)
         print_rank_0(
@@ -71,6 +75,7 @@ class GlueDataset(Dataset):
         for example in examples:
             sample = pvp.encode(example)
             self.samples.append(sample)
+        print_rank_0(f"Creating {len(self.samples)} samples")
         self.examples = {example.guid: example for example in examples}
 
     def __len__(self):

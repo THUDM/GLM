@@ -11,7 +11,7 @@ DISTRIBUTED_ARGS="--nproc_per_node $GPUS_PER_NODE --nnodes $NNODES --node_rank $
 DATA_PATH="/root/data/superglue/ReCoRD"
 PRETRAINED_CHECKPOINT=/root/data/checkpoints/block-lm-blank-cls12-18-12-50
 CHECKPOINT_PATH=/root/data/checkpoints
-EXPERIMENT_NAME=record-test
+EXPERIMENT_NAME=blank-base-record
 COMMON_TASK_ARGS="--block-lm \
                   --num-layers 12 \
                   --hidden-size 768 \
