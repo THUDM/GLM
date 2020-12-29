@@ -144,14 +144,14 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
     """Traing and validation dataloaders."""
     print_rank_0('building train and validation dataloaders ...')
     # Training dataset.
-    train_dataloader = build_data_loader(train_dataset, args.batch_size, args.num_workers, True)
+    train_dataloader = build_data_loader(train_dataset, args.batch_size, args.num_workers, drop_last=False)
     # Set the training iterations.
     args.train_iters_per_epoch = len(train_dataloader)
     args.train_iters = args.epochs * args.train_iters_per_epoch
     # Validation dataset. For this dataset, we do not need to set up
     # shuffling so we can just use a simple infinite loop.
     valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
-                                          args.num_workers, False)
+                                          args.num_workers, drop_last=False)
     valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
 
     return train_dataloader, valid_dataloader
@@ -213,11 +213,11 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                                            summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
-        if args.save:
+        if args.save and (epoch + 1) % args.eval_epoch == 0:
             save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Callback at the end of each epoch.
-        if end_of_epoch_callback is not None:
+        if end_of_epoch_callback is not None and (epoch + 1) % args.eval_epoch == 0:
             score_dict = end_of_epoch_callback(model, epoch, summary_writer=summary_writer)
             validation_metric = args.validation_metric if args.validation_metric else list(score_dict.keys())[0]
             validation_score = score_dict[validation_metric]

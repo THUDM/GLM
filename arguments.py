@@ -202,6 +202,8 @@ def add_evaluation_args(parser):
                             'validation/test for')
     group.add_argument('--eval-interval', type=int, default=1000,
                        help='interval between running evaluation on validation set')
+    group.add_argument('--eval-epoch', type=int, default=1,
+                       help='epoch between running evaluation on validation set')
     group.add_argument('--eval-seq-length', type=int, default=None,
                        help='Maximum sequence length to process for '
                             'evaluation. Defaults to `--seq-length`')
@@ -212,9 +214,6 @@ def add_evaluation_args(parser):
     group.add_argument('--eval-hf', action='store_true',
                        help='perform evaluation with huggingface openai model.'
                             'use `--load` to specify weights path to be loaded')
-    group.add_argument('--load-openai', action='store_true',
-                       help='load openai weights into our model. Use `--load` '
-                            'to specify weights path to be loaded')
 
     return parser
 
