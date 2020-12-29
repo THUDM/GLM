@@ -25,7 +25,8 @@ from torch.utils.data import Dataset
 
 from tasks.data_utils import InputExample
 from utils import print_rank_0
-from .pvp import PVPS
+from tasks.superglue.pvp import PVPS
+from tasks.data_utils import build_input_from_ids, build_sample
 
 METRICS = {
     "cb": ["acc", "f1-macro"],
@@ -43,7 +44,8 @@ SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
 
 
 class GlueDataset(Dataset):
-    def __init__(self, task_name, split, data_dir, tokenizer, max_seq_length, for_train=False):
+    def __init__(self, task_name, split, data_dir, tokenizer, max_seq_length, for_train=False, cloze_format=True,
+                 for_bert=False):
         processor = PROCESSORS[task_name]()
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
@@ -71,10 +73,16 @@ class GlueDataset(Dataset):
             f"Returning {len(examples)} {split} examples with label dist.: {list(label_distribution.items())}")
         self.samples = []
         examples.sort(key=lambda x: len(x.meta["candidates"]))
-        pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length)
-        for example in examples:
-            sample = pvp.encode(example)
-            self.samples.append(sample)
+        if cloze_format:
+            pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length)
+            for example in examples:
+                sample = pvp.encode(example)
+                self.samples.append(sample)
+        else:
+            for example in examples:
+                sample = processor.encode(example, tokenizer, max_seq_length, for_bert=for_bert)
+                self.samples.append(sample)
+
         print_rank_0(f"Creating {len(self.samples)} samples")
         self.examples = {example.guid: example for example in examples}
 
@@ -114,6 +122,9 @@ class DataProcessor(ABC):
     @abstractmethod
     def get_labels(self) -> List[str]:
         """Get the list of labels for this data set."""
+        pass
+
+    def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
         pass
 
 
@@ -467,6 +478,36 @@ class RecordProcessor(DataProcessor):
 
     def get_labels(self):
         return ["0", "1"]
+
+    def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
+        if for_bert:
+            ids_list, types_list, paddings_list = [], [], []
+        else:
+            ids_list, positions_list, sep_list = [], [], []
+        tokens_a = tokenizer.EncodeAsIds(example.text_a).tokenization
+        tokens_b = tokenizer.EncodeAsIds(example.text_b).tokenization if example.text_b else None
+        for answer in example.meta["candidates"]:
+            answer_ids = tokenizer.EncodeAsIds(answer).tokenization
+            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, max_seq_length, tokenizer,
+                                        add_cls=True, add_sep=True, add_piece=False)
+            ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            if for_bert:
+                ids_list.append(ids)
+                types_list.append(types)
+                paddings_list.append(paddings)
+            else:
+                ids_list.append(ids)
+                positions_list.append(position_ids)
+                sep_list.append(sep)
+        label = example.label
+        label = self.get_labels().index(label[0])
+        if for_bert:
+            sample = build_sample(ids_list, label=label, types=types_list, paddings=paddings_list,
+                                  unique_id=example.guid)
+        else:
+            sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                                  unique_id=example.guid)
+        return sample
 
     @staticmethod
     def _create_examples(path, set_type, seed=42, max_train_candidates_per_question: int = 10, for_train=False) -> List[

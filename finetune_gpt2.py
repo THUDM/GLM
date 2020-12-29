@@ -267,7 +267,7 @@ def finetune(args, train_valid_datasets_provider, model_type,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if args.load_pretrained is not None:
+    if args.load_pretrained is not None and not args.pretrained_bert:
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module

@@ -25,9 +25,10 @@ from collections import OrderedDict
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length)
+    train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length,
+                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
     valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                for_train=True)
+                                for_train=True, cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
 
     return train_dataset, valid_dataset
 
@@ -36,7 +37,8 @@ def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
 
     def single_dataset_provider(split):
-        return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length)
+        return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
+                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
 
     metric_dict = OrderedDict([("EM", exact_match_metric), ("F1", f1_metric)])
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test)

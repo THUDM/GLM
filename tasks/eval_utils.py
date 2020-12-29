@@ -128,11 +128,17 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, outp
                 logit_list = []
                 for i in range((inputs[0].size(1) - 1) // segment_length + 1):
                     input_batch = [arg[:, i * segment_length: (i + 1) * segment_length] for arg in inputs]
-                    logits, *mems = model(*input_batch)
+                    if args.pretrained_bert:
+                        logits = model(*input_batch)
+                    else:
+                        logits, *mems = model(*input_batch)
                     logit_list.append(logits)
                 logits = torch.cat(logit_list, dim=1)
             else:
-                logits, *mems = model(*inputs)
+                if args.pretrained_bert:
+                    logits = model(*inputs)
+                else:
+                    logits, *mems = model(*inputs)
             if "loss_mask" in data:
                 loss_mask = data["loss_mask"]
                 logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)

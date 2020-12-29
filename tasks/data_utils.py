@@ -104,7 +104,6 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
                          add_piece=False):
     mask_id = tokenizer.get_command('MASK').Id
     eos_id = tokenizer.get_command('eos').Id
-    sop_id = tokenizer.get_command('sop').Id
     cls_id = tokenizer.get_command('ENC').Id
     sep_id = tokenizer.get_command('sep').Id
     ids = []
@@ -148,6 +147,7 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     block_position_ids = [0] * len(ids)
     # Piece
     if add_piece or answer_ids is not None:
+        sop_id = tokenizer.get_command('sop').Id
         mask_position = ids.index(mask_id)
         ids.append(sop_id)
         types.append(end_type)
