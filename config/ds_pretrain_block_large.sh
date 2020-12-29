@@ -3,10 +3,10 @@
 script_path=$(realpath $BASH_SOURCE)
 script_dir=$(dirname $script_path)
 
-config_json="$script_dir/ds_config.json"
+config_json="$script_dir/ds_config_large.json"
 gpt_options=" \
        --block-lm \
-      --bert-prob 0.5 \
+       --bert-prob 0.5 \
        --experiment-name block-lm-large \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
