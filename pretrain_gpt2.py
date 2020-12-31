@@ -511,11 +511,11 @@ def main():
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         print('Pretrain GPT2 model')
-        log_dir = None
+        args.log_dir = None
         if args.train_iters > 0:
-            log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-            summary_writer = get_sample_writer(log_dir=log_dir, iteration=args.iteration)
-        print_and_save_args(args, verbose=True, log_dir=log_dir)
+            args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
+            summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
+        print_and_save_args(args, verbose=True, log_dir=args.log_dir)
 
     # Resume data loader if necessary.
     if args.resume_dataloader:

@@ -1,4 +1,4 @@
-GPUS_PER_NODE=4
+GPUS_PER_NODE=1
 MASTER_ADDR=localhost
 NNODES=1
 NODE_RANK=0
@@ -11,6 +11,7 @@ DATA_PATH="/root/data/superglue/ReCoRD"
 CHECKPOINT_PATH="/root/data/checkpoints"
 EXPERIMENT_NAME=blank-base
 PRETRAINED_CHECKPOINT=/root/data/checkpoints/block-lm-blank-cls12-18-12-50
+CHECKPOINT=/root/data/checkpoints/blank-base-record-ReCoRD-12-29-12-22
 
 MODEL_ARGS="--block-lm \
             --cloze-eval \

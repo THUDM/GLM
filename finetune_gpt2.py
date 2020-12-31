@@ -289,9 +289,9 @@ def finetune(args, train_valid_datasets_provider, model_type,
     args.iteration = 0
     summary_writer = None
     if torch.distributed.get_rank() == 0:
-        log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-        summary_writer = get_sample_writer(log_dir=log_dir, iteration=args.iteration)
-        print_and_save_args(args, verbose=False, log_dir=log_dir)
+        args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
+        summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
+        print_and_save_args(args, verbose=False, log_dir=args.log_dir)
 
     # Print setup timing.
     print_rank_0('done with setups ...')
@@ -313,7 +313,7 @@ def finetune(args, train_valid_datasets_provider, model_type,
     else:
         if end_of_train_callback is not None:
             print_rank_0('evaluation only mode, setting epoch to -1')
-            end_of_train_callback(model, epoch=-1, output_predictions=False)
+            end_of_train_callback(model, epoch=-1, output_predictions=True)
 
     print_rank_0('done :-)')
 

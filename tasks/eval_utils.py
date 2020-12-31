@@ -17,7 +17,7 @@
 
 import os
 import time
-
+import json
 import torch
 
 from utils import print_rank_0
@@ -25,6 +25,8 @@ import mpu
 from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
 from collections import OrderedDict
+from typing import List
+from tasks.data_utils import InputExample
 
 
 def accuracy_metric(predictions, labels, examples):
@@ -66,10 +68,15 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
                                       args, labeled=dataloader.dataset.labeled)
             if not output_predictions:
                 single_dict, total_count = output
-            else:
+            elif torch.distributed.get_rank() == 0:
+                save_dir = args.load if args.load is not None else args.log_dir
                 single_dict, total_count, predictions = output
-                named_predictions.append((name, predictions))
-                names += '_' + name
+                filename = os.path.join(save_dir, name + '.jsonl')
+                ids, predictions = predictions
+                with open(filename, "w") as output:
+                    for idx, prediction in zip(ids, predictions):
+                        data = {"idx": idx, "label": prediction}
+                        output.write(json.dumps(data) + "\n")
             for key in score_dict:
                 score_dict[key] += single_dict[key]
             total += total_count
@@ -81,10 +88,6 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
                 summary_writer.add_scalar(f'Train/valid_{key}', score, epoch)
         print_rank_0(output_str)
 
-        if output_predictions and torch.distributed.get_rank() == 0:
-            assert args.load is not None
-            filename = os.path.join(args.load, names + '.pt')
-            torch.save(named_predictions, filename)
         return score_dict
 
     return metrics_func
@@ -93,7 +96,8 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
 segment_length = 10
 
 
-def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions, args, labeled=True):
+def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputExample], epoch, output_predictions,
+                     args, labeled=True):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
 
@@ -106,9 +110,7 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, outp
         if output_predictions:
             # This option is only possible when data parallel size is 1.
             assert mpu.get_data_parallel_world_size() == 1
-            softmaxes = []
-            labels = []
-            ids = []
+            ids, predictions = [], []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
             data = process_batch(batch, args)
@@ -145,20 +147,19 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, outp
             uid_list = batch['uid']
             if isinstance(uid_list, torch.Tensor):
                 uid_list = uid_list.cpu().numpy().tolist()
-            # Add output predictions.
-            if output_predictions:
-                softmaxes.extend(torch.nn.Softmax(dim=-1)(
-                    logits.float()).data.cpu().numpy().tolist())
-                labels.extend(labels_.data.cpu().numpy().tolist())
-                ids.extend(uid_list)
             example_batch = None
             if examples is not None:
                 example_batch = [examples[uid] for uid in uid_list]
             # Compute the correct answers.
-            predicted = torch.argmax(logits, dim=-1)
+            predicted = torch.argmax(logits, dim=-1).tolist()
+            # Add output predictions.
+            if output_predictions:
+                predictions.extend([example.meta["candidates"][idx] for example, idx in zip(example_batch, predicted)])
+                ids_list = [example.idx for example in example_batch]
+                ids.extend(ids_list)
             if labeled:
                 for key, metric in metric_dict.items():
-                    score_dict[key] += metric(predicted.tolist(), labels_.tolist(), example_batch)
+                    score_dict[key] += metric(predicted, labels_.tolist(), example_batch)
             # Add to the counters.
             total += labels_.size(0)
     model.train()
@@ -181,5 +182,5 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, outp
         output_str += " {} = {:.4f} %".format(key, value / total_count)
     output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
     if output_predictions:
-        return score_dict, total_count, (softmaxes, labels, ids)
+        return score_dict, total_count, (ids, predictions)
     return score_dict, total_count
