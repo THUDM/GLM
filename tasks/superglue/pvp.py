@@ -158,6 +158,7 @@ class PVP(ABC):
                                         add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             label = self.label_list.index(example.label)
+            target_ids = self.get_verbalizer_ids()
             sample = build_sample(ids=ids, positions=position_ids, target=target_ids, masks=sep, logit_mask=loss_masks,
                                   label=label)
             return sample
@@ -203,6 +204,14 @@ class PVP(ABC):
 
     def get_answers(self, example: InputExample):
         return []
+
+    def get_verbalizer_ids(self):
+        target_ids = []
+        for label in self.label_list:
+            verbalizer = self.verbalize(label)[0]
+            verbalizer_id = get_verbalization_ids(verbalizer, self.tokenizer, force_single_token=True)
+            target_ids.append(verbalizer_id)
+        return target_ids
 
     @abstractmethod
     def verbalize(self, label) -> List[str]:
@@ -633,7 +642,7 @@ def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Uni
     assert len(ids) == 1, \
         f'Verbalization "{word}" does not correspond to a single token, got {tokenizer.DecodeIds(ids)}'
     verbalization_id = ids[0]
-    assert verbalization_id not in tokenizer.all_special_ids, \
+    assert verbalization_id not in tokenizer.command_id_map, \
         f'Verbalization {word} is mapped to a special token {tokenizer.IdToToken(verbalization_id)}'
     return verbalization_id
 

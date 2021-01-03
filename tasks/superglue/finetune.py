@@ -18,7 +18,7 @@
 from utils import print_rank_0
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
-from tasks.superglue.dataset import GlueDataset
+from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS
 from tasks.superglue.evaluate import exact_match_metric, f1_metric
 from collections import OrderedDict
 
@@ -45,5 +45,11 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 
 def main(args):
-    finetune(args, train_valid_datasets_provider, "multiple_choice",
+    if args.task.lower() in SINGLE_TOKEN_DATASETS:
+        multi_token = False
+    elif args.task.lower() in MULTI_TOKEN_DATASETS:
+        multi_token = True
+    else:
+        raise NotImplementedError(args.task)
+    finetune(args, train_valid_datasets_provider, {"multi_token": multi_token, "model_type": "multiple_choice"},
              end_of_epoch_callback_provider=metrics_func_provider)

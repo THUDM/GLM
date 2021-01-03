@@ -45,5 +45,5 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 
 def main(args):
-    finetune(args, train_valid_datasets_provider, "multiple_choice",
+    finetune(args, train_valid_datasets_provider, {"model_type": "multiple_choice"},
              end_of_epoch_callback_provider=metrics_func_provider)

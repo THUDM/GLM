@@ -804,6 +804,9 @@ class XStanceProcessor(DataProcessor):
         return examples
 
 
+SINGLE_TOKEN_DATASETS = {"wic", "rte", "cb", "boolq", "multirc"}
+MULTI_TOKEN_DATASETS = {"wsc", "copa", "record"}
+
 PROCESSORS = {
     "mnli": MnliProcessor,
     "mnli-mm": MnliMismatchedProcessor,

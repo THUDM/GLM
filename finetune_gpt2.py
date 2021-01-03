@@ -231,7 +231,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     return best_iteration
 
 
-def finetune(args, train_valid_datasets_provider, model_type,
+def finetune(args, train_valid_datasets_provider, model_kwargs,
              forward_step=cross_entropy_forward_step,
              end_of_epoch_callback_provider=None):
     """Main finetune function used across all tasks."""
@@ -260,7 +260,7 @@ def finetune(args, train_valid_datasets_provider, model_type,
 
     # Build model, optimizer and learning rate scheduler.
     timers('model and optimizer').start()
-    model, optimizer, lr_scheduler = setup_model_and_optimizer(args, model_type)
+    model, optimizer, lr_scheduler = setup_model_and_optimizer(args, **model_kwargs)
     timers('model and optimizer').stop()
 
     # If pretrained checkpoint is provided and we have not trained for

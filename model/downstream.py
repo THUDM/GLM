@@ -52,6 +52,21 @@ class ClozeModel(torch.nn.Module):
         return (logits, *mems)
 
 
+class VerbalizerModel(torch.nn.Module):
+    def __init__(self, language_model):
+        super().__init__()
+        self.model = language_model
+
+    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
+        assert len(input_ids.shape) == 2
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+        batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)
+        output = outputs[batch_ids, attention_mask]
+        batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
+        output = output[batch_ids, target_ids]
+        return (output, *mems)
+
+
 class PoolingModel(torch.nn.Module):
     def __init__(self, language_model, hidden_size, hidden_dropout, pool_token, num_class=1):
         super().__init__()

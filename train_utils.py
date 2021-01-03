@@ -6,13 +6,13 @@ from torch import distributed as dist
 import mpu
 from fp16 import FP16_Module, FP16_Optimizer
 from learning_rates import AnnealingLR
-from model import ClozeModel, PoolingModel, GPT2Model, PyTorchDistributedDataParallel as TorchDDP, \
+from model import VerbalizerModel, ClozeModel, PoolingModel, GPT2Model, PyTorchDistributedDataParallel as TorchDDP, \
     DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
 from model.modeling import BertForMultipleChoice
 from utils import print_rank_0
 
 
-def get_model(args, model_type=None):
+def get_model(args, model_type=None, multi_token=True):
     """Build the model."""
     print_rank_0('building GPT2 model ...')
     if args.pretrained_bert:
@@ -47,7 +47,10 @@ def get_model(args, model_type=None):
         if model_type is not None:
             if model_type == 'multiple_choice':
                 if args.cloze_eval:
-                    model = ClozeModel(model, length_penalty=args.length_penalty)
+                    if multi_token:
+                        model = ClozeModel(model, length_penalty=args.length_penalty)
+                    else:
+                        model = VerbalizerModel(model)
                 else:
                     model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token)
             else:
@@ -153,10 +156,10 @@ def get_learning_rate_scheduler(optimizer, args):
     return lr_scheduler
 
 
-def setup_model_and_optimizer(args, model_type=None):
+def setup_model_and_optimizer(args, model_type=None, multi_token=True):
     """Setup model and optimizer."""
 
-    model = get_model(args, model_type=model_type)
+    model = get_model(args, model_type=model_type, multi_token=multi_token)
     param_groups = get_optimizer_param_groups(model)
 
     if args.train_data is not None or args.data_dir is not None:
