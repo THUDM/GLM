@@ -49,7 +49,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
         dataset = single_dataset_provider(datapath)
         dataloader = build_data_loader(
             dataset, args.batch_size, num_workers=args.num_workers,
-            drop_last=False, shuffle=False)
+            drop_last=False, shuffle=False, only_rank0=is_test)
         dataloaders.append((dataset.dataset_name, dataloader))
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
@@ -57,9 +57,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
         score_dict = OrderedDict([(key, 0.0) for key in metric_dict])
         total = 0
         if output_predictions:
-            assert mpu.get_data_parallel_world_size() == 1
-            named_predictions = []
-            names = 'predictions'
+            assert is_test
         for name, dataloader in dataloaders:
             examples = None
             if hasattr(dataloader.dataset, "examples"):
@@ -97,7 +95,7 @@ segment_length = 10
 
 
 def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputExample], epoch, output_predictions,
-                     args, labeled=True):
+                     args, labeled=True, translate_predictions=False):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
 
@@ -108,8 +106,6 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputE
         total = 0
         score_dict = {key: 0.0 for key in metric_dict}
         if output_predictions:
-            # This option is only possible when data parallel size is 1.
-            assert mpu.get_data_parallel_world_size() == 1
             ids, predictions = [], []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
@@ -154,7 +150,11 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputE
             predicted = torch.argmax(logits, dim=-1).tolist()
             # Add output predictions.
             if output_predictions:
-                predictions.extend([example.meta["candidates"][idx] for example, idx in zip(example_batch, predicted)])
+                if translate_predictions:
+                    predictions.extend(
+                        [example.meta["candidates"][idx] for example, idx in zip(example_batch, predicted)])
+                else:
+                    predictions.extend(predicted)
                 ids_list = [example.idx for example in example_batch]
                 ids.extend(ids_list)
             if labeled:
@@ -163,24 +163,24 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputE
             # Add to the counters.
             total += labels_.size(0)
     model.train()
-
+    print("here")
     # Reduce.
-    keys = list(score_dict.keys())
-    keys.sort()
-    unreduced = [score_dict[key] for key in keys] + [total]
-    unreduced = torch.cuda.FloatTensor(unreduced)
-    torch.distributed.all_reduce(unreduced, group=mpu.get_data_parallel_group())
-
-    # Print on screen.
-    unreduced = unreduced.tolist()
-    for i, key in enumerate(keys):
-        score_dict[key] = unreduced[i]
-    total_count = unreduced[-1]
+    if not output_predictions:
+        keys = list(score_dict.keys())
+        keys.sort()
+        unreduced = [score_dict[key] for key in keys] + [total]
+        unreduced = torch.cuda.FloatTensor(unreduced)
+        torch.distributed.all_reduce(unreduced, group=mpu.get_data_parallel_group())
+        # Print on screen.
+        unreduced = unreduced.tolist()
+        for i, key in enumerate(keys):
+            score_dict[key] = unreduced[i]
+        total = unreduced[-1]
     elapsed_time = time.time() - start_time
-    output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total_count)
+    output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total)
     for key, value in score_dict.items():
-        output_str += " {} = {:.4f} %".format(key, value / total_count)
+        output_str += " {} = {:.4f} %".format(key, value / total)
     output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
     if output_predictions:
-        return score_dict, total_count, (ids, predictions)
-    return score_dict, total_count
+        return score_dict, total, (ids, predictions)
+    return score_dict, total

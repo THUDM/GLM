@@ -12,6 +12,6 @@ TRAIN_ARGS="--epochs 20 \
             --weight-decay 1.0e-1"
 
 COMMON_ARGS="--save-interval 10000 \
-             --log-interval 100 \
+             --log-interval 20 \
              --eval-interval 1000 \
              --eval-iters 100"

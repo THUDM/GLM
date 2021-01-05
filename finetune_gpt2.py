@@ -307,11 +307,11 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         if best_iteration is not None and end_of_train_callback is not None:
             args.load = os.path.join(args.save, str(best_iteration))
             load_checkpoint(model, optimizer, lr_scheduler, args)
-        if end_of_train_callback is not None:
-            end_of_train_callback(model, epoch=-1, output_predictions=False)
+        if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
+            end_of_train_callback(model, epoch=-1, output_predictions=True)
     # Or just evaluate.
     else:
-        if end_of_train_callback is not None:
+        if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
             print_rank_0('evaluation only mode, setting epoch to -1')
             end_of_train_callback(model, epoch=-1, output_predictions=True)
 
