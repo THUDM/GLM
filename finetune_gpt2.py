@@ -238,7 +238,6 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     global tokenizer
     timers = Timers()
     tokenizer = prepare_tokenizer(args)
-    args.experiment_name = "-".join((args.experiment_name, args.task, datetime.now().strftime("%m-%d-%H-%M")))
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
     # Train and validation data loaders.
@@ -290,6 +289,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
+        if os.path.exists(args.log_dir) and args.epochs > 0:
+            raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
         summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
         print_and_save_args(args, verbose=False, log_dir=args.log_dir)
 
