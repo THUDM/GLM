@@ -49,7 +49,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
         dataset = single_dataset_provider(datapath)
         dataloader = build_data_loader(
             dataset, args.batch_size, num_workers=args.num_workers,
-            drop_last=(mpu.get_data_parallel_world_size() > 1), shuffle=False)
+            drop_last=False, shuffle=False)
         dataloaders.append((dataset.dataset_name, dataloader))
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):

@@ -1,13 +1,7 @@
-MODEL_ARGS="--block-lm \
-            --cloze-eval \
-            --num-layers 12 \
-            --hidden-size 768 \
-            --num-attention-heads 12 \
-            --seq-length 512 \
-            --max-position-embeddings 512 \
-            --tokenizer-model-type bert-base-uncased \
-            --tokenizer-type BertWordPieceTokenizer \
-            --load-pretrained /root/data/checkpoints/block-lm-blank-cls12-18-12-50"
+EXPERIMENT_NAME=blank-base-few
+TASK_NAME=ReCoRD
+DATA_PATH="/root/data/fewglue/ReCoRD"
+MAX_SEQ_LEN=512
 
 TRAIN_ARGS="--epochs 60 \
             --batch-size 8 \

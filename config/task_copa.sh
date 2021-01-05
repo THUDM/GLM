@@ -1,9 +1,10 @@
 EXPERIMENT_NAME=blank-base
-TASK_NAME=ReCoRD
-DATA_PATH="/root/data/superglue/ReCoRD"
-MAX_SEQ_LEN=512
+TASK_NAME=COPA
+DATA_PATH="/root/data/superglue/COPA"
+MAX_SEQ_LEN=256
+source config/task_blocklm.sh
 
-TRAIN_ARGS="--epochs 5 \
+TRAIN_ARGS="--epochs 20 \
             --batch-size 8 \
             --lr 1e-5 \
             --lr-decay-style linear \

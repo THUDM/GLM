@@ -26,7 +26,7 @@ from torch.utils.data import Dataset
 from tasks.data_utils import InputExample
 from utils import print_rank_0
 from tasks.superglue.pvp import PVPS
-from tasks.data_utils import build_input_from_ids, build_sample
+from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add
 
 METRICS = {
     "cb": ["acc", "f1-macro"],
@@ -72,16 +72,18 @@ class GlueDataset(Dataset):
         print_rank_0(
             f"Returning {len(examples)} {split} examples with label dist.: {list(label_distribution.items())}")
         self.samples = []
-        examples.sort(key=lambda x: len(x.meta["candidates"]))
+        examples.sort(key=lambda x: x.num_choices)
         if cloze_format:
             pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
+            print_rank_0(f"Truncate {pvp.num_truncated} examples")
         else:
             for example in examples:
                 sample = processor.encode(example, tokenizer, max_seq_length, for_bert=for_bert)
                 self.samples.append(sample)
+            print_rank_0(f"Truncate {processor.num_truncated} examples")
 
         print_rank_0(f"Creating {len(self.samples)} samples")
         self.examples = {example.guid: example for example in examples}
@@ -98,6 +100,9 @@ class DataProcessor(ABC):
     Abstract class that provides methods for loading training, testing, development and unlabeled examples for a given
     task
     """
+
+    def __init__(self):
+        self.num_truncated = 0
 
     @abstractmethod
     def get_train_examples(self, data_dir) -> List[InputExample]:
@@ -132,6 +137,7 @@ class RteProcessor(DataProcessor):
     """Processor for the RTE data set."""
 
     def __init__(self):
+        super().__init__()
         self.mnli_processor = MnliProcessor()
 
     def get_train_examples(self, data_dir):
@@ -371,6 +377,42 @@ class CopaProcessor(DataProcessor):
     def get_labels(self):
         return ["0", "1"]
 
+    def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
+        if for_bert:
+            ids_list, types_list, paddings_list = [], [], []
+        else:
+            ids_list, positions_list, sep_list = [], [], []
+        text_a = example.text_a + " " + example.meta["question"]
+        tokens_a = tokenizer.EncodeAsIds(text_a).tokenization
+        for choice in [example.meta["choice1"], example.meta["choice2"]]:
+            tokens_b = tokenizer.EncodeAsIds(choice).tokenization
+            num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
+                                                           add_piece=False)
+            if len(tokens_a) + len(tokens_b) + num_special_tokens > max_seq_length:
+                self.num_truncated += 1
+            data = build_input_from_ids(tokens_a, tokens_b, None, max_seq_length, tokenizer,
+                                            add_cls=True, add_sep=True, add_piece=False)
+            ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            if for_bert:
+                ids_list.append(ids)
+                types_list.append(types)
+                paddings_list.append(paddings)
+            else:
+                ids_list.append(ids)
+                positions_list.append(position_ids)
+                sep_list.append(sep)
+        label = 0
+        if example.label is not None:
+            label = example.label
+            label = self.get_labels().index(label[0])
+        if for_bert:
+            sample = build_sample(ids_list, label=label, types=types_list, paddings=paddings_list,
+                                  unique_id=example.guid)
+        else:
+            sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                                  unique_id=example.guid)
+        return sample
+
     @staticmethod
     def _create_examples(path: str, set_type: str) -> List[InputExample]:
         examples = []
@@ -488,6 +530,11 @@ class RecordProcessor(DataProcessor):
         tokens_b = tokenizer.EncodeAsIds(example.text_b).tokenization if example.text_b else None
         for answer in example.meta["candidates"]:
             answer_ids = tokenizer.EncodeAsIds(answer).tokenization
+            total_length = len(tokens_a) + len(tokens_b) + len(answer_ids)
+            total_length += num_special_tokens_to_add(tokens_a, tokens_b + answer_ids, None, add_cls=True, add_sep=True,
+                                                      add_piece=False)
+            if total_length > max_seq_length:
+                self.num_truncated += 1
             data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, max_seq_length, tokenizer,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
@@ -563,7 +610,7 @@ class RecordProcessor(DataProcessor):
                             }
                             ex_idx = [idx, question_idx, answer_idx]
                             example = InputExample(guid=guid, text_a=text, text_b=question, label="0", meta=meta,
-                                                   idx=ex_idx)
+                                                   idx=ex_idx, num_choices=len(candidates) + 1)
                             examples.append(example)
 
                     else:
@@ -576,7 +623,7 @@ class RecordProcessor(DataProcessor):
                             'answers': answers
                         }
                         example = InputExample(guid=guid, text_a=text, text_b=question, label="1", meta=meta,
-                                               idx=question_idx)
+                                               idx=question_idx, num_choices=len(entities))
                         examples.append(example)
 
         question_indices = list(set(example.meta['question_idx'] for example in examples))
@@ -764,6 +811,7 @@ class XStanceProcessor(DataProcessor):
     """Processor for the X-Stance data set."""
 
     def __init__(self, language: str = None):
+        super().__init__()
         if language is not None:
             assert language in ['de', 'fr']
         self.language = language

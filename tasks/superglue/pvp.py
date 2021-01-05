@@ -47,6 +47,7 @@ class PVP(ABC):
         self.max_seq_length = max_seq_length
         self.pattern_id = pattern_id
         self.rng = random.Random(seed)
+        self.num_truncated = 0
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
@@ -119,7 +120,8 @@ class PVP(ABC):
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                 answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
                 answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
-                self.truncate(this_parts_a, this_parts_b, answer_ids, max_length=self.max_seq_length)
+                self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
+                                                    max_length=self.max_seq_length)
                 tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                 tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
                 data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
@@ -130,14 +132,16 @@ class PVP(ABC):
                 sep_list.append(sep)
                 target_list.append(target_ids)
                 mask_list.append(loss_masks)
-            label = example.label
-            label = self.label_list.index(label[0])
+            if example.label is not None:
+                label = self.label_list.index(example.label)
+            else:
+                label = 0
             sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
                                   logit_mask=mask_list, target=target_list,
                                   unique_id=example.guid)
             return sample
         else:
-            self.truncate(parts_a, parts_b, [], max_length=self.max_seq_length)
+            self.num_truncated += self.truncate(parts_a, parts_b, [], max_length=self.max_seq_length)
 
             tokens_a = [token_id for part, _ in parts_a for token_id in part]
             tokens_b = [token_id for part, _ in parts_b for token_id in part] if parts_b else None
@@ -157,8 +161,11 @@ class PVP(ABC):
             data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer, add_cls=True,
                                         add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-            label = self.label_list.index(example.label)
-            target_ids = self.get_verbalizer_ids()
+            if example.label is not None:
+                label = self.label_list.index(example.label)
+                target_ids = self.get_verbalizer_ids()
+            else:
+                label = 0
             sample = build_sample(ids=ids, positions=position_ids, target=target_ids, masks=sep, logit_mask=loss_masks,
                                   label=label)
             return sample
@@ -182,13 +189,14 @@ class PVP(ABC):
         num_tokens_to_remove = total_len - max_length
 
         if num_tokens_to_remove <= 0:
-            return parts_a, parts_b, answer
+            return False
 
         for _ in range(num_tokens_to_remove):
             if self._seq_length(parts_a, only_shortenable=True) > self._seq_length(parts_b, only_shortenable=True):
                 self._remove_last(parts_a)
             else:
                 self._remove_last(parts_b)
+        return True
 
     @abstractmethod
     def get_parts(self, example: InputExample) -> FilledPattern:

@@ -15,12 +15,17 @@
 
 """Race."""
 
-from utils import print_rank_0
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
 from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS
 from tasks.superglue.evaluate import exact_match_metric, f1_metric
 from collections import OrderedDict
+from tasks.eval_utils import accuracy_metric
+
+default_metrics = {
+    "record": [("EM", exact_match_metric), ("F1", f1_metric)],
+    "copa": [("accuracy", accuracy_metric)]
+}
 
 
 def train_valid_datasets_provider(args, tokenizer):
@@ -40,7 +45,7 @@ def metrics_func_provider(args, tokenizer, is_test):
         return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
                            cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
 
-    metric_dict = OrderedDict([("EM", exact_match_metric), ("F1", f1_metric)])
+    metric_dict = OrderedDict(default_metrics[args.task.lower()])
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test)
 
 

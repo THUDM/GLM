@@ -43,7 +43,8 @@ def clean_text(text):
 class InputExample(object):
     """A raw input example consisting of one or two segments of text and a label"""
 
-    def __init__(self, guid, text_a, text_b=None, label=None, logits=None, meta: Optional[Dict] = None, idx=-1):
+    def __init__(self, guid, text_a, text_b=None, label=None, logits=None, meta: Optional[Dict] = None, idx=-1,
+                 num_choices=1):
         """
         Create a new InputExample.
 
@@ -61,6 +62,7 @@ class InputExample(object):
         self.label = label
         self.logits = logits
         self.idx = idx
+        self.num_choices = num_choices
         self.meta = meta if meta else {}
 
     def __repr__(self):
