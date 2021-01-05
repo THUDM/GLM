@@ -45,7 +45,7 @@ SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
 
 class GlueDataset(Dataset):
     def __init__(self, task_name, split, data_dir, tokenizer, max_seq_length, for_train=False, cloze_format=True,
-                 for_bert=False):
+                 for_bert=False, pattern_id=0):
         processor = PROCESSORS[task_name]()
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
@@ -74,7 +74,7 @@ class GlueDataset(Dataset):
         self.samples = []
         examples.sort(key=lambda x: x.num_choices)
         if cloze_format:
-            pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length)
+            pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length, pattern_id=pattern_id)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
@@ -391,7 +391,7 @@ class CopaProcessor(DataProcessor):
             if len(tokens_a) + len(tokens_b) + num_special_tokens > max_seq_length:
                 self.num_truncated += 1
             data = build_input_from_ids(tokens_a, tokens_b, None, max_seq_length, tokenizer,
-                                            add_cls=True, add_sep=True, add_piece=False)
+                                        add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if for_bert:
                 ids_list.append(ids)

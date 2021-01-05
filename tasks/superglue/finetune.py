@@ -31,9 +31,10 @@ default_metrics = {
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
     train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
+                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
     valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                for_train=True, cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
+                                for_train=True, cloze_format=args.cloze_eval, for_bert=args.pretrained_bert,
+                                pattern_id=args.pattern_id)
 
     return train_dataset, valid_dataset
 
@@ -43,7 +44,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     def single_dataset_provider(split):
         return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert)
+                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
 
     metric_dict = OrderedDict(default_metrics[args.task.lower()])
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test)

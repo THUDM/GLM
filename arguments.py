@@ -324,6 +324,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
                        help='The token to pool the sequence representation', default='start')
     group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
+    group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--validation-metric', type=str, default=None)
     return parser
 
