@@ -56,8 +56,6 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
         print_rank_0('calculating metrics ...')
         score_dict = OrderedDict([(key, 0.0) for key in metric_dict])
         total = 0
-        if output_predictions:
-            assert is_test
         for name, dataloader in dataloaders:
             examples = None
             if hasattr(dataloader.dataset, "examples"):
