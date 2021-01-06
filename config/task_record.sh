@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base
+EXPERIMENT_NAME=blank-base-record
 TASK_NAME=ReCoRD
 DATA_PATH="/root/data/superglue/ReCoRD"
 MAX_SEQ_LEN=512

@@ -8,11 +8,11 @@ from fp16 import FP16_Module, FP16_Optimizer
 from learning_rates import AnnealingLR
 from model import VerbalizerModel, ClozeModel, PoolingModel, GPT2Model, PyTorchDistributedDataParallel as TorchDDP, \
     DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
-from model.modeling import BertForMultipleChoice
+from model.modeling import BertForMultipleChoice, BertForSequenceClassification
 from utils import print_rank_0
 
 
-def get_model(args, model_type=None, multi_token=True):
+def get_model(args, model_type=None, multi_token=True, num_labels=None):
     """Build the model."""
     print_rank_0('building GPT2 model ...')
     if args.pretrained_bert:
@@ -22,6 +22,13 @@ def get_model(args, model_type=None, multi_token=True):
                                                           fp32_layernorm=args.fp32_layernorm,
                                                           fp32_embedding=args.fp32_embedding,
                                                           layernorm_epsilon=args.layernorm_epsilon)
+        elif model_type == "classification":
+            model = BertForSequenceClassification.from_pretrained(args.tokenizer_model_type,
+                                                                  cache_dir=args.cache_dir,
+                                                                  fp32_layernorm=args.fp32_layernorm,
+                                                                  fp32_embedding=args.fp32_embedding,
+                                                                  layernorm_epsilon=args.layernorm_epsilon,
+                                                                  num_labels=num_labels)
         else:
             raise NotImplementedError
     else:
@@ -156,10 +163,10 @@ def get_learning_rate_scheduler(optimizer, args):
     return lr_scheduler
 
 
-def setup_model_and_optimizer(args, model_type=None, multi_token=True):
+def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_labels=None):
     """Setup model and optimizer."""
 
-    model = get_model(args, model_type=model_type, multi_token=multi_token)
+    model = get_model(args, model_type=model_type, multi_token=multi_token, num_labels=num_labels)
     param_groups = get_optimizer_param_groups(model)
 
     if args.train_data is not None or args.data_dir is not None:

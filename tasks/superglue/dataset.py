@@ -130,7 +130,26 @@ class DataProcessor(ABC):
         pass
 
     def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
-        pass
+        tokens_a = tokenizer.EncodeAsIds(example.text_a).tokenization
+        tokens_b = tokenizer.EncodeAsIds(example.text_b).tokenization
+        num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
+                                                       add_piece=False)
+        if len(tokens_a) + len(tokens_b) + num_special_tokens > max_seq_length:
+            self.num_truncated += 1
+        data = build_input_from_ids(tokens_a, tokens_b, None, max_seq_length, tokenizer,
+                                    add_cls=True, add_sep=True, add_piece=False)
+        ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+        label = 0
+        if example.label is not None:
+            label = example.label
+            label = self.get_labels().index(label)
+        if for_bert:
+            sample = build_sample(ids, label=label, types=types, paddings=paddings,
+                                  unique_id=example.guid)
+        else:
+            sample = build_sample(ids, positions=position_ids, masks=sep, label=label,
+                                  unique_id=example.guid)
+        return sample
 
 
 class RteProcessor(DataProcessor):
@@ -404,7 +423,7 @@ class CopaProcessor(DataProcessor):
         label = 0
         if example.label is not None:
             label = example.label
-            label = self.get_labels().index(label[0])
+            label = self.get_labels().index(label)
         if for_bert:
             sample = build_sample(ids_list, label=label, types=types_list, paddings=paddings_list,
                                   unique_id=example.guid)
@@ -547,7 +566,7 @@ class RecordProcessor(DataProcessor):
                 positions_list.append(position_ids)
                 sep_list.append(sep)
         label = example.label
-        label = self.get_labels().index(label[0])
+        label = self.get_labels().index(label)
         if for_bert:
             sample = build_sample(ids_list, label=label, types=types_list, paddings=paddings_list,
                                   unique_id=example.guid)

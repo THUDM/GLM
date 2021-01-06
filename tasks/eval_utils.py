@@ -120,7 +120,7 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputE
                 tokens, labels_, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
                     'attention_mask']
                 inputs = [tokens, position_ids, attention_mask]
-            if inputs[0].size(1) > segment_length:
+            if len(inputs[0].shape) == 3 and inputs[0].size(1) > segment_length:
                 logit_list = []
                 for i in range((inputs[0].size(1) - 1) // segment_length + 1):
                     input_batch = [arg[:, i * segment_length: (i + 1) * segment_length] for arg in inputs]
@@ -161,7 +161,7 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputE
             # Add to the counters.
             total += labels_.size(0)
     model.train()
-    print("here")
+
     # Reduce.
     if not output_predictions:
         keys = list(score_dict.keys())
