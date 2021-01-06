@@ -161,13 +161,13 @@ class PVP(ABC):
             data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer, add_cls=True,
                                         add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            target_ids = self.get_verbalizer_ids()
             if example.label is not None:
                 label = self.label_list.index(example.label)
-                target_ids = self.get_verbalizer_ids()
             else:
                 label = 0
             sample = build_sample(ids=ids, positions=position_ids, target=target_ids, masks=sep, logit_mask=loss_masks,
-                                  label=label)
+                                  label=label, unique_id=example.guid)
             return sample
 
     @staticmethod
