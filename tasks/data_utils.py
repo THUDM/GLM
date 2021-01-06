@@ -214,23 +214,24 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
 def my_collate(batch):
     new_batch = [{key: value for key, value in sample.items() if key != 'uid'} for sample in batch]
     text_list = [sample['text'] for sample in batch]
-    choice_nums = list(map(len, text_list))
 
     def pad_choice_dim(data, choice_num):
         if len(data) < choice_num:
             data = np.concatenate([data] + [data[0:1]] * (choice_num - len(data)))
         return data
 
-    if choice_nums.count(choice_nums[0]) != len(choice_nums):
-        max_choice_num = max(choice_nums)
-        for i, sample in enumerate(new_batch):
-            for key, value in sample.items():
-                if key != 'label':
-                    sample[key] = pad_choice_dim(value, max_choice_num)
-                else:
-                    sample[key] = value
-            sample['loss_mask'] = np.array([1] * choice_nums[i] + [0] * (max_choice_num - choice_nums[i]),
-                                           dtype=np.float32)
+    if len(text_list[0].shape) == 2:
+        choice_nums = list(map(len, text_list))
+        if choice_nums.count(choice_nums[0]) != len(choice_nums):
+            max_choice_num = max(choice_nums)
+            for i, sample in enumerate(new_batch):
+                for key, value in sample.items():
+                    if key != 'label':
+                        sample[key] = pad_choice_dim(value, max_choice_num)
+                    else:
+                        sample[key] = value
+                sample['loss_mask'] = np.array([1] * choice_nums[i] + [0] * (max_choice_num - choice_nums[i]),
+                                               dtype=np.float32)
     new_batch = default_collate(new_batch)
     if 'uid' in batch[0]:
         uid_list = [sample['uid'] for sample in batch]
