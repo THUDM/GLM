@@ -74,7 +74,7 @@ def process_batch(batch, args):
 tokenizer = None
 
 
-def cross_entropy_forward_step(batch, model, args, timers, mems):
+def finetune_forward_step(batch, model, args, timers, mems):
     """Simple forward step with cross-entropy loss."""
     # Get the batch.
     timers('batch generator').start()
@@ -117,12 +117,20 @@ def cross_entropy_forward_step(batch, model, args, timers, mems):
             'attention_mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
 
-    # Cross-entropy loss.
-    loss_func = torch.nn.CrossEntropyLoss()
     if "loss_mask" in data:
         loss_mask = data["loss_mask"]
         logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
-    loss = loss_func(logits.contiguous().float(), labels)
+    if args.loss_func == "cross_entropy":
+        # Cross-entropy loss.
+        loss_func = torch.nn.CrossEntropyLoss()
+        loss = loss_func(logits.contiguous().float(), labels)
+    elif args.loss_func == "hinge":
+        correct_logits = logits[range(logits.size(0)), labels]
+        hinge_loss = 1 + logits - correct_logits.unsqueeze(1)
+        hinge_loss[hinge_loss < 0.0] = 0.0
+        loss = hinge_loss.sum(dim=1).mean() - 1.0
+    else:
+        raise NotImplementedError
 
     # Reduce loss for logging.
 
@@ -209,7 +217,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             if args.eval_interval and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
                 evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, step=args.iteration,
-                                           verbose=False, forward_step_func=cross_entropy_forward_step,
+                                           verbose=False, forward_step_func=finetune_forward_step,
                                            summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
@@ -232,7 +240,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
 
 def finetune(args, train_valid_datasets_provider, model_kwargs,
-             forward_step=cross_entropy_forward_step,
+             forward_step=finetune_forward_step,
              end_of_epoch_callback_provider=None):
     """Main finetune function used across all tasks."""
     global tokenizer
