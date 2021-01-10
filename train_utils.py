@@ -32,9 +32,11 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
         else:
             raise NotImplementedError
     else:
-        output_predict = True
+        output_predict, paralle_output = True, True
         if model_type == "multiple_choice" and not args.cloze_eval:
             output_predict = False
+        if model_type is not None:
+            paralle_output = False
         model = GPT2Model(num_layers=args.num_layers,
                           vocab_size=args.vocab_size,
                           hidden_size=args.hidden_size,
@@ -46,7 +48,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                           max_memory_length=args.mem_length,
                           checkpoint_activations=args.checkpoint_activations,
                           checkpoint_num_layers=args.checkpoint_num_layers,
-                          parallel_output=True,
+                          parallel_output=paralle_output,
                           relative_encoding=args.transformer_xl,
                           type_encoding=args.block_lm and args.no_block_position,
                           block_position_encoding=args.block_lm and not args.no_block_position,
@@ -60,6 +62,8 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                         model = VerbalizerModel(model)
                 else:
                     model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token)
+            elif model_type == 'generation':
+                pass
             else:
                 raise NotImplementedError(model_type)
 

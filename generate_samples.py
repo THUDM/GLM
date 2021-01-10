@@ -35,7 +35,7 @@ from train_utils import get_model
 def setup_model(args):
     """Setup model and optimizer."""
 
-    model = get_model(args)
+    model = get_model(args, model_type="generation")
 
     # if args.deepspeed:
     #     print_rank_0("DeepSpeed is enabled.")
