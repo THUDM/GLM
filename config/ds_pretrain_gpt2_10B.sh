@@ -7,14 +7,14 @@ config_json="$script_dir/ds_config_10B.json"
 gpt_options=" \
        --experiment-name txl-10b \
        --model-parallel-size ${MP_SIZE} \
-       --num-layers 40 \
-       --hidden-size 4608 \
+       --num-layers 50 \
+       --hidden-size 4096 \
        --num-attention-heads 32 \
        --seq-length 512 \
        --max-position-embeddings 512 \
        --save /root/data/checkpoints \
        --save-interval 2000 \
-       --train-iters 300000 \
+       --train-iters 100000 \
        --resume-dataloader \
        --train-data wikipedia \
        --lazy-loader \
@@ -24,7 +24,7 @@ gpt_options=" \
        --lr-decay-style cosine \
        --lr-decay-ratio 0.1 \
        --lr-decay-iters 300000 \
-       --warmup .01 \
+       --warmup .05 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
