@@ -146,7 +146,7 @@ RUN pip install psutil \
 # PyTorch
 ##############################################################################
 #RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
-ENV TORCH_CUDA_ARCH_LIST="3.5 5.2 6.0 6.1 7.0+PTX"
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 COPY pytorch /opt/pytorch
 RUN cd /opt/pytorch && git checkout v1.6.0 && \
     git submodule sync && git submodule update --init --recursive
@@ -180,6 +180,7 @@ RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
 ##############################################################################
 # DeepSpeed
 ##############################################################################
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 #RUN git clone https://github.com/microsoft/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
 COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
 RUN cd ${STAGE_DIR}/DeepSpeed && \
