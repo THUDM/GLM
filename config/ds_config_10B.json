@@ -1,7 +1,7 @@
 {
   "train_micro_batch_size_per_gpu": 8,
-  "gradient_accumulation_steps": 1,
-  "steps_per_print": 1,
+  "gradient_accumulation_steps": 4,
+  "steps_per_print": 100,
   "gradient_clipping": 1.0,
   "zero_optimization": {
     "stage": 2,
@@ -28,7 +28,7 @@
         0.95
       ],
       "eps": 1e-8,
-      "weight_decay": 1e-2
+      "weight_decay": 1e-1
     }
   },
   "activation_checkpointing": {

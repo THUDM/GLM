@@ -13,6 +13,8 @@ gpt_options=" \
        --seq-length 512 \
        --max-position-embeddings 512 \
        --save /root/data/checkpoints \
+       --log-interval 25 \
+       --eval-interval 250 \
        --save-interval 2000 \
        --train-iters 100000 \
        --resume-dataloader \
@@ -23,8 +25,8 @@ gpt_options=" \
        --distributed-backend nccl \
        --lr-decay-style cosine \
        --lr-decay-ratio 0.1 \
-       --lr-decay-iters 300000 \
-       --warmup .05 \
+       --lr-decay-iters 20000 \
+       --warmup .2 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
