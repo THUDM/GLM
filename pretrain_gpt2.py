@@ -106,7 +106,7 @@ def get_masks_and_position_ids(data,
     return attention_mask, loss_mask, position_ids
 
 
-def get_batch(data_iterator, args, timers):
+def get_batch(data, args, timers):
     ''' get_batch subdivides the source data into chunks of
     length args.seq_length. If source is equal to the example
     output of the data loading example, with a seq_length limit
@@ -128,12 +128,6 @@ def get_batch(data_iterator, args, timers):
     datatype = torch.int64
 
     # Broadcast data.
-    timers('data loader').start()
-    if data_iterator is not None:
-        data = next(data_iterator)
-    else:
-        data = None
-    timers('data loader').stop()
     data_b = mpu.broadcast_data(keys, data, datatype)
     # Unpack.
     if args.transformer_xl:
@@ -181,8 +175,10 @@ def forward_step(data_iterator, model, args, timers, mems):
 
     # Get the batch.
     timers('batch generator').start()
-    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(
-        data_iterator, args, timers)
+    timers('data loader').start()
+    data = next(data_iterator)
+    timers('data loader').stop()
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args, timers)
     timers('batch generator').stop()
 
     def print_masked_text(batch_id):

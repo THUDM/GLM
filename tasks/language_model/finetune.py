@@ -1,0 +1,167 @@
+# coding=utf-8
+# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""GPT2 zero-shot evaluation."""
+
+import math
+import functools
+import torch
+
+from utils import print_rank_0
+import mpu
+from tasks.data_utils import build_data_loader
+
+from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset
+from pretrain_gpt2 import get_batch
+from finetune_gpt2 import finetune
+
+global_tokenizer = None
+
+
+def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
+    """Forward step."""
+
+    # Get the batch.
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args, timers)
+
+    def print_masked_text(batch_id):
+        if not args.no_block_position:
+            block_position_ids = position_ids[:, 1]
+            position_ids_ = position_ids[:, 0]
+        else:
+            position_ids_ = position_ids
+        output_tokens = []
+        sep = attention_mask[batch_id].item()
+        for i, token in enumerate(tokens[batch_id, :sep].tolist()):
+            token = global_tokenizer.IdToToken(token)
+            if token == '[MASK]':
+                token = f"[{position_ids_[batch_id, i].item()}]"
+            output_tokens.append(token)
+        print(" ".join(output_tokens))
+        last_index = None
+        last_position = None
+        for i in range(sep, tokens.size(1)):
+            if (not args.no_block_position and block_position_ids[batch_id, i] == 1) or (args.no_block_position and (
+                    last_position is None or position_ids_[batch_id, i] != last_position + 1)):
+                if last_index is not None:
+                    print(global_tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), ";",
+                          global_tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
+                          position_ids_[batch_id, last_index: i].tolist())
+                last_index = i
+            last_position = position_ids_[batch_id, i]
+        if last_index is not None:
+            print(global_tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
+                  global_tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
+                  position_ids_[batch_id, last_index:].tolist())
+    # Forward model.
+    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    if eval_metric == 'loss':
+        losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
+                                                  labels)
+        loss_mask = loss_mask.view(-1)
+        # The loss is not normalized for fair comparison
+        loss = torch.sum(losses.view(-1) * loss_mask)
+        return loss, mems, 'bert'
+    elif eval_metric == 'accuracy':
+        outputs = torch.argmax(logits, -1)
+        correct = (outputs == labels).float()
+        correct[(1 - loss_mask).bool()] = 1
+        correct = correct.prod(-1)
+        return correct.sum(), mems, 'bert'
+
+
+def evaluate(data_loader, model, eval_metric, args):
+    """Evaluation."""
+    # Turn on evaluation mode which disables dropout.
+    model.eval()
+
+    total_output = 0.0
+    with torch.no_grad():
+        # For all the batches in the dataset.
+        for iteration, batch in enumerate(data_loader):
+            if iteration % args.log_interval == 0:
+                print_rank_0('> working on iteration: {}'.format(iteration))
+            # Forward evaluation.
+            output, _, _ = lm_forward_step(batch, model, args, None, [], eval_metric=eval_metric)
+
+            # Reduce across processes.
+            torch.distributed.all_reduce(output, group=mpu.get_data_parallel_group())
+
+            total_output += output
+
+    return total_output
+
+
+def evaluate_and_print_results(task, data_loader, model, eval_metric, args):
+    """Evaluate and print results on screen."""
+
+    # Evaluate and get results.
+    output = evaluate(data_loader, model, eval_metric, args)
+
+    string = ' validation results on {} | '.format(task)
+    if eval_metric == 'loss':
+        num_tokenized_tokens = data_loader.dataset.num_tokenized_tokens
+        num_original_tokens = data_loader.dataset.num_original_tokens
+        val_loss = output / (num_tokenized_tokens - 1)
+        ppl = math.exp(min(20, val_loss))
+        token_ratio = (num_tokenized_tokens - 1) / (num_original_tokens - 1)
+        adjusted_ppl = math.exp(min(20, val_loss * token_ratio))
+        string += 'avg loss: {:.4E} | '.format(val_loss)
+        string += 'ppl: {:.4E} | '.format(ppl)
+        string += 'adjusted ppl: {:.4E} | '.format(adjusted_ppl)
+        string += 'token ratio: {} |'.format(token_ratio)
+
+    elif eval_metric == 'accuracy':
+        num_examples = len(data_loader.dataset)
+        acc = output / num_examples * 100
+        string += 'number correct: {} | '.format(output)
+        string += 'total examples: {} | '.format(num_examples)
+        string += 'avg accuracy: {:.2f}'.format(acc)
+    else:
+        raise NotImplementedError('evaluation method for {} metric is not '
+                                  'implemented yet.'.format(eval_metric))
+
+    length = len(string) + 1
+    print_rank_0('-' * length)
+    print_rank_0(string)
+    print_rank_0('-' * length)
+
+
+def metrics_func_provider(args, tokenizer, is_test):
+    """Privde metrics callback function."""
+
+    if args.task.lower() == 'lambda':
+        eval_metric = 'accuracy'
+        dataset = build_lambada_dataset(tokenizer, args)
+    elif args.task == 'wikitext':
+        eval_metric = 'loss'
+        dataset = build_wikitext103_dataset(tokenizer, args)
+    else:
+        raise NotImplementedError('{} task is not implemented.'.format(args.task))
+    # Data stuff
+    dataloader = build_data_loader(dataset, args.batch_size,
+                                   args.num_workers, drop_last=False)
+
+    def evaluate_callback(model, epoch=-1, output_predictions=True):
+        evaluate_and_print_results(args.task, dataloader, model, eval_metric=eval_metric, args=args)
+
+    global global_tokenizer
+    global_tokenizer = tokenizer
+    return evaluate_callback
+
+
+def main(args):
+    """Main program."""
+    finetune(args, None, {}, end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)

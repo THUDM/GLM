@@ -3,6 +3,7 @@ from datetime import datetime
 
 from tasks.data_utils import build_data_loader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
+from model import GPT2Model
 from arguments import get_args
 
 # coding=utf-8
@@ -251,7 +252,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # Train and validation data loaders.
     timers('train/valid/test dataset/dataloder').start()
     train_dataloader, valid_dataloader = None, None
-    if args.epochs > 0:
+    if train_valid_datasets_provider is not None and args.epochs > 0:
         train_dataset, valid_dataset = train_valid_datasets_provider(args, tokenizer)
         train_dataloader, valid_dataloader = _build_train_valid_dataloaders(
             train_dataset, valid_dataset, args)
@@ -260,7 +261,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     timers('callback function').start()
     end_of_epoch_callback, end_of_train_callback = None, None
     if end_of_epoch_callback_provider is not None:
-        if args.epochs > 0:
+        if train_valid_datasets_provider is not None and args.epochs > 0:
             end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=False)
         end_of_train_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=not args.eval_valid)
     timers('callback function').stop()
@@ -281,7 +282,9 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         if isinstance(module, FP16_Module):
             module = module.module
         args.load = args.load_pretrained
-        load_checkpoint(module.model, optimizer, lr_scheduler, args)
+        if not isinstance(module, GPT2Model):
+            module = module.model
+        load_checkpoint(module, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:
@@ -297,7 +300,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-        if os.path.exists(args.log_dir) and args.epochs > 0:
+        if os.path.exists(args.log_dir) and train_dataloader is not None and args.epochs > 0:
             raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
         summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
         print_and_save_args(args, verbose=False, log_dir=args.log_dir)
@@ -309,7 +312,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     print_rank_0('training ...')
 
     # Finetune the model.
-    if args.epochs > 0:
+    if train_dataloader is not None and args.epochs > 0:
         best_iteration = _train(model, optimizer, lr_scheduler, forward_step,
                                 train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers,
                                 summary_writer=summary_writer)
@@ -343,10 +346,12 @@ if __name__ == '__main__':
     from tasks.superglue.dataset import PROCESSORS
 
     superglue_tasks = list(PROCESSORS.keys())
-    if args.task == 'RACE':
+    if args.task.lower() == 'race':
         from tasks.race.finetune import main
     elif args.task.lower() in superglue_tasks:
         from tasks.superglue.finetune import main
+    elif args.task.lower() == 'lambda' or args.task.lower() == 'wikitext':
+        from tasks.language_model.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
 
