@@ -65,53 +65,78 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
             print(global_tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
                   global_tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
                   position_ids_[batch_id, last_index:].tolist())
+
     # Forward model.
     logits, *mems = model(tokens, position_ids, attention_mask, *mems)
-    if eval_metric == 'loss':
+    if eval_metric is None or eval_metric == 'loss':
         losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                                   labels)
         loss_mask = loss_mask.view(-1)
         # The loss is not normalized for fair comparison
         loss = torch.sum(losses.view(-1) * loss_mask)
+        if eval_metric is None:
+            loss = loss / loss_mask.sum()
         return loss, mems, 'bert'
-    elif eval_metric == 'accuracy':
+    elif eval_metric == 'accuracy' or eval_metric == 'classify':
         outputs = torch.argmax(logits, -1)
         correct = (outputs == labels).float()
         correct[(1 - loss_mask).bool()] = 1
         correct = correct.prod(-1)
-        return correct.sum(), mems, 'bert'
+        return correct, mems, 'bert'
+    else:
+        raise NotImplementedError("Metric {} not implemented".format(eval_metric))
 
 
-def evaluate(data_loader, model, eval_metric, args):
+def evaluate(model, dataloader, eval_metric, examples, output_predictions, args, labeled=True):
     """Evaluation."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
-
-    total_output = 0.0
+    ids, predictions = [], []
+    total_output, total_count = 0.0, 0
     with torch.no_grad():
         # For all the batches in the dataset.
-        for iteration, batch in enumerate(data_loader):
-            if iteration % args.log_interval == 0:
+        for iteration, batch in enumerate(dataloader):
+            if (iteration + 1) % args.log_interval == 0:
                 print_rank_0('> working on iteration: {}'.format(iteration))
             # Forward evaluation.
             output, _, _ = lm_forward_step(batch, model, args, None, [], eval_metric=eval_metric)
+            if eval_metric == 'accuracy' or eval_metric == 'classify':
+                if output_predictions:
+                    uid_list = batch['uid']
+                    example_batch = [examples[uid] for uid in uid_list]
+                    ids_list = [example.idx for example in example_batch]
+                    ids.extend(ids_list)
+                    predictions.extend(list(map(str, output.bool().tolist())))
+                if eval_metric == 'classify':
+                    assert 'label' in batch
+                    label = batch['label'].cuda()
+                    output = (output == label)
+                output = output.sum()
+            count = batch['text'].size(0)
+            count = torch.cuda.LongTensor([count])
+            if not output_predictions:
+                # Reduce across processes.
+                torch.distributed.all_reduce(output, group=mpu.get_data_parallel_group())
+                torch.distributed.all_reduce(count, group=mpu.get_data_parallel_group())
 
-            # Reduce across processes.
-            torch.distributed.all_reduce(output, group=mpu.get_data_parallel_group())
+            total_output += output.item()
+            total_count += count.item()
 
-            total_output += output
+    if output_predictions:
+        return {eval_metric: total_output}, total_count, (ids, predictions)
+    else:
+        return {eval_metric: total_output}, total_count
 
-    return total_output
 
-
-def evaluate_and_print_results(task, data_loader, model, eval_metric, args):
+def evaluate_and_print_results(data_loader, model, eval_metric, args):
     """Evaluate and print results on screen."""
 
     # Evaluate and get results.
-    output = evaluate(data_loader, model, eval_metric, args)
+    output, _ = evaluate(model, data_loader, eval_metric, None, False, args)
 
-    string = ' validation results on {} | '.format(task)
+    string = ""
     if eval_metric == 'loss':
+        output = output['loss']
         num_tokenized_tokens = data_loader.dataset.num_tokenized_tokens
         num_original_tokens = data_loader.dataset.num_original_tokens
         val_loss = output / (num_tokenized_tokens - 1)
@@ -122,13 +147,16 @@ def evaluate_and_print_results(task, data_loader, model, eval_metric, args):
         string += 'ppl: {:.4E} | '.format(ppl)
         string += 'adjusted ppl: {:.4E} | '.format(adjusted_ppl)
         string += 'token ratio: {} |'.format(token_ratio)
+        score_dict = {"avg loss": val_loss, "ppl": ppl, "adjusted ppl": adjusted_ppl}
 
     elif eval_metric == 'accuracy':
+        output = output['accuracy']
         num_examples = len(data_loader.dataset)
         acc = output / num_examples * 100
         string += 'number correct: {} | '.format(output)
         string += 'total examples: {} | '.format(num_examples)
         string += 'avg accuracy: {:.2f}'.format(acc)
+        score_dict = {"accuracy": acc}
     else:
         raise NotImplementedError('evaluation method for {} metric is not '
                                   'implemented yet.'.format(eval_metric))
@@ -137,6 +165,7 @@ def evaluate_and_print_results(task, data_loader, model, eval_metric, args):
     print_rank_0('-' * length)
     print_rank_0(string)
     print_rank_0('-' * length)
+    return score_dict
 
 
 def metrics_func_provider(args, tokenizer, is_test):
@@ -154,12 +183,12 @@ def metrics_func_provider(args, tokenizer, is_test):
     dataloader = build_data_loader(dataset, args.batch_size,
                                    args.num_workers, drop_last=False)
 
-    def evaluate_callback(model, epoch=-1, output_predictions=True):
-        evaluate_and_print_results(args.task, dataloader, model, eval_metric=eval_metric, args=args)
+    def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
+        return evaluate_and_print_results(dataloader, model, eval_metric=eval_metric, args=args)
 
     global global_tokenizer
     global_tokenizer = tokenizer
-    return evaluate_callback
+    return metrics_func
 
 
 def main(args):

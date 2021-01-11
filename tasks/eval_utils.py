@@ -37,13 +37,15 @@ def accuracy_metric(predictions, labels, examples):
     return count * 100.0
 
 
-def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False):
+def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False, eval_func=None):
     """Provide function that calculates accuracies."""
     # Build dataloaders.
     if is_test:
         datapaths = args.test_data if args.test_data is not None else ['test']
     else:
         datapaths = args.valid_data if args.valid_data is not None else ['dev']
+    if eval_func is None:
+        eval_func = evaluate_metrics
     dataloaders = []
     for datapath in datapaths:
         dataset = single_dataset_provider(datapath)
@@ -54,14 +56,17 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
         print_rank_0('calculating metrics ...')
-        score_dict = OrderedDict([(key, 0.0) for key in metric_dict])
+        score_dict = OrderedDict([(key, 0.0) for key in metric_dict]) if isinstance(metric_dict, dict) else {
+            metric_dict: 0.0}
         total = 0
         for name, dataloader in dataloaders:
             examples = None
             if hasattr(dataloader.dataset, "examples"):
                 examples = dataloader.dataset.examples
-            output = evaluate_metrics(name, model, dataloader, metric_dict, examples, epoch, output_predictions,
-                                      args, labeled=dataloader.dataset.labeled)
+            start_time = time.time()
+            output = eval_func(model, dataloader, metric_dict, examples, output_predictions, args,
+                               labeled=dataloader.dataset.labeled)
+            elapsed_time = time.time() - start_time
             if not output_predictions:
                 single_dict, total_count = output
             elif torch.distributed.get_rank() == 0:
@@ -73,6 +78,10 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
                     for idx, prediction in zip(ids, predictions):
                         data = {"idx": idx, "label": prediction}
                         output.write(json.dumps(data) + "\n")
+            output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total_count)
+            for key, value in single_dict.items():
+                output_str += " {} = {:.4f} %".format(key, value / total_count)
+            output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
             for key in score_dict:
                 score_dict[key] += single_dict[key]
             total += total_count
@@ -92,12 +101,10 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
 segment_length = 10
 
 
-def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputExample], epoch, output_predictions,
+def evaluate_metrics(model, dataloader, metric_dict, examples: List[InputExample], output_predictions,
                      args, labeled=True, translate_predictions=False):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
-
-    start_time = time.time()
     model.eval()
     with torch.no_grad():
         # For all the batches in the dataset.
@@ -174,11 +181,6 @@ def evaluate_metrics(name, model, dataloader, metric_dict, examples: List[InputE
         for i, key in enumerate(keys):
             score_dict[key] = unreduced[i]
         total = unreduced[-1]
-    elapsed_time = time.time() - start_time
-    output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total)
-    for key, value in score_dict.items():
-        output_str += " {} = {:.4f} %".format(key, value / total)
-    output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
     if output_predictions:
         return score_dict, total, (ids, predictions)
     return score_dict, total

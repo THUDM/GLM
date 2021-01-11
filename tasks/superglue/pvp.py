@@ -19,6 +19,7 @@ import string
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Tuple, List, Union, Dict
+import numpy as np
 
 from tasks.data_utils import InputExample, num_special_tokens_to_add, build_input_from_ids, build_sample
 from utils import print_rank_0
@@ -320,6 +321,48 @@ class WscPVP(PVP):
             return [text_a,
                     "Question: In the passage above, what does the pronoun '*" + pronoun + "*' refer to? Answer: ",
                     self.mask, '.'], []
+
+    def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
+        """
+        Encode an input example using this pattern-verbalizer pair.
+
+        :param example: the input example to encode
+        :param priming: whether to use this example for priming
+        :param labeled: if ``priming=True``, whether the label should be appended to this example
+        :return: A tuple, consisting of a list of input ids and a list of token type ids
+        """
+
+        if not priming:
+            assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
+
+        tokenizer = self.tokenizer
+        parts_a, parts_b = self.get_parts(example)
+
+        parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
+        parts_a = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_a if x]
+
+        if parts_b:
+            parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
+            parts_b = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_b if x]
+
+        answer = self.get_answers(example)[0]
+        this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
+        answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+        answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
+        self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
+                                            max_length=self.max_seq_length)
+        tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
+        tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+        data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
+                                    add_cls=True, add_sep=False, add_piece=True)
+        ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+        if example.label is not None:
+            label = self.label_list.index(example.label)
+        else:
+            label = 0
+        return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
+                'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
+                "position_id": np.array(position_ids, dtype=np.int64), 'label': label, 'uid': example.guid}
 
     def verbalize(self, label) -> List[str]:
         return []

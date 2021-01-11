@@ -4,7 +4,7 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 DISTRIBUTED_ARGS="--nproc_per_node 1 --nnodes 1 --node_rank 0 --master_addr localhost --master_port $MASTER_PORT"
 DATESTR=$(date +"%m-%d-%H-%M")
 
-EXPERIMENT_NAME=blank-base-record
+EXPERIMENT_NAME=blank-base-lambda
 TASK_NAME=lambda
 DATA_PATH=/root/data/lambada_test.jsonl
 MAX_SEQ_LEN=512

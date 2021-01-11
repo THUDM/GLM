@@ -257,6 +257,7 @@ def see_memory_usage(message, force=False):
 def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forward_step_func, mems=None):
     """Single training step."""
     lm_loss_total, count = 0.0, 0
+    mems = [] if mems is None else mems
     while True:
         # Forward model for one step.
         timers('forward').start()

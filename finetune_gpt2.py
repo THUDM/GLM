@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+import json
 
 from tasks.data_utils import build_data_loader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
@@ -235,6 +235,9 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 best_score = validation_score
                 print_rank_0(f"Found best {validation_metric} {best_score} at {best_iteration}")
                 if torch.distributed.get_rank() == 0:
+                    score_dict.update({"type": "validation", "epoch": epoch})
+                    with open(os.path.join(args.log_dir, "results.json"), "w") as output:
+                        output.write(json.dumps(score_dict) + "\n")
                     with open(os.path.join(args.save, "best_checkpointed_iteration.txt"), "w") as output:
                         output.write(str(best_iteration))
     return best_iteration
@@ -300,10 +303,11 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-        if os.path.exists(args.log_dir) and train_dataloader is not None and args.epochs > 0:
-            raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
-        summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
-        print_and_save_args(args, verbose=False, log_dir=args.log_dir)
+        if train_dataloader is not None and args.epochs > 0:
+            if os.path.exists(args.log_dir):
+                raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
+            summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
+            print_and_save_args(args, verbose=False, log_dir=args.log_dir)
 
     # Print setup timing.
     print_rank_0('done with setups ...')
@@ -312,6 +316,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     print_rank_0('training ...')
 
     # Finetune the model.
+    score_dict = None
     if train_dataloader is not None and args.epochs > 0:
         best_iteration = _train(model, optimizer, lr_scheduler, forward_step,
                                 train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers,
@@ -320,12 +325,16 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             args.load = os.path.join(args.save, str(best_iteration))
             load_checkpoint(model, optimizer, lr_scheduler, args)
         if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
-            end_of_train_callback(model, epoch=-1, output_predictions=True)
+            score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
     # Or just evaluate.
     else:
         if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
             print_rank_0('evaluation only mode, setting epoch to -1')
-            end_of_train_callback(model, epoch=-1, output_predictions=True)
+            score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
+    if score_dict is not None:
+        score_dict.update({"type": "test"})
+        with open(os.path.join(args.log_dir, "results.json"), "a") as output:
+            output.write(json.dumps(score_dict) + "\n")
 
     print_rank_0('done :-)')
 
