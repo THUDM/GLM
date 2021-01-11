@@ -11,6 +11,8 @@ RUN mkdir -p ${STAGE_DIR}
 ##############################################################################
 RUN  sed -i s@/archive.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/sources.list
 RUN  sed -i s@/security.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/sources.list
+RUN  apt-get update && apt-get install -y --no-install-recommends --allow-change-held-packages \
+     libnccl2=2.8.3-1+cuda10.2 libnccl-dev=2.8.3-1+cuda10.2
 RUN rm /etc/apt/sources.list.d/nvidia-ml.list && rm /etc/apt/sources.list.d/cuda.list && apt-get clean
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -33,14 +35,6 @@ RUN add-apt-repository ppa:git-core/ppa -y && \
     apt-get update && \
     apt-get install -y git && \
     git --version
-
-##############################################################################
-# Client Liveness & Uncomment Port 22 for SSH Daemon
-##############################################################################
-# Keep SSH client alive froGm server side
-RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
-RUN cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
-    sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
 
 ##############################################################################
 # Mellanox OFED
@@ -146,15 +140,15 @@ RUN pip install psutil \
 #RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
 ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX"
 COPY pytorch /opt/pytorch
-RUN cd /opt/pytorch && git checkout v1.6.0 && \
-    git submodule sync && git submodule update --init --recursive
+RUN cd /opt/pytorch && git checkout -f v1.7.1 && \
+    git submodule sync && git submodule update -f --init --recursive
 ENV NCCL_LIBRARY=/usr/lib/x86_64-linux-gnu
 ENV NCCL_INCLUDE_DIR=/usr/include
 RUN cd /opt/pytorch && TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
     CMAKE_PREFIX_PATH="$(dirname $(which conda))/../" USE_SYSTEM_NCCL=1 \
     pip install -v . && rm -rf /opt/pytorch
 COPY vision /opt/vision
-RUN cd /opt/vision && git checkout v0.7.0 && pip install -v .
+RUN cd /opt/vision && git checkout v0.8.2 && pip install -v .
 
 ENV TENSORBOARDX_VERSION=1.8
 RUN pip install tensorboardX==${TENSORBOARDX_VERSION}
@@ -206,6 +200,10 @@ RUN echo 'root:baai2020keg' | chpasswd
 ##############################################################################
 ## SSH daemon port inside container cannot conflict with host OS port
 ###############################################################################
+# Client Liveness & Uncomment Port 22 for SSH Daemon
+RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
+RUN cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
+    sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
 ARG SSH_PORT=2222
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
     echo "PasswordAuthentication no" >> ${STAGE_DIR}/sshd_config && \
