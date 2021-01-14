@@ -92,13 +92,12 @@ class GPT2Model(torch.nn.Module):
 
         # Transformer.
         transformer_output = self.transformer(embeddings, position_ids, attention_mask, *mems)
-        logits, *hidden_layers = transformer_output
+        logits, hidden_layers = transformer_output
         if self.output_predict:
             # Parallel logits.
             logits_parallel = mpu.copy_to_model_parallel_region(
                 logits)
-            logits_parallel = F.linear(logits_parallel,
-                                   self.word_embeddings.weight)
+            logits_parallel = F.linear(logits_parallel, self.word_embeddings.weight)
 
             if self.parallel_output:
                 return (logits_parallel, *hidden_layers)
@@ -106,6 +105,81 @@ class GPT2Model(torch.nn.Module):
             return (mpu.gather_from_model_parallel_region(logits_parallel), *hidden_layers)
         else:
             return (logits, *hidden_layers)
+
+
+class EncoderDecoder(torch.nn.Module):
+    """Seq2Seq Transformer Model
+    The output of the forward method are the logits (parallel or serial depending on the `parallel_output` flag).
+    """
+
+    def __init__(self,
+                 num_layers,
+                 vocab_size,
+                 hidden_size,
+                 num_attention_heads,
+                 embedding_dropout_prob,
+                 attention_dropout_prob,
+                 output_dropout_prob,
+                 max_sequence_length,
+                 max_memory_length,
+                 checkpoint_activations,
+                 checkpoint_num_layers=1,
+                 parallel_output=True,
+                 output_predict=True
+                 ):
+        super(EncoderDecoder, self).__init__()
+
+        self.parallel_output = parallel_output
+        self.output_predict = output_predict
+
+        init_method = init_method_normal(std=0.02)
+
+        # Word embeddings (parallel).
+        self.word_embeddings = mpu.VocabParallelEmbedding(
+            vocab_size, hidden_size, init_method=init_method)
+
+        # Transformer
+        self.encoder = mpu.GPT2ParallelTransformer(num_layers,
+                                                   hidden_size,
+                                                   num_attention_heads,
+                                                   max_sequence_length,
+                                                   max_memory_length,
+                                                   embedding_dropout_prob,
+                                                   attention_dropout_prob,
+                                                   output_dropout_prob,
+                                                   checkpoint_activations,
+                                                   checkpoint_num_layers)
+        self.decoder = mpu.GPT2ParallelTransformer(num_layers,
+                                                   hidden_size,
+                                                   num_attention_heads,
+                                                   max_sequence_length,
+                                                   max_memory_length,
+                                                   embedding_dropout_prob,
+                                                   attention_dropout_prob,
+                                                   output_dropout_prob,
+                                                   checkpoint_activations,
+                                                   checkpoint_num_layers,
+                                                   use_decoder_layer=True)
+
+    def forward(self, source_ids, target_ids, source_position_ids, target_position_ids, source_mask, target_mask):
+        # Embeddings.
+        source_embeddings = self.word_embeddings(source_ids)
+        target_embeddings = self.word_embeddings(target_ids)
+
+        # Transformer.
+        encoder_output, _ = self.encoder(source_embeddings, source_position_ids, source_mask)
+        decoder_output, _ = self.decoder(target_embeddings, target_position_ids, target_mask)
+        if self.output_predict:
+            # Parallel logits.
+            output_parallel = mpu.copy_to_model_parallel_region(decoder_output)
+            logits_parallel = F.linear(output_parallel, self.word_embeddings.weight)
+
+            if self.parallel_output:
+                return (logits_parallel,)
+
+            return (mpu.gather_from_model_parallel_region(logits_parallel),)
+        else:
+            return (decoder_output,)
 
 
 def gpt2_get_params_for_weight_decay_optimization(module):

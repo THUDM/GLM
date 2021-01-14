@@ -54,7 +54,104 @@ class PositionalEmbedding(torch.nn.Module):
             return pos_emb[None, :, :]
 
 
-class GPT2ParallelSelfAttention(torch.nn.Module):
+class ParallelCrossAttention(torch.nn.Module):
+    """Parallel cross-attention layer for Transformer"""
+
+    def __init__(self, hidden_size, num_attention_heads, attention_dropout_prob, output_dropout_prob, init_method,
+                 output_layer_init_method=None):
+        super(ParallelCrossAttention, self).__init__()
+        # Set output layer initialization if not provided.
+        if output_layer_init_method is None:
+            output_layer_init_method = init_method
+        # Per attention head and per partition values.
+        world_size = get_model_parallel_world_size()
+        self.hidden_size_per_partition = divide(hidden_size, world_size)
+        self.hidden_size_per_attention_head = divide(hidden_size,
+                                                     num_attention_heads)
+        self.num_attention_heads_per_partition = divide(num_attention_heads,
+                                                        world_size)
+        # Strided linear layer.
+        self.query = ColumnParallelLinear(hidden_size, hidden_size,
+                                          gather_output=False,
+                                          init_method=init_method)
+        self.key_value = ColumnParallelLinear(hidden_size, 2 * hidden_size,
+                                              stride=2,
+                                              gather_output=False,
+                                              init_method=init_method)
+        # Dropout. Note that for a single iteration, this layer will generate
+        # different outputs on different number of parallel partitions but
+        # on average it should not be partition dependent.
+        self.attention_dropout = torch.nn.Dropout(attention_dropout_prob)
+
+        # Output.
+        self.dense = RowParallelLinear(hidden_size,
+                                       hidden_size,
+                                       input_is_parallel=True,
+                                       init_method=output_layer_init_method)
+        self.output_dropout = torch.nn.Dropout(output_dropout_prob)
+
+        if deepspeed.checkpointing.is_configured():
+            global get_cuda_rng_tracker, checkpoint
+            get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
+            checkpoint = deepspeed.checkpointing.checkpoint
+
+    def _transpose_for_scores(self, tensor):
+        """Transpose a 3D tensor [b, s, np*hn] into a 4D tensor with
+        size [b, np, s, hn].
+        """
+        new_tensor_shape = tensor.size()[:-1] + \
+                           (self.num_attention_heads_per_partition,
+                            self.hidden_size_per_attention_head)
+        tensor = tensor.view(*new_tensor_shape)
+        return tensor.permute(0, 2, 1, 3)
+
+    def forward(self, hidden_states, encoder_states, cross_mask):
+        # hidden_states: [b, s, h]
+        # ltor_mask: [1, 1, s, s]
+
+        # Attention heads. [b, s, hp]
+        mixed_query_layer = self.query(hidden_states)
+        mixed_x_layer = self.key_value(encoder_states)
+        (mixed_key_layer, mixed_value_layer) = split_tensor_along_last_dim(mixed_x_layer, 2)
+
+        # Reshape and transpose [b, np, s, hn]
+        query_layer = self._transpose_for_scores(mixed_query_layer)
+        key_layer = self._transpose_for_scores(mixed_key_layer)
+        value_layer = self._transpose_for_scores(mixed_value_layer)
+        # Raw attention scores. [b, np, s, s]
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(
+            self.hidden_size_per_attention_head)
+        if cross_mask is not None:
+            # Apply the left to right attention mask.
+            attention_scores = torch.mul(attention_scores, cross_mask) - \
+                               10000.0 * (1.0 - cross_mask)
+
+        # Attention probabilities. [b, np, s, s]
+        attention_probs = torch.nn.Softmax(dim=-1)(attention_scores)
+        # This is actually dropping out entire tokens to attend to, which might
+        # seem a bit unusual, but is taken from the original Transformer paper.
+        with get_cuda_rng_tracker().fork():
+            attention_probs = self.attention_dropout(attention_probs)
+
+        # Context layer.
+        # [b, np, s, hn]
+        context_layer = torch.matmul(attention_probs, value_layer)
+        # [b, s, np, hn]
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + \
+                                  (self.hidden_size_per_partition,)
+        # [b, s, hp]
+        context_layer = context_layer.view(*new_context_layer_shape)
+
+        # Output. [b, s, h]
+        output = self.dense(context_layer)
+        output = self.output_dropout(output)
+
+        return output
+
+
+class ParallelSelfAttention(torch.nn.Module):
     """Parallel self-attention layer for GPT2.
 
     Self-attention layer takes input with size [b, s, h] where b is
@@ -85,7 +182,7 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
                  attention_dropout_prob, output_dropout_prob,
                  init_method, output_layer_init_method=None, relative_encoding=False,
                  performer=False):
-        super(GPT2ParallelSelfAttention, self).__init__()
+        super(ParallelSelfAttention, self).__init__()
         self.performer = performer
         # Set output layer initialization if not provided.
         if output_layer_init_method is None:
@@ -149,29 +246,6 @@ class GPT2ParallelSelfAttention(torch.nn.Module):
             ones = torch.ones((x.size(0), x.size(1)))
             x = x * torch.tril(ones, x.size(1) - x.size(0))[:, :, None, None]
 
-        return x
-
-    @staticmethod
-    def _rel_shift_latest(x: torch.Tensor):
-        ndims = x.dim()
-        x_shape = x.size()
-        row_dim = 2
-        col_dim = row_dim + 1
-        assert col_dim < ndims
-        tgt_shape_1, tgt_shape_2 = [], []
-        for i in range(ndims):
-            if i == row_dim:
-                tgt_shape_1.append(x_shape[col_dim])
-                tgt_shape_2.append(x_shape[row_dim])
-            elif i == col_dim:
-                tgt_shape_1.append(x_shape[row_dim])
-                tgt_shape_2.append(x_shape[col_dim] - 1)
-            else:
-                tgt_shape_1.append(x_shape[i])
-                tgt_shape_2.append(x_shape[i])
-        x = x.view(*tgt_shape_1)
-        x = x[:, :, 1:, :]
-        x = x.view(*tgt_shape_2)
         return x
 
     def forward(self, hidden_states, ltor_mask, position_embeddings=None, r_w_bias=None, r_r_bias=None, mem=None):
@@ -254,7 +328,7 @@ def gelu(x):
     return gelu_impl(x)
 
 
-class GPT2ParallelMLP(torch.nn.Module):
+class ParallelMLP(torch.nn.Module):
     """MLP for GPT2.
 
     MLP will take the input with h hidden state, project it to 4*h
@@ -275,7 +349,7 @@ class GPT2ParallelMLP(torch.nn.Module):
 
     def __init__(self, hidden_size, output_dropout_prob, init_method,
                  output_layer_init_method=None):
-        super(GPT2ParallelMLP, self).__init__()
+        super(ParallelMLP, self).__init__()
         # Set output layer initialization if not provided.
         if output_layer_init_method is None:
             output_layer_init_method = init_method
@@ -302,7 +376,108 @@ class GPT2ParallelMLP(torch.nn.Module):
         return output
 
 
-class GPT2ParallelTransformerLayer(torch.nn.Module):
+class ParallelDecoderLayer(torch.nn.Module):
+    """A single layer transformer for GPT2.
+
+    We use the following notation:
+        h: hidden size
+        n: number of attention heads
+        b: batch size
+        s: sequence length
+    Transformore layer takes input with size [b, s, h] and returns an
+    output of the same size.
+
+    Arguments:
+        hidden_size: The hidden size of the self attention.
+        num_attention_heads: number of attention head in the self
+                             attention.
+        attention_dropout_prob: dropout probability of the attention
+                                score in self attention.
+        output_dropout_prob: dropout probability for the outputs
+                             after self attention and final output.
+        layernorm_epsilon: epsilon used in layernorm to avoid
+                           division by zero.
+        init_method: initialization method used for the weights. Note
+                     that all biases are initialized to zero and
+                     layernorm weight are initialized to one.
+        output_layer_init_method: output layers (attention output and
+                                  mlp output) initialization. If None,
+                                  use `init_method`.
+    """
+
+    def __init__(self,
+                 hidden_size,
+                 num_attention_heads,
+                 attention_dropout_prob,
+                 output_dropout_prob,
+                 layernorm_epsilon,
+                 init_method,
+                 output_layer_init_method=None):
+        super(ParallelDecoderLayer, self).__init__()
+        # Set output layer initialization if not provided.
+        if output_layer_init_method is None:
+            output_layer_init_method = init_method
+
+        # Layernorm on the input data.
+        self.input_layernorm = LayerNorm(hidden_size, eps=layernorm_epsilon)
+
+        # Self attention.
+        self.self_attention = ParallelSelfAttention(
+            hidden_size,
+            num_attention_heads,
+            attention_dropout_prob,
+            output_dropout_prob,
+            init_method,
+            output_layer_init_method=output_layer_init_method)
+
+        # Layernorm after the self attention.
+        self.post_self_layernorm = LayerNorm(hidden_size, eps=layernorm_epsilon)
+
+        self.cross_attention = ParallelCrossAttention(
+            hidden_size,
+            num_attention_heads,
+            attention_dropout_prob,
+            output_dropout_prob,
+            init_method,
+            output_layer_init_method=output_layer_init_method
+        )
+
+        # Layernorm after the cross attention.
+        self.post_attention_layernorm = LayerNorm(hidden_size, eps=layernorm_epsilon)
+
+        # MLP
+        self.mlp = ParallelMLP(
+            hidden_size,
+            output_dropout_prob,
+            init_method,
+            output_layer_init_method=output_layer_init_method)
+
+    def forward(self, hidden_states, encoder_states, ltor_mask, cross_mask=None):
+        # hidden_states: [b, s, h]
+        # ltor_mask: [1, 1, s, s]
+
+        # Layer norm at the begining of the transformer layer.
+        layernorm_output = self.input_layernorm(hidden_states)
+        # Self attention.
+        self_attention_output = self.self_attention(layernorm_output, ltor_mask)
+        # Residual connection.
+        self_layernorm_input = hidden_states + self_attention_output
+        # Layer norm post the self attention.
+        self_layernorm_output = self.post_self_layernorm(self_layernorm_input)
+        # Cross attention
+        attention_output = self.cross_attention(self_layernorm_output, encoder_states, cross_mask)
+        # Residual connection
+        layernorm_input = self_layernorm_input + attention_output
+        # Layer norm post the cross attention
+        layernorm_output = self.post_attention_layernorm(layernorm_input)
+        # MLP.
+        mlp_output = self.mlp(layernorm_output)
+        # Second residual connection.
+        output = layernorm_input + mlp_output
+        return output
+
+
+class ParallelTransformerLayer(torch.nn.Module):
     """A single layer transformer for GPT2.
 
     We use the following notation:
@@ -341,7 +516,7 @@ class GPT2ParallelTransformerLayer(torch.nn.Module):
                  output_layer_init_method=None,
                  relative_encoding=False,
                  performer=False):
-        super(GPT2ParallelTransformerLayer, self).__init__()
+        super(ParallelTransformerLayer, self).__init__()
         # Set output layer initialization if not provided.
         if output_layer_init_method is None:
             output_layer_init_method = init_method
@@ -350,7 +525,7 @@ class GPT2ParallelTransformerLayer(torch.nn.Module):
         self.input_layernorm = LayerNorm(hidden_size, eps=layernorm_epsilon)
 
         # Self attention.
-        self.attention = GPT2ParallelSelfAttention(
+        self.attention = ParallelSelfAttention(
             hidden_size,
             num_attention_heads,
             attention_dropout_prob,
@@ -365,7 +540,7 @@ class GPT2ParallelTransformerLayer(torch.nn.Module):
                                                   eps=layernorm_epsilon)
 
         # MLP
-        self.mlp = GPT2ParallelMLP(
+        self.mlp = ParallelMLP(
             hidden_size,
             output_dropout_prob,
             init_method,
@@ -463,7 +638,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  relative_encoding=False,
                  block_position_encoding=False,
                  type_encoding=False,
-                 performer=False
+                 performer=False,
+                 use_decoder_layer=False
                  ):
         super(GPT2ParallelTransformer, self).__init__()
         # Store activation checkpoiting flag.
@@ -471,6 +647,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
         self.checkpoint_num_layers = checkpoint_num_layers
         self.max_memory_length = max_memory_length
         self.performer = performer
+        self.use_decoder_layer = use_decoder_layer
         assert not (performer and relative_encoding)
 
         output_layer_init_method = None
@@ -518,16 +695,27 @@ class GPT2ParallelTransformer(torch.nn.Module):
             torch.nn.init.normal_(self.type_embedding.data, mean=0.0, std=init_method_std)
 
         def get_layer():
-            return GPT2ParallelTransformerLayer(
-                hidden_size,
-                num_attention_heads,
-                attention_dropout_prob,
-                output_dropout_prob,
-                layernorm_epsilon,
-                unscaled_init_method(init_method_std),
-                output_layer_init_method=output_layer_init_method,
-                relative_encoding=relative_encoding,
-                performer=performer)
+            if use_decoder_layer:
+                return ParallelDecoderLayer(
+                    hidden_size,
+                    num_attention_heads,
+                    attention_dropout_prob,
+                    output_dropout_prob,
+                    layernorm_epsilon,
+                    unscaled_init_method(init_method_std),
+                    output_layer_init_method=output_layer_init_method
+                )
+            else:
+                return ParallelTransformerLayer(
+                    hidden_size,
+                    num_attention_heads,
+                    attention_dropout_prob,
+                    output_dropout_prob,
+                    layernorm_epsilon,
+                    unscaled_init_method(init_method_std),
+                    output_layer_init_method=output_layer_init_method,
+                    relative_encoding=relative_encoding,
+                    performer=performer)
 
         # Transformer layers.
         self.layers = torch.nn.ModuleList(
@@ -541,9 +729,9 @@ class GPT2ParallelTransformer(torch.nn.Module):
             get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
-    def forward(self, hidden_states, position_ids, attention_mask, *mems):
+    def forward(self, hidden_states, position_ids, attention_mask, memory_states=None, encoder_states=None):
         batch_size, query_length = hidden_states.size()[:2]
-        memory_length = mems[0].size(1) if mems else 0
+        memory_length = memory_states[0].size(1) if memory_states else 0
         key_length = query_length + memory_length
         # attention mask is the beginning postion of B region, \in [0, query_len)
         is_scalar = torch.numel(attention_mask) == 1
@@ -624,19 +812,23 @@ class GPT2ParallelTransformer(torch.nn.Module):
             num_layers = len(self.layers)
             chunk_length = self.checkpoint_num_layers
             while l < num_layers:
-                args = [hidden_states, attention_mask]
+                args = [hidden_states, attention_mask] if not self.use_decoder_layer else [hidden_states,
+                                                                                           encoder_states,
+                                                                                           attention_mask]
                 if self.relative_encoding:
                     args += [position_embeddings, self.r_w_bias, self.r_r_bias]
-                if mems:
-                    args += mems[l: l + chunk_length]
+                if memory_states:
+                    args += memory_states[l: l + chunk_length]
                 hidden_states = checkpoint(custom(l, l + chunk_length), *args)
                 l += chunk_length
         else:
             for i, layer in enumerate(self.layers):
-                args = [hidden_states, attention_mask]
+                args = [hidden_states, attention_mask] if not self.use_decoder_layer else [hidden_states,
+                                                                                           encoder_states,
+                                                                                           attention_mask]
                 if self.relative_encoding:
                     args += [position_embeddings, self.r_w_bias, self.r_r_bias]
-                mem_i = mems[i] if mems else None
+                mem_i = memory_states[i] if memory_states else None
                 hidden_states = layer(*args, mem=mem_i)
                 if self.max_memory_length > 0:
                     mem_layers.append(hidden_states.detach())
@@ -644,9 +836,9 @@ class GPT2ParallelTransformer(torch.nn.Module):
         # Final layer norm.
         output = self.final_layernorm(hidden_states)
         if self.max_memory_length > 0:
-            mem_layers = self.update_mems(mem_layers, mems)
+            mem_layers = self.update_mems(mem_layers, memory_states)
 
-        return (output, *mem_layers)
+        return (output, mem_layers)
 
     def update_mems(self, hiddens, mems):
         memory_length = mems[0].size(1) if mems else 0
