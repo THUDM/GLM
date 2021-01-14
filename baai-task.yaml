@@ -8,5 +8,5 @@ metadata:
  image_version: 1.2
  image_visibility: 0
  master_product_name: 192Core-768G-6*A100
- master_command: /etc/init.d/ssh start && cd /workspace && python scripts/extract_hostfile.py && bash scripts/ds_pretrain_gpt2.sh
+ master_command: /etc/init.d/ssh start && cd /workspace && python scripts/extract_hostfile.py && bash scripts/ds_gpt_large.sh
  filepath: /Users/zhengxiao/Documents/Codes/PycharmProject/DeepSpeedExamples/Megatron-LM

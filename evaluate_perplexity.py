@@ -210,7 +210,7 @@ def set_args():
     args.num_nodes = 1
     args.num_gpus = 1
     args.model_parallel_size = 1
-    args.deepspeed_config = "script/ds_config.json"
+    args.deepspeed_config = "script/config_gpt_large.json"
     args.num_layers = 32
     args.hidden_size = 2560
     args.load = "/root/data/checkpoints/txl-2.8b11-20-15-10"
