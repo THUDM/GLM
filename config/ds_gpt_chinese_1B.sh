@@ -3,7 +3,7 @@
 script_path=$(realpath $BASH_SOURCE)
 script_dir=$(dirname $script_path)
 
-config_json="$script_dir/ds_config.json"
+config_json="$script_dir/config_gpt_large.json"
 gpt_options=" \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 40 \

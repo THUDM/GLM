@@ -3,7 +3,7 @@
 script_path=$(realpath $BASH_SOURCE)
 script_dir=$(dirname $script_path)
 
-config_json="$script_dir/ds_config_29B.json"
+config_json="$script_dir/config_gpt_chinese_2.9B.json"
 gpt_options=" \
        --experiment-name txl-2.8b \
        --model-parallel-size ${MP_SIZE} \
