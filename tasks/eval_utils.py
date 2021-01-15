@@ -27,6 +27,7 @@ from finetune_gpt2 import process_batch
 from collections import OrderedDict
 from typing import List
 from tasks.data_utils import InputExample
+from sklearn.metrics import f1_score
 
 
 def accuracy_metric(predictions, labels, examples):
@@ -34,24 +35,35 @@ def accuracy_metric(predictions, labels, examples):
     assert len(predictions) == len(labels)
     for prediction, label in zip(predictions, labels):
         count += prediction == label
-    return count * 100.0
+    return count * 100.0 / len(predictions)
 
 
-def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False, eval_func=None):
+def f1_metric(predictions, labels, examples):
+    return f1_score(labels, predictions)
+
+
+def f1_macro_metric(predictions, labels, examples):
+    return f1_score(labels, predictions, average='macro')
+
+
+def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False, eval_func=None, label_map=None):
     """Provide function that calculates accuracies."""
     # Build dataloaders.
+    if torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
+        return None
     if is_test:
         datapaths = args.test_data if args.test_data is not None else ['test']
     else:
         datapaths = args.valid_data if args.valid_data is not None else ['dev']
     if eval_func is None:
-        eval_func = evaluate_metrics
+        eval_func = multichoice_evaluate
     dataloaders = []
+    eval_batch_size = args.eval_batch_size if args.eval_batch_size else args.batch_size
     for datapath in datapaths:
         dataset = single_dataset_provider(datapath)
         dataloader = build_data_loader(
-            dataset, args.batch_size, num_workers=args.num_workers,
-            drop_last=False, shuffle=False, only_rank0=is_test)
+            dataset, eval_batch_size, num_workers=args.num_workers,
+            drop_last=False, shuffle=False, only_rank0=True)
         dataloaders.append((dataset.dataset_name, dataloader))
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
@@ -60,30 +72,30 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             metric_dict: 0.0}
         total = 0
         for name, dataloader in dataloaders:
-            examples = None
+            example_dict = None
             if hasattr(dataloader.dataset, "examples"):
-                examples = dataloader.dataset.examples
+                example_dict = dataloader.dataset.examples
             start_time = time.time()
-            output = eval_func(model, dataloader, metric_dict, examples, output_predictions, args,
-                               labeled=dataloader.dataset.labeled)
+            predictions, labels, examples = eval_func(model, dataloader, example_dict, args)
             elapsed_time = time.time() - start_time
-            if not output_predictions:
-                single_dict, total_count = output
-            elif torch.distributed.get_rank() == 0:
+            if output_predictions and torch.distributed.get_rank() == 0:
+                ids = [example.idx for example in examples]
                 save_dir = args.load if args.load is not None else args.log_dir
-                single_dict, total_count, predictions = output
                 filename = os.path.join(save_dir, name + '.jsonl')
-                ids, predictions = predictions
                 with open(filename, "w") as output:
-                    for idx, prediction in zip(ids, predictions):
+                    for idx, prediction, example in zip(ids, predictions, examples):
+                        if label_map is not None:
+                            prediction = label_map(prediction, example)
                         data = {"idx": idx, "label": prediction}
                         output.write(json.dumps(data) + "\n")
+            total_count = len(predictions)
+            single_dict = {key: metric(predictions, labels, examples) for key, metric in metric_dict.items()}
             output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total_count)
             for key, value in single_dict.items():
-                output_str += " {} = {:.4f} %".format(key, value / total_count)
+                output_str += " {} = {:.4f} %".format(key, value)
             output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
             for key in score_dict:
-                score_dict[key] += single_dict[key]
+                score_dict[key] += single_dict[key] * total_count
             total += total_count
         score_dict = {key: score / float(total) for key, score in score_dict.items()}
         output_str = ' >> |epoch: {}| overall: total = {}'.format(epoch, total)
@@ -92,7 +104,6 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             if summary_writer is not None and epoch >= 0 and not is_test:
                 summary_writer.add_scalar(f'Train/valid_{key}', score, epoch)
         print_rank_0(output_str)
-
         return score_dict
 
     return metrics_func
@@ -101,17 +112,13 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
 segment_length = 10
 
 
-def evaluate_metrics(model, dataloader, metric_dict, examples: List[InputExample], output_predictions,
-                     args, labeled=True, translate_predictions=False):
+def multichoice_evaluate(model, dataloader, example_dict, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
     model.eval()
     with torch.no_grad():
         # For all the batches in the dataset.
-        total = 0
-        score_dict = {key: 0.0 for key in metric_dict}
-        if output_predictions:
-            ids, predictions = [], []
+        predictions, labels, examples = [], [], []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
             data = process_batch(batch, args)
@@ -148,39 +155,13 @@ def evaluate_metrics(model, dataloader, metric_dict, examples: List[InputExample
             uid_list = batch['uid']
             if isinstance(uid_list, torch.Tensor):
                 uid_list = uid_list.cpu().numpy().tolist()
-            example_batch = None
-            if examples is not None:
-                example_batch = [examples[uid] for uid in uid_list]
+            if example_dict is not None:
+                example_batch = [example_dict[uid] for uid in uid_list]
+                examples.extend(example_batch)
             # Compute the correct answers.
             predicted = torch.argmax(logits, dim=-1).tolist()
             # Add output predictions.
-            if output_predictions:
-                if translate_predictions:
-                    predictions.extend(
-                        [example.meta["candidates"][idx] for example, idx in zip(example_batch, predicted)])
-                else:
-                    predictions.extend(predicted)
-                ids_list = [example.idx for example in example_batch]
-                ids.extend(ids_list)
-            if labeled:
-                for key, metric in metric_dict.items():
-                    score_dict[key] += metric(predicted, labels_.tolist(), example_batch)
-            # Add to the counters.
-            total += labels_.size(0)
+            predictions.extend(predicted)
+            labels.extend(labels_.tolist())
     model.train()
-
-    # Reduce.
-    if not output_predictions:
-        keys = list(score_dict.keys())
-        keys.sort()
-        unreduced = [score_dict[key] for key in keys] + [total]
-        unreduced = torch.cuda.FloatTensor(unreduced)
-        torch.distributed.all_reduce(unreduced, group=mpu.get_data_parallel_group())
-        # Print on screen.
-        unreduced = unreduced.tolist()
-        for i, key in enumerate(keys):
-            score_dict[key] = unreduced[i]
-        total = unreduced[-1]
-    if output_predictions:
-        return score_dict, total, (ids, predictions)
-    return score_dict, total
+    return predictions, labels, examples

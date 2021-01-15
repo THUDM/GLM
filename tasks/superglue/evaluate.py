@@ -10,6 +10,7 @@ import re
 from tasks.data_utils import InputExample
 from typing import List
 import functools
+from collections import defaultdict
 
 
 def normalize_answer(s):
@@ -56,7 +57,7 @@ def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
     return max(scores_for_ground_truths)
 
 
-def evaluate(predictions, labels, examples: List[InputExample], metric):
+def qa_evaluate(predictions, labels, examples: List[InputExample], metric):
     assert len(examples) == len(predictions)
     score = 0.0
     for example, prediction in zip(examples, predictions):
@@ -64,9 +65,33 @@ def evaluate(predictions, labels, examples: List[InputExample], metric):
         prediction = example.meta["candidates"][prediction]
 
         score += metric_max_over_ground_truths(metric, prediction, ground_truths)
-    score = 100.0 * score
+    score = 100.0 * score / len(predictions)
     return score
 
 
-exact_match_metric = functools.partial(evaluate, metric=exact_match_score)
-f1_metric = functools.partial(evaluate, metric=f1_score)
+def multirc_em(predictions, labels, examples: List[InputExample]):
+    """Compute the exact match (EM) for a sequence of predictions and actual labels"""
+    question_ids = [example.meta["question_idx"] for example in examples]
+    unique_questions = set(question_ids)
+
+    q_actuals = list(zip(question_ids, labels))
+    q_predictions = list(zip(question_ids, predictions))
+
+    actuals_per_question = defaultdict(list)
+    predictions_per_question = defaultdict(list)
+
+    for qid, val in q_actuals:
+        actuals_per_question[qid].append(val)
+    for qid, val in q_predictions:
+        predictions_per_question[qid].append(val)
+
+    em = 0
+    for qid in unique_questions:
+        if actuals_per_question[qid] == predictions_per_question[qid]:
+            em += 1
+    em /= len(unique_questions)
+    return em
+
+
+qa_exact_match = functools.partial(qa_evaluate, metric=exact_match_score)
+qa_f1 = functools.partial(qa_evaluate, metric=f1_score)

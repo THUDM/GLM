@@ -17,18 +17,20 @@
 
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
-from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS
-from tasks.superglue.evaluate import exact_match_metric, f1_metric
+from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, get_label_map
+from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
-from tasks.eval_utils import accuracy_metric
-from tasks.data_utils import build_data_loader
+from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
 
 default_metrics = {
-    "record": [("EM", exact_match_metric), ("F1", f1_metric)],
+    "record": [("EM", qa_exact_match), ("F1", qa_f1)],
     "copa": [("accuracy", accuracy_metric)],
     "rte": [("accuracy", accuracy_metric)],
     "boolq": [("accuracy", accuracy_metric)],
-    "wic": [("accuracy", accuracy_metric)]
+    "wic": [("accuracy", accuracy_metric)],
+    'wsc': [("accuracy", accuracy_metric)],
+    "cb": [("accuracy", accuracy_metric), ("f1-macro", f1_macro_metric)],
+    "multirc": [("f1a", f1_metric), ("em", multirc_em), ("acc", accuracy_metric)]
 }
 
 
@@ -50,12 +52,14 @@ def metrics_func_provider(args, tokenizer, is_test):
         return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
                            cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
 
+    label_map = get_label_map(args.task.lower())
+    eval_func = None
     if args.task.lower() == 'wsc':
-        from tasks.language_model.finetune import evaluate
-        return accuracy_func_provider(single_dataset_provider, 'classify', args, is_test=is_test, eval_func=evaluate)
-    else:
-        metric_dict = OrderedDict(default_metrics[args.task.lower()])
-        return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test)
+        from tasks.language_model.finetune import classify_evaluate
+        eval_func = classify_evaluate
+    metric_dict = OrderedDict(default_metrics[args.task.lower()])
+    return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
+                                  label_map=label_map)
 
 
 def main(args):

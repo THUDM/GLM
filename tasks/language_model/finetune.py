@@ -87,7 +87,26 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
         raise NotImplementedError("Metric {} not implemented".format(eval_metric))
 
 
-def evaluate(model, dataloader, eval_metric, examples, output_predictions, args, labeled=True):
+def classify_evaluate(model, dataloader, example_dict, args):
+    """Evaluation."""
+    # Turn on evaluation mode which disables dropout.
+    model.eval()
+    predictions, labels, examples = [], [], []
+    with torch.no_grad():
+        # For all the batches in the dataset.
+        for iteration, batch in enumerate(dataloader):
+            # Forward evaluation.
+            output, _, _ = lm_forward_step(batch, model, args, None, [], eval_metric='classify')
+            uid_list = batch['uid']
+            example_batch = [example_dict[uid] for uid in uid_list]
+            predictions.extend(output.long().tolist())
+            label = batch['label'].tolist()
+            labels.extend(label)
+            examples.extend(example_batch)
+    return predictions, labels, examples
+
+
+def evaluate(model, dataloader, eval_metric, args):
     """Evaluation."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
@@ -100,39 +119,25 @@ def evaluate(model, dataloader, eval_metric, examples, output_predictions, args,
                 print_rank_0('> working on iteration: {}'.format(iteration))
             # Forward evaluation.
             output, _, _ = lm_forward_step(batch, model, args, None, [], eval_metric=eval_metric)
-            if eval_metric == 'accuracy' or eval_metric == 'classify':
-                if output_predictions:
-                    uid_list = batch['uid']
-                    example_batch = [examples[uid] for uid in uid_list]
-                    ids_list = [example.idx for example in example_batch]
-                    ids.extend(ids_list)
-                    predictions.extend(list(map(str, output.bool().tolist())))
-                if eval_metric == 'classify':
-                    assert 'label' in batch
-                    label = batch['label'].cuda()
-                    output = (output == label)
+            if eval_metric == 'accuracy':
                 output = output.sum()
             count = batch['text'].size(0)
             count = torch.cuda.LongTensor([count])
-            if not output_predictions:
-                # Reduce across processes.
-                torch.distributed.all_reduce(output, group=mpu.get_data_parallel_group())
-                torch.distributed.all_reduce(count, group=mpu.get_data_parallel_group())
+            # Reduce across processes.
+            torch.distributed.all_reduce(output, group=mpu.get_data_parallel_group())
+            torch.distributed.all_reduce(count, group=mpu.get_data_parallel_group())
 
             total_output += output.item()
             total_count += count.item()
 
-    if output_predictions:
-        return {eval_metric: total_output}, total_count, (ids, predictions)
-    else:
-        return {eval_metric: total_output}, total_count
+    return {eval_metric: total_output}, total_count
 
 
 def evaluate_and_print_results(data_loader, model, eval_metric, args):
     """Evaluate and print results on screen."""
 
     # Evaluate and get results.
-    output, _ = evaluate(model, data_loader, eval_metric, None, False, args)
+    output, _ = evaluate(model, data_loader, eval_metric, args)
 
     string = ""
     if eval_metric == 'loss':
