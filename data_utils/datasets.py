@@ -33,7 +33,7 @@ import nltk
 from nltk import tokenize
 
 from .lazy_loader import LazyLoader, exists_lazy
-from .tokenization import Tokenization
+from utils import print_rank_0
 
 
 class ShuffleDataset(data.Dataset):
@@ -507,6 +507,7 @@ class XLDataset(data.Dataset):
         else:
             lens = np.array([len(d['prompt']) + len(d['text']) if isinstance(d, dict) else len(d) for d in self.ds])
         self.indices = list(accumulate(lens))
+        print_rank_0(f"Dataset document count {len(lens)}, token count {self.indices[-1]}")
         self.num_samples = self.indices[-1] // self.max_seq_len + 1
 
     def __len__(self):
@@ -580,9 +581,9 @@ class BlockDataset(data.Dataset):
         if self.is_lazy:
             lens = np.array([self.ds.get_text_len(idx) for idx in range(len(self.ds))])
         else:
-            lens = np.array([len(d['text']) if isinstance(d, dict)
-                             else len(d) for d in self.ds])
+            lens = np.array([len(d['text']) if isinstance(d, dict) else len(d) for d in self.ds])
         self.total_len = np.sum(lens)
+        print_rank_0(f"Dataset document count {len(lens)}, token count {self.total_len}")
         self.weighting = list(accumulate(lens))
 
     def get_weighted_samples(self, np_rng):
@@ -707,6 +708,7 @@ class GPT2Dataset(data.Dataset):
                 lens = np.array([len(d['text']) if isinstance(d, dict)
                                  else len(d) for d in self.ds])
             self.total_len = np.sum(lens)
+            print_rank_0(f"Dataset document count {len(lens)}, token count {self.total_len}")
             self.weighting = list(accumulate(lens))
         else:
             self.weighting = None
