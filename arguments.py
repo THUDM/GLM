@@ -33,6 +33,8 @@ def add_model_config_args(parser):
                             'of initializing from scratch. See '
                             '--tokenizer-model-type to specify which pretrained '
                             'BERT model to use')
+    group.add_argument('--encoder-decoder', action='store_true',
+                       help="use the encoder-decoder architecture for blocklm")
     group.add_argument('--attention-dropout', type=float, default=0.1,
                        help='dropout probability for attention weights')
     group.add_argument('--num-attention-heads', type=int, default=16,

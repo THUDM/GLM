@@ -101,24 +101,22 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
         drop_last = distributed
         # the GPUs in the same model parallel group receive the same data
         if distributed:
-            batch_sampler = data_utils.samplers.DistributedBatchSampler(sampler,
-                                                                        batch_size,
-                                                                        drop_last,
-                                                                        rank,
+            batch_sampler = data_utils.samplers.DistributedBatchSampler(sampler, batch_size, drop_last, rank,
                                                                         world_size,
                                                                         gradient_accumulation_steps=args.gradient_accumulation_steps)
         else:
             batch_sampler = torch.utils.data.BatchSampler(sampler,
                                                           batch_size,
                                                           drop_last)
-    if args.block_lm:
+    use_block = args.block_lm or args.encoder_decoder
+    if use_block:
         strategy = ConstructBlockStrategy(args, tokenizer, block_position_encoding=not args.no_block_position,
-                                          bert_prob=args.bert_prob)
+                                          bert_prob=args.bert_prob, encoder_decoder=args.encoder_decoder)
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,
                                               num_workers=args.num_workers,
                                               pin_memory=True,
-                                              collate_fn=strategy.construct_blocks if args.block_lm else None)
+                                              collate_fn=strategy.construct_blocks if use_block else None)
 
     return data_loader
 

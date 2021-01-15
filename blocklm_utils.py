@@ -27,7 +27,7 @@ def index_in_list(lst, val, start=None):
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
                  block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
-                 block_position_encoding=True):
+                 block_position_encoding=True, encoder_decoder=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -44,6 +44,7 @@ class ConstructBlockStrategy:
         self.total_mask = int(block_ratio * args.seq_length)
         self.block_length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
         self.block_position_encoding = block_position_encoding
+        self.encoder_decoder = encoder_decoder
         self.gap_length_distribution = [poisson.pmf(i, average_gap_length) for i in range(0, max_block_length)]
 
     @staticmethod
@@ -115,7 +116,10 @@ class ConstructBlockStrategy:
                     position_ids[end] = rng.choices(range(0, len(self.gap_length_distribution)),
                                                     weights=self.gap_length_distribution)[0]
         position_ids = np.cumsum(position_ids) - 1
-        rng.shuffle(block_spans)
+        if self.encoder_decoder:
+            block_spans.sort(key=lambda x: x[0])
+        else:
+            rng.shuffle(block_spans)
         target_tokens, target_position_ids, target_block_position_ids, targets = [], [], [], []
         for start, end in block_spans:
             target_tokens.append([self.tokenizer.get_command('sop').Id])
@@ -149,16 +153,21 @@ class ConstructBlockStrategy:
         source_length = sum(map(len, source_tokens))
         assert source_length == attention_mask
         assert self.args.eod_token not in np.concatenate(target_tokens).tolist()
-        tokens = np.concatenate(source_tokens + target_tokens)
-        targets = np.concatenate(source_tokens + targets)
-        loss_masks = np.ones(len(tokens), dtype=np.long)
-        loss_masks[:source_length] = 0
-        position_ids = np.concatenate(source_position_ids + target_position_ids)
-        if self.block_position_encoding:
-            block_position_ids = np.concatenate(
-                [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
-            position_ids = [position_ids, block_position_ids]
-        return tokens, targets, loss_masks, position_ids
+        if self.encoder_decoder:
+            target_tokens = target_tokens + [self.tokenizer.get_command('eop').Id]
+            loss_masks = np.ones(len(target_tokens), dtype=np.long)
+            return source_tokens, target_tokens, loss_masks
+        else:
+            tokens = np.concatenate(source_tokens + target_tokens)
+            targets = np.concatenate(source_tokens + targets)
+            loss_masks = np.ones(len(tokens), dtype=np.long)
+            loss_masks[:source_length] = 0
+            position_ids = np.concatenate(source_position_ids + target_position_ids)
+            if self.block_position_encoding:
+                block_position_ids = np.concatenate(
+                    [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
+                position_ids = [position_ids, block_position_ids]
+            return tokens, targets, loss_masks, position_ids
 
     def generate_blank_data(self, sample, masked_lengths, attention_mask, rng):
         rng.shuffle(masked_lengths)
@@ -166,10 +175,9 @@ class ConstructBlockStrategy:
         assert tokens[0] == self.tokenizer.get_command('ENC').Id
         block_spans = self.sample_span_in_document(tokens, masked_lengths, rng)
         if len(block_spans) < len(masked_lengths):
-            return None, None, None, None
-        tokens, targets, loss_masks, position_ids = self.make_block_data(tokens, loss_masks, attention_mask,
-                                                                         block_spans, rng)
-        return tokens, targets, loss_masks, position_ids
+            return None
+        data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng)
+        return data
 
     def construct_blocks(self, samples):
         worker_info = torch.utils.data.get_worker_info()
@@ -180,6 +188,7 @@ class ConstructBlockStrategy:
         rng = random.Random((self.count * num_workers + worker_id) * self.world_size + self.rank)
         self.count += 1
         token_batch, target_batch, loss_mask_batch, position_id_batch = [], [], [], []
+        source_batch, target_batch = [], []
         if rng.random() < self.bert_prob:
             masked_lengths, masked_count = [], 0
             while masked_count < self.total_mask:
@@ -190,13 +199,19 @@ class ConstructBlockStrategy:
                 masked_count += block_length
             attention_mask = self.args.seq_length - masked_count + len(masked_lengths)
             for sample in samples:
-                tokens, targets, loss_masks, position_ids = self.generate_blank_data(sample, masked_lengths,
-                                                                                     attention_mask, rng)
-                if tokens is not None:
-                    token_batch.append(tokens)
-                    target_batch.append(targets)
-                    loss_mask_batch.append(loss_masks)
-                    position_id_batch.append(position_ids)
+                data = self.generate_blank_data(sample, masked_lengths, attention_mask, rng)
+                if data is not None:
+                    if self.encoder_decoder:
+                        source_tokens, target_tokens, loss_masks = data
+                        source_batch.append(source_tokens)
+                        target_batch.append(target_tokens)
+                        loss_mask_batch.append(loss_masks)
+                    else:
+                        tokens, targets, loss_masks, position_ids = data
+                        token_batch.append(tokens)
+                        target_batch.append(targets)
+                        loss_mask_batch.append(loss_masks)
+                        position_id_batch.append(position_ids)
         else:
             # start_indices = [index_in_list(sample['loss_mask'], 1) for sample in samples]
             # end_indices = [rindex(sample['loss_mask'], 1) for sample in samples]
@@ -243,73 +258,14 @@ class ConstructBlockStrategy:
                     position_id_batch.append(position_ids)
                     if tokens is None:
                         print(sample, generation_length, multiple_doc)
-        return {'text': torch.tensor(token_batch, dtype=torch.long),
+        if self.encoder_decoder:
+            return {
+                'text': torch.tensor(source_batch, dtype=torch.long),
                 'target': torch.tensor(target_batch, dtype=torch.long),
-                'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long),
-                'position_id': torch.tensor(position_id_batch, dtype=torch.long),
-                'attention_mask': torch.tensor(attention_mask, dtype=torch.long)}
-
-
-def get_masks_and_position_ids_blocklm(
-        data,
-        eod_token,
-        reset_position_ids,
-        reset_attention_mask,
-        loss_mask=None,
-        attention_mask=None,
-        transformer_xl=False,
-        mem_length=None,
-        construct_block_strategy=None,
-):
-    assert not transformer_xl and mem_length is None and attention_mask is None, 'blocklm does not support transformer-xl!'
-
-    # Extract batch size and sequence length.
-    batch_size, seq_length = data.size()
-
-    # Attention mask (lower triangular).
-    if reset_attention_mask:
-        att_mask_batch = batch_size
-    else:
-        att_mask_batch = 1
-        if attention_mask is None:
-            attention_mask = torch.ones((att_mask_batch, seq_length, seq_length), device=data.device)
-        attention_mask = torch.tril(attention_mask)
-    attention_mask = attention_mask.unsqueeze(1)
-
-    # Loss mask.
-    if loss_mask is None:
-        loss_mask = torch.ones(data.size(), dtype=torch.float, device=data.device)
-
-    # Position ids.
-    position_ids = torch.arange(seq_length, dtype=torch.long,
-                                device=data.device)
-    position_ids = position_ids.unsqueeze(0).expand_as(data)
-    if not transformer_xl:
-        loss_mask[data == eod_token] = 0.0
-        # We need to clone as the ids will be modifed based on batch index.
-        if reset_position_ids:
-            position_ids = position_ids.clone()
-
-        if reset_position_ids or reset_attention_mask:
-            # Loop through the batches:
-            for b in range(batch_size):
-
-                # Find indecies where EOD token is.
-                eod_index = position_ids[b, data[b] == eod_token]
-                # Detach indecies from positions if going to modify positions.
-                if reset_position_ids:
-                    eod_index = eod_index.clone()
-
-                # Loop through EOD indecies:
-                prev_index = 0
-                for j in range(eod_index.size()[0]):
-                    i = eod_index[j]
-                    # Mask attention loss.
-                    if reset_attention_mask:
-                        attention_mask[b, 0, (i + 1):, :(i + 1)] = 0
-                    # Reset positions.
-                    if reset_position_ids:
-                        position_ids[b, (i + 1):] -= (i + 1 - prev_index)
-                        prev_index = i + 1
-
-    return attention_mask, loss_mask, position_ids
+                'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long)}
+        else:
+            return {'text': torch.tensor(token_batch, dtype=torch.long),
+                    'target': torch.tensor(target_batch, dtype=torch.long),
+                    'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long),
+                    'position_id': torch.tensor(position_id_batch, dtype=torch.long),
+                    'attention_mask': torch.tensor(attention_mask, dtype=torch.long)}

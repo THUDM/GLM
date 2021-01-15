@@ -34,7 +34,7 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
     """Forward step."""
 
     # Get the batch.
-    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args, timers)
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
 
     def print_masked_text(batch_id):
         if not args.no_block_position:

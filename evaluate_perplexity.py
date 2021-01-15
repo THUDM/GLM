@@ -72,7 +72,7 @@ def get_batch(context_tokens, device, args):
         args.eod_token,
         reset_position_ids=False,
         reset_attention_mask=False,
-        transformer_xl=args.transformer_xl,
+        set_loss_mask=not args.transformer_xl,
         mem_length=args.mem_length)
 
     return tokens, attention_mask, position_ids

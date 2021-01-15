@@ -47,13 +47,13 @@ def get_masks_and_position_ids(data,
                                reset_attention_mask,
                                loss_mask=None,
                                attention_mask=None,
-                               transformer_xl=False,
+                               set_loss_mask=False,
                                mem_length=None):
     # Extract batch size and sequence length.
     batch_size, seq_length = data.size()
 
     # Attention mask (lower triangular).
-    if transformer_xl:
+    if mem_length:
         if attention_mask is None:
             attention_mask = torch.ones((1, seq_length, seq_length + mem_length), device=data.device)
         attention_mask = torch.tril(torch.triu(attention_mask, 1 - seq_length + mem_length), mem_length)
@@ -75,38 +75,70 @@ def get_masks_and_position_ids(data,
     position_ids = torch.arange(seq_length, dtype=torch.long,
                                 device=data.device)
     position_ids = position_ids.unsqueeze(0).expand_as(data)
-    if not transformer_xl:
+    if set_loss_mask:
         loss_mask[data == eod_token] = 0.0
-        # We need to clone as the ids will be modifed based on batch index.
-        if reset_position_ids:
-            position_ids = position_ids.clone()
+    # We need to clone as the ids will be modifed based on batch index.
+    if reset_position_ids:
+        position_ids = position_ids.clone()
 
-        if reset_position_ids or reset_attention_mask:
-            # Loop through the batches:
-            for b in range(batch_size):
+    if reset_position_ids or reset_attention_mask:
+        # Loop through the batches:
+        for b in range(batch_size):
 
-                # Find indecies where EOD token is.
-                eod_index = position_ids[b, data[b] == eod_token]
-                # Detach indecies from positions if going to modify positions.
+            # Find indecies where EOD token is.
+            eod_index = position_ids[b, data[b] == eod_token]
+            # Detach indecies from positions if going to modify positions.
+            if reset_position_ids:
+                eod_index = eod_index.clone()
+
+            # Loop through EOD indecies:
+            prev_index = 0
+            for j in range(eod_index.size()[0]):
+                i = eod_index[j]
+                # Mask attention loss.
+                if reset_attention_mask:
+                    attention_mask[b, 0, (i + 1):, :(i + 1)] = 0
+                # Reset positions.
                 if reset_position_ids:
-                    eod_index = eod_index.clone()
-
-                # Loop through EOD indecies:
-                prev_index = 0
-                for j in range(eod_index.size()[0]):
-                    i = eod_index[j]
-                    # Mask attention loss.
-                    if reset_attention_mask:
-                        attention_mask[b, 0, (i + 1):, :(i + 1)] = 0
-                    # Reset positions.
-                    if reset_position_ids:
-                        position_ids[b, (i + 1):] -= (i + 1 - prev_index)
-                        prev_index = i + 1
+                    position_ids[b, (i + 1):] -= (i + 1 - prev_index)
+                    prev_index = i + 1
 
     return attention_mask, loss_mask, position_ids
 
 
-def get_batch(data, args, timers):
+def get_two_batch(data, args):
+    keys = ['text', 'target', 'loss_mask']
+    datatype = torch.int64
+    # Broadcast data.
+    data_b = mpu.broadcast_data(keys, data, datatype)
+    source_tokens = data_b['text'].long()
+    target_tokens = data_b['target'].long()
+    loss_mask = data_b['loss_mask'].float()
+    labels = target_tokens[:, 1:].contiguous()
+    loss_mask = loss_mask[:, 1:].contiguous()
+    target_tokens = target_tokens[:, :-1].contiguous()
+    _, _, source_position_ids = get_masks_and_position_ids(
+        source_tokens,
+        args.eod_token,
+        reset_position_ids=False,
+        reset_attention_mask=False,
+        loss_mask=None,
+        attention_mask=None,
+        set_loss_mask=False)
+    target_mask, _, target_position_ids = get_masks_and_position_ids(
+        target_tokens,
+        args.eod_token,
+        reset_position_ids=False,
+        reset_attention_mask=False,
+        loss_mask=None,
+        attention_mask=None,
+        set_loss_mask=False)
+    if args.fp16:
+        target_mask = target_mask.half()
+    return source_tokens, target_tokens, source_position_ids, target_position_ids, labels, target_mask, loss_mask
+
+
+def get_batch(data, args):
     ''' get_batch subdivides the source data into chunks of
     length args.seq_length. If source is equal to the example
     output of the data loading example, with a seq_length limit
@@ -158,12 +190,11 @@ def get_batch(data, args, timers):
             args.reset_attention_mask,
             loss_mask=loss_mask,
             attention_mask=attention_mask,
-            transformer_xl=args.transformer_xl,
-            mem_length=args.mem_length)
+            mem_length=args.mem_length,
+            set_loss_mask=not args.transformer_xl)
         # Convert
         if args.fp16:
             attention_mask = attention_mask.half()
-
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
@@ -178,7 +209,7 @@ def forward_step(data_iterator, model, args, timers, mems):
     timers('data loader').start()
     data = next(data_iterator) if data_iterator else None
     timers('data loader').stop()
-    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args, timers)
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
     timers('batch generator').stop()
 
     def print_masked_text(batch_id):
