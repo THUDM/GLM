@@ -438,13 +438,13 @@ class CbPVP(RtePVP):
 
 class BoolQPVP(PVP):
     VERBALIZER_A = {
-        "False": ["No"],
-        "True": ["Yes"]
+        "false": ["No"],
+        "true": ["Yes"]
     }
 
     VERBALIZER_B = {
-        "False": ["false"],
-        "True": ["true"]
+        "false": ["false"],
+        "true": ["true"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
@@ -467,8 +467,8 @@ class BoolQPVP(PVP):
 
 class MultiRcPVP(PVP):
     VERBALIZER = {
-        "0": ["No"],
-        "1": ["Yes"]
+        0: ["No"],
+        1: ["Yes"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
@@ -494,12 +494,12 @@ class MultiRcPVP(PVP):
 
 class WicPVP(PVP):
     VERBALIZER_A = {
-        "F": ["No"],
-        "T": ["Yes"]
+        "false": ["No"],
+        "true": ["Yes"]
     }
     VERBALIZER_B = {
-        "F": ["2"],
-        "T": ["b"]
+        "false": ["2"],
+        "true": ["b"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
