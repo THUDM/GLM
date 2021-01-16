@@ -484,7 +484,7 @@ class MultiRcProcessor(DataProcessor):
         return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
-        return ["0", "1"]
+        return [0, 1]
 
     @staticmethod
     def _create_examples(path: str, set_type: str) -> List[InputExample]:
@@ -502,7 +502,7 @@ class MultiRcProcessor(DataProcessor):
                     question_idx = question_json['idx']
                     answers = question_json["answers"]
                     for answer_json in answers:
-                        label = str(answer_json["label"]) if 'label' in answer_json else None
+                        label = answer_json["label"] if 'label' in answer_json else None
                         answer_idx = answer_json["idx"]
                         guid = f'{set_type}-p{passage_idx}-q{question_idx}-a{answer_idx}'
                         meta = {
