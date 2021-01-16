@@ -245,7 +245,7 @@ class WicProcessor(DataProcessor):
         return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
-        return ["F", "T"]
+        return ["false", "true"]
 
     @staticmethod
     def _create_examples(path: str, set_type: str) -> List[InputExample]:
@@ -256,7 +256,7 @@ class WicProcessor(DataProcessor):
                 idx = example_json['idx']
                 if isinstance(idx, str):
                     idx = int(idx)
-                label = "T" if example_json.get('label') else "F"
+                label = "true" if example_json.get('label') else "false"
                 guid = "%s-%s" % (set_type, idx)
                 text_a = example_json['sentence1']
                 text_b = example_json['sentence2']
@@ -359,7 +359,7 @@ class BoolQProcessor(DataProcessor):
         return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
-        return ["False", "True"]
+        return ["false", "true"]
 
     @staticmethod
     def _create_examples(path: str, set_type: str) -> List[InputExample]:
@@ -369,7 +369,7 @@ class BoolQProcessor(DataProcessor):
             for line in f:
                 example_json = json.loads(line)
                 idx = example_json['idx']
-                label = str(example_json['label']) if 'label' in example_json else None
+                label = str(example_json['label']).lower() if 'label' in example_json else None
                 guid = "%s-%s" % (set_type, idx)
                 text_a = example_json['passage']
                 text_b = example_json['question']
@@ -395,7 +395,7 @@ class CopaProcessor(DataProcessor):
         return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
-        return ["0", "1"]
+        return [0, 1]
 
     def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
         if for_bert:
@@ -440,7 +440,7 @@ class CopaProcessor(DataProcessor):
         with open(path, encoding='utf8') as f:
             for line in f:
                 example_json = json.loads(line)
-                label = str(example_json['label']) if 'label' in example_json else None
+                label = example_json['label'] if 'label' in example_json else None
                 idx = example_json['idx']
                 guid = "%s-%s" % (set_type, idx)
                 text_a = example_json['premise']
@@ -455,7 +455,7 @@ class CopaProcessor(DataProcessor):
         if set_type == 'train' or set_type == 'unlabeled':
             mirror_examples = []
             for ex in examples:
-                label = "1" if ex.label == "0" else "0"
+                label = 1 if ex.label == 0 else 0
                 meta = {
                     'choice1': ex.meta['choice2'],
                     'choice2': ex.meta['choice1'],
