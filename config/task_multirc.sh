@@ -4,7 +4,7 @@ DATA_PATH="/root/data/superglue/MultiRC"
 MAX_SEQ_LEN=512
 source config/task_blocklm.sh
 
-TRAIN_ARGS="--epochs 10 \
+TRAIN_ARGS="--epochs 12 \
             --batch-size 8 \
             --lr 1e-5 \
             --lr-decay-style linear \

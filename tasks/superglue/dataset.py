@@ -27,7 +27,7 @@ from tasks.data_utils import InputExample
 from utils import print_rank_0
 from tasks.superglue.pvp import PVPS
 from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add
-
+from collections import defaultdict
 
 TRAIN_SET = "train"
 DEV_SET = "dev"
@@ -37,8 +37,8 @@ UNLABELED_SET = "unlabeled"
 SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
 
 
-def get_label_map(task_name):
-    return PROCESSORS[task_name]().label_map
+def get_output_func(task_name):
+    return PROCESSORS[task_name]().output_prediction
 
 
 class GlueDataset(Dataset):
@@ -102,8 +102,11 @@ class DataProcessor(ABC):
     def __init__(self):
         self.num_truncated = 0
 
-    def label_map(self, idx, example):
-        return self.get_labels()[idx]
+    def output_prediction(self, predictions, examples, output_file):
+        for prediction, example in zip(predictions, examples):
+            prediction = self.get_labels()[prediction]
+            data = {"idx": example.idx, "label": prediction}
+            output_file.write(json.dumps(data) + "\n")
 
     @abstractmethod
     def get_train_examples(self, data_dir) -> List[InputExample]:
@@ -522,6 +525,23 @@ class MultiRcProcessor(DataProcessor):
             f"distribution {list(label_distribution.items())}")
         return examples
 
+    def output_prediction(self, predictions, examples, output_file):
+        passage_dict = defaultdict(list)
+        for prediction, example in zip(predictions, examples):
+            passage_dict[example.meta["passage_idx"]].append((prediction, example))
+        for passage_idx, data in passage_dict.items():
+            question_dict = defaultdict(list)
+            passage_data = {"idx": passage_idx, "passage": {"questions": []}}
+            for prediction, example in data:
+                question_dict[example.meta["question_idx"]].append((prediction, example))
+            for question_idx, data in question_dict.items():
+                question_data = {"idx": question_idx, "answers": []}
+                for prediction, example in data:
+                    prediction = self.get_labels()[prediction]
+                    question_data["answers"].append({"idx": example.meta["answer_idx"], "label": prediction})
+                passage_data["passage"]["questions"].append(question_data)
+            output_file.write(json.dumps(passage_data) + "\n")
+
 
 class RecordProcessor(DataProcessor):
     """Processor for the ReCoRD data set."""
@@ -541,8 +561,11 @@ class RecordProcessor(DataProcessor):
     def get_labels(self):
         return ["0", "1"]
 
-    def label_map(self, idx, example):
-        return example.meta["candidates"][idx]
+    def output_prediction(self, predictions, examples, output_file):
+        for prediction, example in zip(predictions, examples):
+            prediction = example.meta["candidates"][prediction]
+            data = {"idx": example.idx, "label": prediction}
+            output_file.write(json.dumps(data) + "\n")
 
     def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
         if for_bert:

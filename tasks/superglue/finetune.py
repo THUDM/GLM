@@ -17,7 +17,7 @@
 
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
-from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, get_label_map
+from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, get_output_func
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
@@ -52,14 +52,14 @@ def metrics_func_provider(args, tokenizer, is_test):
         return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
                            cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
 
-    label_map = get_label_map(args.task.lower())
+    output_func = get_output_func(args.task.lower())
     eval_func = None
     if args.task.lower() == 'wsc':
         from tasks.language_model.finetune import classify_evaluate
         eval_func = classify_evaluate
     metric_dict = OrderedDict(default_metrics[args.task.lower()])
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
-                                  label_map=label_map)
+                                  output_func=output_func)
 
 
 def main(args):
