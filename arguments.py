@@ -216,6 +216,7 @@ def add_evaluation_args(parser):
     group.add_argument('--eval-hf', action='store_true',
                        help='perform evaluation with huggingface openai model.'
                             'use `--load` to specify weights path to be loaded')
+    group.add_argument('--overlapping-eval', type=int, default=32)
 
     return parser
 

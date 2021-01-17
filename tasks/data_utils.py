@@ -90,20 +90,21 @@ class InputExample(object):
             pickle.dump(examples, fh)
 
 
-def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_sep, add_piece):
+def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_sep, add_piece, add_eos=True):
     num_tokens = 0
     if add_cls:
         num_tokens += 1
     if text_b_ids and add_sep:
         num_tokens += 1
-    num_tokens += 1
+    if add_eos:
+        num_tokens += 1
     if not answer_ids and add_piece:
         num_tokens += 1
     return num_tokens
 
 
 def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tokenizer, add_cls=True, add_sep=False,
-                         add_piece=False):
+                         add_piece=False, add_eos=True):
     mask_id = tokenizer.get_command('MASK').Id
     eos_id = tokenizer.get_command('eos').Id
     cls_id = tokenizer.get_command('ENC').Id
@@ -132,16 +133,18 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
         ids.extend(text_b_ids)
         types.extend([1] * len_text_b)
         paddings.extend([1] * len_text_b)
+    eos_length = 1 if add_eos else 0
     # Cap the size.
-    if len(ids) >= max_seq_length - 1:
+    if len(ids) >= max_seq_length - eos_length:
         max_seq_length_m1 = max_seq_length - 1
         ids = ids[0:max_seq_length_m1]
         types = types[0:max_seq_length_m1]
         paddings = paddings[0:max_seq_length_m1]
-    ids.append(eos_id)
     end_type = 0 if text_b_ids is None else 1
-    types.append(end_type)
-    paddings.append(1)
+    if add_eos:
+        ids.append(eos_id)
+        types.append(end_type)
+        paddings.append(1)
     sep = len(ids)
     target_ids = [0] * len(ids)
     loss_masks = [0] * len(ids)

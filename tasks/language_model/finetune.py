@@ -82,6 +82,8 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
         correct = (outputs == labels).float()
         correct[(1 - loss_mask).bool()] = 1
         correct = correct.prod(-1)
+        if eval_metric == 'accuracy':
+            correct = correct.sum()
         return correct, mems, 'bert'
     else:
         raise NotImplementedError("Metric {} not implemented".format(eval_metric))
@@ -119,8 +121,6 @@ def evaluate(model, dataloader, eval_metric, args):
                 print_rank_0('> working on iteration: {}'.format(iteration))
             # Forward evaluation.
             output, _, _ = lm_forward_step(batch, model, args, None, [], eval_metric=eval_metric)
-            if eval_metric == 'accuracy':
-                output = output.sum()
             count = batch['text'].size(0)
             count = torch.cuda.LongTensor([count])
             # Reduce across processes.
@@ -185,7 +185,7 @@ def metrics_func_provider(args, tokenizer, is_test):
     else:
         raise NotImplementedError('{} task is not implemented.'.format(args.task))
     # Data stuff
-    dataloader = build_data_loader(dataset, args.batch_size,
+    dataloader = build_data_loader(dataset, args.eval_batch_size,
                                    args.num_workers, drop_last=False)
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
