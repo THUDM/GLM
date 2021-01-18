@@ -17,10 +17,10 @@ gpt_options=" \
        --save /root/data/checkpoints \
        --train-iters 500000 \
        --resume-dataloader \
-       --train-data bert-large \
+       --train-data wikipedia \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
-       --tokenizer-model-type roberta-large \
+       --tokenizer-model-type roberta \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \

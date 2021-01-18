@@ -125,6 +125,7 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
             dataset = BertSentencepairDataset(dataset, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
         elif ds_type.lower() == 'gpt2':
             if xl_style:
+                assert pre_tokenize
                 dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
                                     sample_across_doc=not sample_one_document)
             else:
