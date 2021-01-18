@@ -24,5 +24,6 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --checkpoint-activations \
        --seq-length ${MAX_SEQ_LEN} \
        --eval-batch-size 8 \
+       --overlapping-eval 256 \
        $MODEL_ARGS \
        2>&1 | tee logs/log-${DATESTR}.txt
