@@ -17,7 +17,7 @@ gpt_options=" \
        --save /root/data/checkpoints \
        --train-iters 500000 \
        --resume-dataloader \
-       --train-data wikipedia \
+       --train-data wikibook \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \

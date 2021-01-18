@@ -21,6 +21,7 @@ import tqdm
 from multiprocessing import Queue, Process
 from torch.utils import data
 from .lazy_loader import LazyLoader
+from utils import print_rank_0
 
 NUM_PROCESSES = 40
 
@@ -116,19 +117,25 @@ class DataReader:
                      not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
-        task_queue, done_queue = Queue(), Queue()
+        task_queue, done_queue = Queue(maxsize=1000000), Queue(maxsize=1000000)
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
                               args=(task_queue, done_queue, type(self), tokenizer, tokenize))
             process.start()
             processes.append(process)
-        for path in paths:
-            with open(path) as file:
-                for row in tqdm.tqdm(file):
-                    task_queue.put(row)
-        for i in range(len(processes)):
-            task_queue.put('STOP')
+
+        def read_input_to_queue():
+            for path in paths:
+                with open(path) as file:
+                    for row in file:
+                        task_queue.put(row)
+            print_rank_0("Read input complete")
+            for i in range(len(processes)):
+                task_queue.put('STOP')
+
+        process = Process(target=read_input_to_queue)
+        process.start()
         count = len(processes)
         progress_bar = tqdm.tqdm()
         while True:
@@ -350,6 +357,7 @@ class TestDataset(PromptReader):
 
 class BertData(PromptReader):
     is_json = False
+    PATH = '/root/data/wikibook'
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
@@ -378,6 +386,7 @@ NAMED_CORPORA = {
     "zhidao": zhidao,
     "baike": baike,
     "test": TestDataset,
+    'wikibook': BertData,
     "bert-base": BertBaseData,
     "bert-large": BertLargeData
 }
