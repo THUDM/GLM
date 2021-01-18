@@ -859,7 +859,7 @@ class GPT2BPETokenizer(Tokenizer):
                 CommandToken('sep', '[SEP]', self.text_tokenizer.encoder['</s>']),
                 CommandToken('ENC', '[CLS]', self.text_tokenizer.encoder['<s>']),
                 CommandToken('MASK', '[MASK]', self.text_tokenizer.encoder['<mask>']),
-                CommandToken('unk', '[UNK]', self.text_tokenizer.vocab['<unk>'])
+                CommandToken('unk', '[UNK]', self.text_tokenizer.encoder['<unk>'])
             ]
             if add_block_symbols:
                 self._command_tokens.extend([
@@ -930,7 +930,9 @@ class GPT2BPETokenizer(Tokenizer):
         tokenization = Tokenization(tokens, processed_text, text, asIds=False)
         tokenization.set_command_tokens(self._command_tokens)
         return tokenization
-        # return Tokenization(tokens, processed_text, text, asIds=False)
+
+    def DecodeAsTokens(self, Ids):
+        return [self.IdToToken(x) for x in Ids]
 
     def IdToToken(self, Id, type_token=False):
         if isinstance(Id, (TypeToken, CommandToken)):
