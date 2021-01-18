@@ -7,7 +7,7 @@ config_json="$script_dir/config_block_large.json"
 gpt_options=" \
        --block-lm \
        --bert-prob 1.0 \
-       --experiment-name block-lm-large-blank \
+       --experiment-name blocklm-large-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
        --hidden-size 1024 \
