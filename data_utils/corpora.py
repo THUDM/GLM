@@ -26,25 +26,6 @@ from utils import print_rank_0
 NUM_PROCESSES = 40
 
 
-class webtext(json_dataset):
-    """
-    dataset for webtext with arguments configured for convenience
-
-    command line usage: `--train-data webtext`
-    """
-    PATH = 'data/webtext/data.json'
-    assert_str = "make sure to set PATH for webtext data_utils/corpora.py"
-
-    def __init__(self, **kwargs):
-        assert os.path.exists(webtext.PATH), \
-            webtext.assert_str
-        if not kwargs:
-            kwargs = {}
-        kwargs['text_key'] = 'text'
-        kwargs['loose_json'] = True
-        super(webtext, self).__init__(webtext.PATH, **kwargs)
-
-
 class KeyDataset(data.Dataset):
     def __init__(self, text_loader, mask_loader, **kwargs):
         self.texts = text_loader
@@ -355,6 +336,20 @@ class TestDataset(PromptReader):
         return [prompt], [text]
 
 
+class OpenWebText(PromptReader):
+    PATH = '/root/data/openwebtext2'
+    assert_str = "make sure to set PATH for openwebtext data_utils/corpora.py"
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        text = data['text']
+        if len(text) > 100:
+            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            return [prompt], [text]
+        else:
+            return [], []
+
+
 class BertData(PromptReader):
     is_json = False
     PATH = '/root/data/wikibook'
@@ -381,7 +376,7 @@ class BertLargeData(BertData):
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
     'wikipedia-key': KeyReader,
-    'webtext': webtext,
+    'openwebtext': OpenWebText,
     "zhihu": zhihu,
     "zhidao": zhidao,
     "baike": baike,
