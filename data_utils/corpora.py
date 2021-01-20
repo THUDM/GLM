@@ -350,6 +350,29 @@ class OpenWebText(PromptReader):
             return [], []
 
 
+class CCNews(PromptReader):
+    PATH = "/root/data/cc_news"
+    assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        text = ""
+        title = data.get("title", None)
+        description = data.get("description", None)
+        maintext = data.get("maintext", None)
+        if title:
+            text += title.strip() + " "
+        if description and (not maintext or not maintext.startswith(description)):
+            text += description.strip() + " "
+        if maintext:
+            text += maintext
+        if len(text) > 100:
+            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            return [prompt], [text]
+        else:
+            return [], []
+
+
 class BertData(PromptReader):
     is_json = False
     PATH = '/root/data/wikibook'
