@@ -142,6 +142,7 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
                     text = tokenizer.DecodeIds(text)
                     output.write(text)
                     output.write("\n")
+            print(f"Write test data to {save_test_data}")
         ds = [wrap_dataset(d) if d is not None else None for d in ds]
     else:
         ds = wrap_dataset(ds)
