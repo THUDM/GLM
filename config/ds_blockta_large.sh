@@ -3,7 +3,7 @@
 script_path=$(realpath $BASH_SOURCE)
 script_dir=$(dirname $script_path)
 
-config_json="$script_dir/config_block_large.json"
+config_json="$script_dir/config_blockta_large.json"
 gpt_options=" \
        --block-lm \
        --bert-prob 1.0 \
