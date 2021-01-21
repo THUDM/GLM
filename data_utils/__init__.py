@@ -136,7 +136,7 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
         ds = split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits)
         if save_test_data is not None and torch.distributed.get_rank() == 0:
             test_ds = ds[-1]
-            with open(save_test_data, "w") as output:
+            with open(save_test_data, "w", encoding='utf-8') as output:
                 for data in test_ds:
                     text = data['tokens']
                     text = tokenizer.DecodeIds(text)
