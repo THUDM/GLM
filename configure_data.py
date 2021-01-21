@@ -180,7 +180,6 @@ def make_loaders(args, tokenizer):
         'path': args.train_data,
         'seq_length': seq_length,
         'mem_length': args.mem_length,
-        'xl_style': args.transformer_xl,
         'delim': args.delim,
         'text_key': args.text_key,
         'label_key': 'label',
