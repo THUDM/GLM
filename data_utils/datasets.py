@@ -22,6 +22,7 @@ import json
 import csv
 import math
 import random
+import torch
 import tqdm
 from itertools import accumulate
 
@@ -217,8 +218,9 @@ def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None):
         inds = np.load(load_splits)
         print_rank_0(f"Load split indices from {load_splits}")
     elif save_splits is not None:
-        np.save(save_splits, inds)
-        print_rank_0(f"Save split indices to {save_splits}")
+        if torch.distributed.get_rank() == 0:
+            np.save(save_splits, inds)
+            print(f"Save split indices to {save_splits}")
     start_idx = 0
     residual_idx = 0
     rtn_ds = [None] * len(split)

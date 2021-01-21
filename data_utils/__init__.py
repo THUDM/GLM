@@ -16,6 +16,7 @@
 import os
 import math
 import time
+import torch
 
 from .samplers import DistributedBatchSampler
 from .datasets import split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
@@ -47,7 +48,7 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_dataset(name, tokenizer, pre_tokenize, local_rank):
+def get_dataset(name, tokenizer, pre_tokenize):
     """gets dataset object based on keyword args and file at `path`"""
     if supported_corpus(name):
         dataset = corpora.NAMED_CORPORA[name]
@@ -55,7 +56,7 @@ def get_dataset(name, tokenizer, pre_tokenize, local_rank):
         if issubclass(dataset, corpora.PromptReader):
             if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
                 # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
+                if torch.distributed.get_rank() == 0:
                     prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
                     text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                     writers = {'prompt': prompt_writer, 'text': text_writer}
@@ -76,7 +77,7 @@ def get_dataset(name, tokenizer, pre_tokenize, local_rank):
         elif issubclass(dataset, corpora.KeyReader):
             if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
                 # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
+                if torch.distributed.get_rank() == 0:
                     text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                     mask_writer = LazyWriter(path, data_type='mask', is_array=True)
                     writers = {'mask': mask_writer, 'text': text_writer}
@@ -101,7 +102,7 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, mem_length, local_rank, shuffle=True, split=None, tokenizer=None,
+def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
                  save_test_data=None, **kwargs):
     """function to create datasets+tokenizers for common options"""
@@ -110,9 +111,9 @@ def make_dataset(path, seq_length, mem_length, local_rank, shuffle=True, split=N
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
-        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank)
+        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize)
     else:
-        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank) for p in path]
+        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize) for p in path]
         ds = ConcatDataset(ds)
 
     # Split dataset into train/val/test (and wrap bert dataset)
@@ -133,7 +134,7 @@ def make_dataset(path, seq_length, mem_length, local_rank, shuffle=True, split=N
 
     if should_split(split):
         ds = split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits)
-        if save_test_data is not None:
+        if save_test_data is not None and torch.distributed.get_rank() == 0:
             test_ds = ds[-1]
             with open(save_test_data, "w") as output:
                 for data in test_ds:

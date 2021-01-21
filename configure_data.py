@@ -177,7 +177,6 @@ def make_loaders(args, tokenizer):
         eval_seq_length = eval_seq_length * world_size
     split = get_split(args)
     data_set_args = {
-        'local_rank': args.local_rank,
         'path': args.train_data,
         'seq_length': seq_length,
         'mem_length': args.mem_length,
