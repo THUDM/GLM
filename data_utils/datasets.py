@@ -189,7 +189,7 @@ class SplitDataset(data.Dataset):
             yield self.wrapped_data[idx]
 
 
-def split_ds(ds, split=None, shuffle=True):
+def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None):
     """
     Split a dataset into subsets given proportions of how
     much to allocate per split. If a split is 0% returns None for that split.
@@ -198,6 +198,8 @@ def split_ds(ds, split=None, shuffle=True):
         ds (Dataset or array-like): Data to be split.
         split (1D array-like): proportions to split `ds`. `sum(splits) != 0`
         shuffle (boolean): Randomly split dataset. Default: True
+        save_splits: save split indices to file
+        load_splits: load split indices from file
     """
     if split is None:
         split = [.8, .2, .0]
@@ -211,6 +213,12 @@ def split_ds(ds, split=None, shuffle=True):
     if shuffle:
         rng = np.random.RandomState(1234)
         rng.shuffle(inds)
+    if load_splits is not None:
+        inds = np.load(load_splits)
+        print_rank_0(f"Load split indices from {load_splits}")
+    elif save_splits is not None:
+        np.save(save_splits, inds)
+        print_rank_0(f"Save split indices to {save_splits}")
     start_idx = 0
     residual_idx = 0
     rtn_ds = [None] * len(split)

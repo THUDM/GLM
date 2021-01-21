@@ -181,12 +181,10 @@ def make_loaders(args, tokenizer):
         'path': args.train_data,
         'seq_length': seq_length,
         'mem_length': args.mem_length,
-        'lazy': args.lazy_loader,
         'xl_style': args.transformer_xl,
         'delim': args.delim,
         'text_key': args.text_key,
         'label_key': 'label',
-        'non_binary_cols': None,
         'ds_type': args.data_set_type,
         'split': split,
         'loose': args.loose_json,
@@ -194,7 +192,10 @@ def make_loaders(args, tokenizer):
         'presplit_sentences': args.presplit_sentences,
         'sample_one_document': args.sample_one_document,
         'pre_tokenize': not args.not_pre_tokenize,
-        'tokenizer': tokenizer
+        'tokenizer': tokenizer,
+        'save_splits': args.save_splits,
+        'load_splits': args.load_splits,
+        'save_test_data': args.save_test_data
     }
 
     eval_set_args = copy.copy(data_set_args)

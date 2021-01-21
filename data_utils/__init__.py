@@ -101,15 +101,12 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=False,
-                 shuffle=True, split=None, tokenizer=None, non_binary_cols=None, sample_one_document=False,
-                 pre_tokenize=False, ds_type='', **kwargs):
+def make_dataset(path, seq_length, mem_length, local_rank, shuffle=True, split=None, tokenizer=None,
+                 sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
+                 save_test_data=None, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
-    if non_binary_cols is not None:
-        # multilabel dataset support (only for csvs)
-        label_key = non_binary_cols
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
@@ -123,21 +120,27 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             dataset = BertSentencepairDataset(dataset, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
+        elif ds_type.lower() == 'gpt-xl':
+            assert pre_tokenize
+            dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
+                                sample_across_doc=not sample_one_document)
         elif ds_type.lower() == 'gpt2':
-            if xl_style:
-                assert pre_tokenize
-                dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                                    sample_across_doc=not sample_one_document)
-            else:
-                dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length,
-                                      sample_across_doc=not sample_one_document)
+            dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
         elif ds_type.lower() == 'block':
             dataset = BlockDataset(dataset, tokenizer, max_seq_len=seq_length,
                                    sample_across_doc=not sample_one_document)
         return dataset
 
     if should_split(split):
-        ds = split_ds(ds, split, shuffle=shuffle)
+        ds = split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits)
+        if save_test_data is not None:
+            test_ds = ds[-1]
+            with open(save_test_data, "w") as output:
+                for data in test_ds:
+                    text = data['tokens']
+                    text = tokenizer.DecodeIds(text)
+                    output.write(text)
+                    output.write("\n")
         ds = [wrap_dataset(d) if d is not None else None for d in ds]
     else:
         ds = wrap_dataset(ds)

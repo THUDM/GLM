@@ -316,7 +316,9 @@ def add_data_args(parser):
     group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
     group.add_argument('--no-block-position', action='store_true',
                        help='Use (rough) absolute positions instead of block positions')
-
+    group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")
+    group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")
+    group.add_argument('--save-test-data', type=str, default=None, help="The path to save the test data")
     return parser
 
 
