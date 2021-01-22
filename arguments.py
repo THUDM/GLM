@@ -213,9 +213,6 @@ def add_evaluation_args(parser):
                        help='Maximum number of predictions to use for '
                             'evaluation. Defaults to '
                             'math.ceil(`--eval-seq-length`*.15/10)*10')
-    group.add_argument('--eval-hf', action='store_true',
-                       help='perform evaluation with huggingface openai model.'
-                            'use `--load` to specify weights path to be loaded')
     group.add_argument('--overlapping-eval', type=int, default=32)
 
     return parser
@@ -252,10 +249,6 @@ def add_data_args(parser):
     group.add_argument('--test-data', nargs='*', default=None,
                        help="""Filename for testing""")
     group.add_argument('--data-dir', type=str, default=None, help="The data path to all the data files")
-    group.add_argument('--use-npy-data-loader', action='store_true',
-                       help='Use the numpy data loader. If set, then'
-                            'train-data-path, val-data-path, and test-data-path'
-                            'should also be provided.')
     group.add_argument('--input-data-sizes-file', type=str, default='sizes.txt',
                        help='the filename containing all the shards sizes')
 
