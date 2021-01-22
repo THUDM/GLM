@@ -1,3 +1,4 @@
+MODEL_TYPE="blank-base"
 MODEL_ARGS="--block-lm \
             --cloze-eval \
             --num-layers 12 \

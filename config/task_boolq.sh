@@ -2,7 +2,7 @@ EXPERIMENT_NAME=blank-base-boolq
 TASK_NAME=BoolQ
 DATA_PATH="/root/data/superglue/BoolQ"
 MAX_SEQ_LEN=256
-source config/task_blocklm.sh
+source config/model_blocklm.sh
 
 TRAIN_ARGS="--epochs 10 \
             --batch-size 8 \

@@ -2,7 +2,7 @@ EXPERIMENT_NAME=blank-base-rte
 TASK_NAME=RTE
 DATA_PATH="/root/data/superglue/RTE"
 MAX_SEQ_LEN=256
-source config/task_blocklm.sh
+source config/model_blocklm.sh
 
 TRAIN_ARGS="--epochs 20 \
             --batch-size 8 \

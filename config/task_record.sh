@@ -2,7 +2,7 @@ EXPERIMENT_NAME=blank-base-record
 TASK_NAME=ReCoRD
 DATA_PATH="/root/data/superglue/ReCoRD"
 MAX_SEQ_LEN=512
-source config/task_blocklm.sh
+source config/model_blocklm.sh
 
 TRAIN_ARGS="--epochs 5 \
             --batch-size 8 \

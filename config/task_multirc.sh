@@ -2,7 +2,7 @@ EXPERIMENT_NAME=blank-base-MultiRC
 TASK_NAME=multirc
 DATA_PATH="/root/data/superglue/MultiRC"
 MAX_SEQ_LEN=512
-source config/task_blocklm.sh
+source config/model_blocklm.sh
 
 TRAIN_ARGS="--epochs 12 \
             --batch-size 8 \
