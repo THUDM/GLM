@@ -406,5 +406,6 @@ NAMED_CORPORA = {
     "test": TestDataset,
     'wikibook': BertData,
     "bert-base": BertBaseData,
-    "bert-large": BertLargeData
+    "bert-large": BertLargeData,
+    'cc-news': CCNews
 }
