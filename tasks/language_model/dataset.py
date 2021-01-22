@@ -5,13 +5,15 @@ import numpy as np
 from utils import print_rank_0
 from tasks.data_utils import build_input_from_ids, num_special_tokens_to_add
 from tasks.language_model.detokenizer import get_detokenizer
+from bisect import bisect_right
+from itertools import accumulate
 
 
 class LMDataset(torch.utils.data.Dataset):
 
-    def __init__(self, tokens, max_seq_length, tokenizer, num_original_tokens,
+    def __init__(self, documents, max_seq_length, tokenizer, num_original_tokens,
                  num_tokenized_tokens, overalapping_eval=None):
-        self.tokens = tokens
+        self.documents = documents
         self.max_seq_len = max_seq_length
         self.tokenizer = tokenizer
         self.overalapping_eval = overalapping_eval
@@ -21,16 +23,20 @@ class LMDataset(torch.utils.data.Dataset):
         self.num_original_tokens = num_original_tokens
         self.num_tokenized_tokens = num_tokenized_tokens
         # remove first sequence tokens
-        targets = max(len(self.tokens) - self.max_seq_len, 0)
-        self.total_sequences = max(math.ceil(targets / self.overalapping_eval) + 1, 1)
+        targets = [max(len(tokens) - self.max_seq_len, 0) for tokens in self.documents]
+        self.num_sequences = [max(math.ceil(target / self.overalapping_eval) + 1, 1) for target in targets]
+        self.weights = list(accumulate(self.num_sequences))
+        self.left_weights = [0] + self.weights[:-1]
 
     def __len__(self):
-        return self.total_sequences
+        return sum(self.num_sequences)
 
     def __getitem__(self, idx):
+        document_idx = bisect_right(self.weights, idx)
+        idx = idx - self.left_weights[document_idx]
         start_idx = idx * self.overalapping_eval
         end_idx = start_idx + self.max_seq_len
-        tokens = self.tokens[start_idx:end_idx]
+        tokens = self.documents[document_idx][start_idx:end_idx]
         if idx == 0:
             prompt, text = tokens[:1], tokens[1:]
         else:
@@ -96,6 +102,23 @@ def build_lambada_dataset(tokenizer, args):
     return val_dataset
 
 
+def build_lm_dataset(tokenizer, args):
+    documents = []
+    num_tokens, num_original_tokens = 0, 0
+    with open(args.valid_data[0], encoding='utf-8') as file:
+        for line in file:
+            tokens = tokenizer.EncodeAsIds(line.strip()).tokenization
+            num_tokens += len(tokens)
+            num_original_tokens += len(line.strip().split(" "))
+            documents.append(tokens)
+    val_dataset = LMDataset(documents, args.seq_length, tokenizer, num_original_tokens, num_tokens,
+                            args.overlapping_eval)
+    print_rank_0(
+        ' > number of document: {}, number of original tokens {}, number of detokenized tokens: {}'.format(
+            len(documents), num_original_tokens, num_tokens))
+    return val_dataset
+
+
 def build_wikitext103_dataset(tokenizer, args):
     """"""
 
@@ -107,7 +130,7 @@ def build_wikitext103_dataset(tokenizer, args):
     tokenized_data = tokenizer.EncodeAsIds(entire_data).tokenization
     num_tokenized_tokens = len(tokenized_data)
 
-    val_dataset = LMDataset(tokenized_data, args.seq_length, tokenizer,
+    val_dataset = LMDataset([tokenized_data], args.seq_length, tokenizer,
                             num_original_tokens, num_tokenized_tokens,
                             args.overlapping_eval)
     print_rank_0(' > number of original tokens: {}, number of detokenized '

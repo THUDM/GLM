@@ -23,7 +23,7 @@ from utils import print_rank_0
 import mpu
 from tasks.data_utils import build_data_loader
 
-from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset
+from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset, build_lm_dataset
 from pretrain_gpt2 import get_batch
 from finetune_gpt2 import finetune
 
@@ -112,7 +112,6 @@ def evaluate(model, dataloader, eval_metric, args):
     """Evaluation."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
-    ids, predictions = [], []
     total_output, total_count = 0.0, 0
     with torch.no_grad():
         # For all the batches in the dataset.
@@ -182,6 +181,9 @@ def metrics_func_provider(args, tokenizer, is_test):
     elif args.task == 'wikitext':
         eval_metric = 'loss'
         dataset = build_wikitext103_dataset(tokenizer, args)
+    elif args.task == 'language_model':
+        eval_metric = 'loss'
+        dataset = build_lm_dataset(tokenizer, args)
     else:
         raise NotImplementedError('{} task is not implemented.'.format(args.task))
     # Data stuff

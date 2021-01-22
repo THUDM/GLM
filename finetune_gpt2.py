@@ -359,7 +359,7 @@ if __name__ == '__main__':
         from tasks.race.finetune import main
     elif args.task.lower() in superglue_tasks:
         from tasks.superglue.finetune import main
-    elif args.task.lower() == 'lambda' or args.task.lower() == 'wikitext':
+    elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
