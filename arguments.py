@@ -326,6 +326,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--eval-valid', action='store_true', help="Whether evaluate on the valid set")
     group.add_argument('--validation-metric', type=str, default=None)
+    group.add_argument('--unidirectional', action='store_true', help="Use the left to right language model")
     return parser
 
 

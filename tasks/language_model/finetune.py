@@ -113,6 +113,7 @@ def evaluate(model, dataloader, eval_metric, args):
     # Turn on evaluation mode which disables dropout.
     model.eval()
     total_output, total_count = 0.0, 0
+    total_tokens = 0
     with torch.no_grad():
         # For all the batches in the dataset.
         for iteration, batch in enumerate(dataloader):
@@ -128,7 +129,8 @@ def evaluate(model, dataloader, eval_metric, args):
 
             total_output += output.item()
             total_count += count.item()
-
+            total_tokens += batch['loss_mask'].sum().item()
+    print(total_tokens)
     return {eval_metric: total_output}, total_count
 
 
