@@ -20,6 +20,7 @@ import os
 import torch
 import deepspeed
 import json
+from utils import get_hostname
 
 
 def add_model_config_args(parser):
@@ -405,16 +406,13 @@ def get_args():
 
 def mpi_define_env(args):
     from mpi4py import MPI
-    import subprocess
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     world_size = comm.Get_size()
 
     master_addr = None
     if rank == 0:
-        hostname_cmd = ["hostname -I"]
-        result = subprocess.check_output(hostname_cmd, shell=True)
-        master_addr = result.decode('utf-8').split()[0]
+        master_addr = get_hostname()
     master_addr = comm.bcast(master_addr, root=0)
 
     # Determine local rank by assuming hostnames are unique

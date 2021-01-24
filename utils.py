@@ -21,6 +21,7 @@ import time
 import numpy as np
 import torch
 import json
+import subprocess
 
 from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from fp16 import FP16_Optimizer
@@ -47,6 +48,13 @@ def print_rank_0(message):
             print(message, flush=True)
     else:
         print(message, flush=True)
+
+
+def get_hostname():
+    hostname_cmd = ["hostname -I"]
+    result = subprocess.check_output(hostname_cmd, shell=True)
+    master_addr = result.decode('utf-8').split()[0]
+    return master_addr
 
 
 def print_and_save_args(args, verbose=True, log_dir=None):
