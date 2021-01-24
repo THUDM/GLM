@@ -190,7 +190,7 @@ def metrics_func_provider(args, tokenizer, is_test):
         raise NotImplementedError('{} task is not implemented.'.format(args.task))
     # Data stuff
     dataloader = build_data_loader(dataset, args.eval_batch_size,
-                                   args.num_workers, drop_last=False)
+                                   args.num_workers, drop_last=False, shuffle=False)
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
         return evaluate_and_print_results(dataloader, model, eval_metric=eval_metric, args=args)

@@ -7,17 +7,17 @@ DATESTR=$(date +"%m-%d-%H-%M")
 MAX_SEQ_LEN=512
 source config/model_gpt_large.sh
 
-EXPERIMENT_NAME=${MODEL_TYPE}-lambda_uni
-TASK_NAME=lambda
-DATA_PATH=/root/data/lambada_test.jsonl
+#EXPERIMENT_NAME=${MODEL_TYPE}-lambda_uni
+#TASK_NAME=lambda
+#DATA_PATH=/root/data/lambada_test.jsonl
 
 #EXPERIMENT_NAME=${MODEL_TYPE}-wikitext
 #TASK_NAME=wikitext
 #DATA_PATH=/root/data/wikitext-103/wiki.test.tokens
 
-#EXPERIMENT_NAME=${MODEL_TYPE}-lm
-#TASK_NAME=language_model
-#DATA_PATH=/root/data/bert-large-test.txt
+EXPERIMENT_NAME=${MODEL_TYPE}-lm_uni
+TASK_NAME=language_model
+DATA_PATH=/root/data/bert-large-test.txt
 
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --finetune \

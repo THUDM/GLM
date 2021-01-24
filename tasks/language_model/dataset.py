@@ -55,21 +55,18 @@ class LMDataset(torch.utils.data.Dataset):
             if idx != 0 and self.unidirectional:
                 loss_masks = np.array(loss_masks, dtype=np.int64)
                 loss_masks[:-self.overalapping_eval] = 0
+            return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
+                    'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
+                    "position_id": np.array(position_ids, dtype=np.int64)}
         else:
-            ids, target_ids = tokens[:-1], tokens[1:]
-            sep = 0
-            if idx == 0:
-                loss_masks = [1] * len(ids)
-            else:
-                loss_masks = [0] * (len(ids) - self.overalapping_eval) + [1] * self.overalapping_eval
-            if len(ids) < self.max_seq_len:
-                ids = ids + [0] * (self.max_seq_len - len(ids))
-                target_ids = target_ids + [0] * (self.max_seq_len - len(target_ids))
+            loss_masks = [1] * len(tokens)
+            if len(tokens) < self.max_seq_len:
+                tokens = tokens + [0] * (self.max_seq_len - len(tokens))
                 loss_masks = loss_masks + [0] * (self.max_seq_len - len(loss_masks))
-            position_ids = list(range(len(ids)))
-        return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
-                'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
-                "position_id": np.array(position_ids, dtype=np.int64)}
+            if idx != 0:
+                loss_masks = np.array(loss_masks, dtype=np.int64)
+                loss_masks[:-self.overalapping_eval] = 0
+            return {'text': np.array(tokens, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64)}
 
 
 class LambadaDataset(torch.utils.data.Dataset):
@@ -126,22 +123,20 @@ class LambadaDataset(torch.utils.data.Dataset):
                 while loss_masks[last_index - 1] == 0:
                     last_index -= 1
                 loss_masks[:last_index - len(answer)] = 0
+            return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
+                    'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
+                    "position_id": np.array(position_ids, dtype=np.int64)}
         else:
             left_shift = len(tokens) - self.max_seq_length
             if left_shift > 0:
                 tokens = tokens[left_shift:]
             ids = tokens + answer
-            ids, target_ids = ids[:-1], ids[1:]
-            sep, position_id = 0, list(range(len(ids)))
-            loss_masks = [0] * (len(tokens) - 1) + [1] * len(answer)
             if len(ids) < self.max_seq_length:
                 ids = ids + [0] * (self.max_seq_length - len(ids))
-                target_ids = target_ids + [0] * (self.max_seq_length - len(target_ids))
+            loss_masks = [0] * len(tokens) + [1] * len(answer)
+            if len(loss_masks) < self.max_seq_length:
                 loss_masks = loss_masks + [0] * (self.max_seq_length - len(loss_masks))
-            position_ids = list(range(len(ids)))
-        return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
-                'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
-                "position_id": np.array(position_ids, dtype=np.int64)}
+            return {'text': np.array(ids, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64)}
 
 
 def build_lambada_dataset(tokenizer, args):
