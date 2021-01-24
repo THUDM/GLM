@@ -1,6 +1,5 @@
-MODEL_TYPE="generation-large"
-MODEL_ARGS="--block-lm \
-            --cloze-eval \
+MODEL_TYPE="gpt-large"
+MODEL_ARGS="--cloze-eval \
             --num-layers 24 \
             --hidden-size 1024 \
             --num-attention-heads 16 \

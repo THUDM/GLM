@@ -5,7 +5,7 @@ DISTRIBUTED_ARGS="--nproc_per_node 1 --nnodes 1 --node_rank 0 --master_addr loca
 DATESTR=$(date +"%m-%d-%H-%M")
 
 MAX_SEQ_LEN=512
-source config/model_blocklm_large_generation.sh
+source config/model_gpt_large.sh
 
 EXPERIMENT_NAME=${MODEL_TYPE}-lambda_uni
 TASK_NAME=lambda
