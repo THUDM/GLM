@@ -1,8 +1,8 @@
-EXPERIMENT_NAME=blank-base-copa
+source config/model_blocklm.sh
+EXPERIMENT_NAME=${MODEL_TYPE}-copa
 TASK_NAME=COPA
 DATA_PATH="/root/data/superglue/COPA"
 MAX_SEQ_LEN=256
-source config/model_blocklm.sh
 
 TRAIN_ARGS="--epochs 20 \
             --batch-size 8 \
