@@ -340,11 +340,12 @@ class WscPVP(PVP):
         parts_a, parts_b = self.get_parts(example)
 
         parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_a if x]
+        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts_a if x]
 
         if parts_b:
             parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_b if x]
+            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts_b if
+                       x]
 
         answer = self.get_answers(example)[0]
         this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
