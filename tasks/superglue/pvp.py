@@ -377,14 +377,15 @@ class RecordPVP(PVP):
 
     def get_answers(self, example: InputExample):
         choices = example.meta['candidates']
+        choices = [" " + choice for choice in choices]
         return choices
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         premise = self.shortenable(example.text_a)
 
         assert '@placeholder' in example.text_b, f'question "{example.text_b}" does not contain a @placeholder token'
-        question = example.text_b.replace('@placeholder', " " + self.mask + " ")
-        return [premise, question], []
+        question_a, question_b = example.text_b.split('@placeholder')
+        return [premise,  " " + question_a.rstrip(), self.mask, question_b], []
 
     def verbalize(self, label) -> List[str]:
         return []
