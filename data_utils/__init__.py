@@ -73,6 +73,11 @@ def get_dataset(name, tokenizer, pre_tokenize):
                                is_array=pre_tokenize)
             text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
                                          to_tokenize=not pre_tokenize)
+            if torch.distributed.get_rank() == 0:
+                print(f"Create dataset {name} with {len(text)} documents")
+                sample_tokens = text[0]['tokens'][:1024]
+                print(sample_tokens)
+                print(tokenizer.DecodeIds(sample_tokens).tokenization)
             return text
         elif issubclass(dataset, corpora.KeyReader):
             if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
