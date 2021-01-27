@@ -16,6 +16,7 @@
 import os
 import math
 import time
+import random
 import torch
 
 from .samplers import DistributedBatchSampler
@@ -75,9 +76,11 @@ def get_dataset(name, tokenizer, pre_tokenize):
                                          to_tokenize=not pre_tokenize)
             if torch.distributed.get_rank() == 0:
                 print(f"Create dataset {name} with {len(text)} documents")
-                sample_tokens = text[0]['tokens'][:1024]
-                print(sample_tokens)
-                print(tokenizer.DecodeIds(sample_tokens).tokenization)
+                for i in range(10):
+                    rand_id = i if i < 5 else random.randrange(len(text))
+                    sample_tokens = text[rand_id]['tokens'][:1024]
+                    print(sample_tokens)
+                    print(tokenizer.DecodeIds(sample_tokens))
             return text
         elif issubclass(dataset, corpora.KeyReader):
             if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
