@@ -80,7 +80,7 @@ def get_dataset(name, tokenizer, pre_tokenize):
                     rand_id = i if i < 5 else random.randrange(len(text))
                     sample_tokens = text[rand_id]['tokens'][:1024]
                     print(sample_tokens)
-                    print(tokenizer.DecodeIds(sample_tokens))
+                    print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
             return text
         elif issubclass(dataset, corpora.KeyReader):
             if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
