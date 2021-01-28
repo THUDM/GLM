@@ -81,8 +81,6 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                 num_source_truncated += 1
             if target_truncated:
                 num_target_truncated += 1
-            if idx > 10000:
-                break
         print_rank_0(
             f"Return {len(self.samples)} {split} examples, {num_source_truncated} examples source truncated, {num_target_truncated} examples target truncated")
 
