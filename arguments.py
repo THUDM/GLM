@@ -132,11 +132,12 @@ def add_training_args(parser):
                        help='gradient clipping')
     group.add_argument('--train-iters', type=int, default=1000000,
                        help='total number of iterations to train over all training runs')
+    group.add_argument('--label-smoothing', type=float, default=0.0)
     group.add_argument('--log-interval', type=int, default=100,
                        help='report interval')
     group.add_argument('--summary-dir', type=str, default="", help="The directory to store the summary")
     group.add_argument('--seed', type=int, default=1234, help='random seed')
-    # Batch prodecuer arguments
+    # Batch producer arguments
     group.add_argument('--reset-position-ids', action='store_true',
                        help='Reset posistion ids after end-of-document token.')
     group.add_argument('--reset-attention-mask', action='store_true',
@@ -328,6 +329,8 @@ def add_finetune_config_args(parser):
     group.add_argument('--eval-valid', action='store_true', help="Whether evaluate on the valid set")
     group.add_argument('--validation-metric', type=str, default=None)
     group.add_argument('--unidirectional', action='store_true', help="Use the left to right language model")
+    group.add_argument('--src-seq-length', type=int, default=None)
+    group.add_argument('--tgt-seq-length', type=int, default=None)
     return parser
 
 

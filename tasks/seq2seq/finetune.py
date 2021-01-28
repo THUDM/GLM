@@ -1,0 +1,64 @@
+# coding=utf-8
+# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Race."""
+import torch
+import mpu
+from tasks.eval_utils import accuracy_func_provider
+from finetune_gpt2 import finetune
+from pretrain_gpt2 import get_batch
+from collections import OrderedDict
+from tasks.seq2seq.dataset import Seq2SeqDataset
+
+global_tokenizer = None
+
+
+def seq2seq_forward_step(data, model, args, timers, mems):
+    """Forward step."""
+
+    # Get the batch.
+    tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
+    breakpoint()
+    # Forward model.
+    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    logits, loss_mask = logits[:, args.src_seq_length:], loss_mask[:, args.src_seq_length:]
+    labels = labels[:, args.src_seq_length:]
+    losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(), labels)
+    if args.label_smoothing > 0.0:
+        epsilon = args.label_smoothing
+        smooth_loss = -torch.nn.functional.log_softmax(logits, dim=-1).mean(dim=-1)
+        losses = (1 - epsilon) * losses + epsilon * smooth_loss
+    loss_mask = loss_mask.reshape(-1)
+    # The loss is not normalized for fair comparison
+    loss = torch.sum(losses.reshape(-1) * loss_mask) / loss_mask.sum()
+    return loss, mems, 'bert'
+
+
+def train_valid_datasets_provider(args, tokenizer):
+    """Provide train and validation datasets."""
+    train_dataset = Seq2SeqDataset(args.data_dir, split='train', tokenizer=tokenizer,
+                                   max_src_length=args.src_seq_length, max_tgt_length=args.tgt_seq_length)
+    valid_dataset = None
+    global global_tokenizer
+    global_tokenizer = tokenizer
+    return train_dataset, valid_dataset
+
+
+def main(args):
+    if args.task.lower() == 'cnn_dm':
+        finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=None,
+                 forward_step=seq2seq_forward_step)
+    else:
+        raise NotImplementedError(args.task)

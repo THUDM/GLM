@@ -159,9 +159,11 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
     args.train_iters = args.epochs * args.train_iters_per_epoch
     # Validation dataset. For this dataset, we do not need to set up
     # shuffling so we can just use a simple infinite loop.
-    valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
+    valid_dataloader = None
+    if valid_dataset is not None:
+        valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
                                           args.num_workers, drop_last=False)
-    valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
+        valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
 
     return train_dataloader, valid_dataloader
 
@@ -361,6 +363,8 @@ if __name__ == '__main__':
         from tasks.superglue.finetune import main
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
+    elif args.task.lower() in ['cnn_dm']:
+        from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
 
