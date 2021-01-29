@@ -16,11 +16,13 @@
 """Race."""
 import torch
 import mpu
+import functools
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
 from pretrain_gpt2 import get_batch
 from collections import OrderedDict
 from tasks.seq2seq.dataset import Seq2SeqDataset
+from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater
 
 global_tokenizer = None
 
@@ -30,7 +32,6 @@ def seq2seq_forward_step(data, model, args, timers, mems):
 
     # Get the batch.
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
-    breakpoint()
     # Forward model.
     logits, *mems = model(tokens, position_ids, attention_mask, *mems)
     logits, loss_mask = logits[:, args.src_seq_length:], loss_mask[:, args.src_seq_length:]
@@ -56,9 +57,31 @@ def train_valid_datasets_provider(args, tokenizer):
     return train_dataset, valid_dataset
 
 
+def metrics_func_provider(args, tokenizer, is_test):
+    """Privde metrics callback function."""
+
+    def single_dataset_provider(split):
+        return Seq2SeqDataset(args.data_dir, split, tokenizer, max_src_length=args.src_seq_length,
+                              max_tgt_length=args.tgt_seq_length)
+    evaluater = DecoderEvaluater(args, tokenizer)
+    eval_func = evaluater.evaluate
+    metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1"),
+                               "rouge-2": functools.partial(rouge_metric, metric="rouge-2"),
+                               "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
+    def output_func(predictions, examples, output):
+        for prediction in predictions:
+            output.write(prediction)
+            output.write("\n")
+        for example in examples:
+            output.write(example.text_b)
+            output.write("\n")
+    return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
+                                  output_func=output_func)
+
+
 def main(args):
     if args.task.lower() == 'cnn_dm':
-        finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=None,
+        finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:
         raise NotImplementedError(args.task)

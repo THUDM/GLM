@@ -217,7 +217,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 total_lm_loss = 0.0
 
             # Evaluation
-            if args.eval_interval and args.iteration % args.eval_interval == 0:
+            if args.eval_interval and valid_dataloader is not None and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
                 evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, step=args.iteration,
                                            verbose=False, forward_step_func=finetune_forward_step,
@@ -280,7 +280,13 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if args.load_pretrained is not None and not args.pretrained_bert:
+    if args.load is not None:
+        load_checkpoint(model, optimizer, lr_scheduler, args)
+        # This is critical when only model is loaded. We should make sure
+        # master parameters are also updated.
+        if args.fp16:
+            optimizer._model_params_to_master_params()
+    elif args.load_pretrained is not None and not args.pretrained_bert:
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module
@@ -290,12 +296,6 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         if not isinstance(module, GPT2Model):
             module = module.model
         load_checkpoint(module, optimizer, lr_scheduler, args)
-        # This is critical when only model is loaded. We should make sure
-        # master parameters are also updated.
-        if args.fp16:
-            optimizer._model_params_to_master_params()
-    elif args.load is not None:
-        load_checkpoint(model, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:

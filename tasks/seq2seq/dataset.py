@@ -17,6 +17,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             filename = "test"
         else:
             raise NotImplementedError(split)
+        self.dataset_name = split
         source_texts, target_texts = [], []
         with open(os.path.join(data_dir, f"{filename}.source")) as file:
             for line in file:
@@ -50,6 +51,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             sep = len(source_tokens)
             position_ids = list(range(len(source_tokens)))
             block_position_ids = [0] * len(source_tokens)
+            mask_pos = source_tokens.index(mask_id)
             if split == 'train':
                 target_tokens = tokenizer.EncodeAsIds(" " + target_text).tokenization
                 target_tokens = target_tokens + [eop_id]
@@ -63,7 +65,6 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                 tokens = source_tokens + [sop_id] + target_tokens[:-1]
                 loss_mask = [0] * len(source_tokens) + loss_mask
                 target_ids = [0] * len(source_tokens) + target_tokens
-                mask_pos = source_tokens.index(mask_id)
                 position_ids += [mask_pos] * len(target_tokens)
                 block_position_ids += list(range(1, len(target_tokens) + 1))
                 position_ids = [position_ids, block_position_ids]
@@ -73,7 +74,10 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                           "position_id": np.array(position_ids, dtype=np.int64)}
                 self.samples.append(sample)
             else:
-                tokens = source_tokens
+                tokens = source_tokens + [sop_id]
+                position_ids = position_ids + [mask_pos]
+                block_position_ids = block_position_ids + [1]
+                position_ids = [position_ids, block_position_ids]
                 sample = {'text': np.array(tokens, dtype=np.int64), 'attention_mask': np.array(sep, dtype=np.int64),
                           "position_id": np.array(position_ids, dtype=np.int64)}
                 self.samples.append(sample)

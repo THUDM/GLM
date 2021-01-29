@@ -729,7 +729,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
             get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
-    def forward(self, hidden_states, position_ids, attention_mask, memory_states=None, encoder_states=None):
+    def forward(self, hidden_states, position_ids, attention_mask, memory_states=None, encoder_states=None,
+                return_memory=False):
         batch_size, query_length = hidden_states.size()[:2]
         memory_length = memory_states[0].size(1) if memory_states else 0
         key_length = query_length + memory_length
@@ -754,7 +755,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                     mask = ids < sep.view(-1, 1)
                     m = m.masked_fill(mask.unsqueeze(1).expand_as(m), 1)
                 if memory_length > 0:
-                    m = torch.cat((hidden_states.new_ones((1, seq_length, memory_length)), m), dim=2)
+                    m = torch.cat((hidden_states.new_ones((batch_size, seq_length, memory_length)), m), dim=2)
                 m = m.unsqueeze(1)
                 return m
 
@@ -785,7 +786,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
             hidden_states = hidden_states + type_embeddings
         hidden_states = self.embedding_dropout(hidden_states)
 
-        if self.max_memory_length > 0:
+        if self.max_memory_length > 0 or return_memory:
             mem_layers = [hidden_states.detach()]
         else:
             mem_layers = []
@@ -801,7 +802,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 for i, layer in enumerate(layers_):
                     mem_i_ = mems_[i] if mems_ else None
                     x_ = layer(x_, *inputs, mem=mem_i_)
-                    if self.max_memory_length > 0:
+                    if self.max_memory_length > 0 or return_memory:
                         mem_layers.append(x_.detach())
                 return x_
 
@@ -830,20 +831,22 @@ class GPT2ParallelTransformer(torch.nn.Module):
                     args += [position_embeddings, self.r_w_bias, self.r_r_bias]
                 mem_i = memory_states[i] if memory_states else None
                 hidden_states = layer(*args, mem=mem_i)
-                if self.max_memory_length > 0:
+                if self.max_memory_length > 0 or return_memory:
                     mem_layers.append(hidden_states.detach())
 
         # Final layer norm.
         output = self.final_layernorm(hidden_states)
-        if self.max_memory_length > 0:
-            mem_layers = self.update_mems(mem_layers, memory_states)
+        if self.max_memory_length > 0 or return_memory:
+            mem_layers = self.update_mems(mem_layers, memory_states, return_memory=return_memory)
 
         return (output, mem_layers)
 
-    def update_mems(self, hiddens, mems):
+    def update_mems(self, hiddens, mems, return_memory=False):
         memory_length = mems[0].size(1) if mems else 0
         query_length = hiddens[0].size(1)
-        new_memory_length = min(self.max_memory_length, memory_length + query_length)
+        new_memory_length = memory_length + query_length
+        if not return_memory:
+            new_memory_length = min(self.max_memory_length, new_memory_length)
         new_mems = []
         with torch.no_grad():
             for i in range(len(hiddens)):

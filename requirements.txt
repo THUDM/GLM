@@ -19,3 +19,4 @@ scipy
 tqdm
 tensorboardX
 filelock
+rouge

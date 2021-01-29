@@ -307,7 +307,7 @@ class BeamSearchScorer(BeamScorer):
             if sent_lengths[i] < sent_max_len:
                 decoded[i, sent_lengths[i]] = eos_token_id
             mems.append(mem)
-        mems = [torch.cat([mem[i] for mem in mems], dim=0) for i in range(len(mems[0]))] if mems[0] else None
+        mems = [torch.cat([mem[i] for mem in mems], dim=0) for i in range(len(mems[0]))] if mems and mems[0] else None
         return decoded, mems
 
 
