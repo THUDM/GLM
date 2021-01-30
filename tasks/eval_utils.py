@@ -82,8 +82,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             if output_predictions and torch.distributed.get_rank() == 0:
                 save_dir = args.load if args.load is not None else args.log_dir
                 filename = os.path.join(save_dir, name + '.jsonl')
-                with open(filename, "w") as output:
-                    output_func(predictions, examples, output)
+                output_func(predictions, examples, filename)
             total_count = len(predictions)
             single_dict = {key: metric(predictions, labels, examples) for key, metric in metric_dict.items()}
             output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total_count)

@@ -70,13 +70,15 @@ def metrics_func_provider(args, tokenizer, is_test):
                                "rouge-2": functools.partial(rouge_metric, metric="rouge-2"),
                                "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
 
-    def output_func(predictions, examples, output):
-        for prediction in predictions:
-            output.write(prediction)
-            output.write("\n")
-        for example in examples:
-            output.write(example.text_b)
-            output.write("\n")
+    def output_func(predictions, examples, output_file):
+        with open(output_file + ".hyps", "w") as output:
+            for prediction in predictions:
+                output.write(prediction)
+                output.write("\n")
+        with open(output_file + ".refs", "w") as output:
+            for example in examples:
+                output.write(example.text_b)
+                output.write("\n")
 
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
                                   output_func=output_func, only_rank0=False)

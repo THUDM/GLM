@@ -36,7 +36,8 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         for idx, (source_text, target_text) in enumerate(tqdm(zip(source_texts, target_texts))):
             guid = "%s-%s" % (split, idx)
             source_truncated, target_truncated = False, False
-            example = InputExample(guid=guid, text_a=source_text, text_b=target_text)
+            meta = {"ref": tokenizer.DecodeIds(tokenizer.EncodeAsIds(target_text).tokenization)}
+            example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
             self.examples[guid] = example
             source_tokens = tokenizer.EncodeAsIds(source_text).tokenization
             source_tokens = [cls_id] + source_tokens

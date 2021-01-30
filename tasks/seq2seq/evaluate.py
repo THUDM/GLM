@@ -11,7 +11,7 @@ from rouge import Rouge
 
 def rouge_metric(predictions, labels, examples, metric="rouge-1"):
     rouge = Rouge()
-    refs = [example.text_b for example in examples]
+    refs = [example.meta["ref"] for example in examples]
     scores = rouge.get_scores(predictions, refs, avg=True)
     return scores[metric.lower()]["f"]
 
@@ -43,8 +43,6 @@ class DecoderEvaluater:
         """Calculate correct over total answers and return prediction if the
         `output_predictions` is true."""
         model.eval()
-        print_rank_0(f"/tmp/seq2seq_{args.experiment_name}")
-        print_rank_0(mpu.get_data_parallel_world_size())
         store = torch.distributed.FileStore(f"/tmp/seq2seq_{args.experiment_name}", mpu.get_data_parallel_world_size())
         print_rank_0("Distributed store created")
         with torch.no_grad():
