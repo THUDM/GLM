@@ -730,22 +730,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
             get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
-    def extend_position_embeddings(self, length):
-        if not self.relative_encoding:
-            original_length = self.position_embeddings.num_embeddings
-            assert original_length <= length
-            position_embeddings = torch.nn.Embedding(length, self.hidden_size)
-            position_embeddings.weight.data[:original_length] = self.position_embeddings.weight.data
-            self.position_embeddings = position_embeddings
-            if self.block_position_encoding:
-                original_length = self.block_position_embeddings.num_embeddings
-                assert original_length <= length
-                block_position_embeddings = torch.nn.Embedding(length, self.hidden_size)
-                block_position_embeddings.weight.data[:original_length] = self.block_position_embeddings.weight.data
-                self.block_position_embeddings = block_position_embeddings
-            if torch.distributed.get_rank() == 0:
-                print(f"Extend position embedding from {original_length} to {length}")
-
     def forward(self, hidden_states, position_ids, attention_mask, memory_states=None, encoder_states=None,
                 return_memory=False):
         batch_size, query_length = hidden_states.size()[:2]

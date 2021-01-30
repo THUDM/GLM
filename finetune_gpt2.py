@@ -280,20 +280,17 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if (args.load_pretrained is not None and not args.pretrained_bert and not args.load) or (
-            args.src_seq_length > args.max_position_embeddings):
+    if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module
         if isinstance(module, FP16_Module):
             module = module.module
-        args.load = args.load_pretrained
         if not isinstance(module, GPT2Model):
             module = module.model
-        if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
-            load_checkpoint(module, optimizer, lr_scheduler, args)
-        if args.src_seq_length > args.max_position_embeddings:
-            module.extend_position_embeddings(args.src_seq_length)
+        args.load = args.load_pretrained
+        load_checkpoint(module, optimizer, lr_scheduler, args)
+        args.load = None
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:

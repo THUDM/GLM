@@ -345,6 +345,28 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
 
         # Model.
         try:
+            def extend_embedding_weights(state_weights, model_weights):
+                original_length = state_weights.shape[0]
+                assert original_length <= args.max_position_embeddings + 1
+                new_weights = model_weights.clone()
+                new_weights[:original_length] = state_weights
+                return new_weights
+
+            if args.block_lm:
+                if "transformer.block_position_embeddings.weight" in sd["module"]:
+                    position_weights = sd['module']["transformer.position_embeddings.weight"]
+                    if args.max_position_embeddings + 1 > position_weights.shape[0]:
+                        sd['module']["transformer.position_embeddings.weight"] = extend_embedding_weights(
+                            position_weights, model.state_dict()["transformer.position_embeddings.weight"].data)
+                        print_rank_0(f"Extend position embedding to {args.max_position_embeddings + 1}")
+                if "transformer.block_position_embeddings.weight" in sd["module"]:
+                    block_position_weights = sd['module']["transformer.block_position_embeddings.weight"]
+                    if args.max_position_embeddings + 1 > block_position_weights.shape[0]:
+                        sd['module']["transformer.block_position_embeddings.weight"] = extend_embedding_weights(
+                            block_position_weights,
+                            model.state_dict()["transformer.block_position_embeddings.weight"].data)
+                        print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
+
             model.load_state_dict(sd['module'])
         except KeyError:
             print_rank_0('A metadata file exists but unable to load model '
