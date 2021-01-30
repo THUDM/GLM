@@ -71,7 +71,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                 sample = {'text': np.array(tokens, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
                           'attention_mask': np.array(sep, dtype=np.int64),
                           'loss_mask': np.array(loss_mask, dtype=np.int64),
-                          "position_id": np.array(position_ids, dtype=np.int64)}
+                          "position_id": np.array(position_ids, dtype=np.int64), "uid": guid}
                 self.samples.append(sample)
             else:
                 tokens = source_tokens + [sop_id]
@@ -79,7 +79,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                 block_position_ids = block_position_ids + [1]
                 position_ids = [position_ids, block_position_ids]
                 sample = {'text': np.array(tokens, dtype=np.int64), 'attention_mask': np.array(sep, dtype=np.int64),
-                          "position_id": np.array(position_ids, dtype=np.int64)}
+                          "position_id": np.array(position_ids, dtype=np.int64), "uid": guid}
                 self.samples.append(sample)
             if source_truncated:
                 num_source_truncated += 1

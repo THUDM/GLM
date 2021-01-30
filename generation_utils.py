@@ -15,7 +15,7 @@
 
 from abc import ABC, abstractmethod
 from collections import UserDict
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Iterable
 
 import torch
 
@@ -357,3 +357,105 @@ class BeamHypotheses:
             cur_score = best_sum_logprobs / cur_len ** self.length_penalty
             ret = self.worst_score >= cur_score
             return ret
+
+
+class LogitsProcessor(ABC):
+    """Abstract base class for all logit processors that can be applied during generation."""
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        """Torch method for processing logits."""
+        raise NotImplementedError(
+            f"{self.__class__} is an abstract class. Only classes inheriting this class can be called."
+        )
+
+
+class LogitsProcessorList(list):
+    """
+    This class can be used to create a list of :class:`~transformers.LogitsProcessor` or
+    :class:`~transformers.LogitsWarper` to subsequently process a :obj:`scores` input tensor. This class inherits from
+    list and adds a specific `__call__` method to apply each :class:`~transformers.LogitsProcessor` or
+    :class:`~transformers.LogitsProcessor` to the inputs.
+    """
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        for processor in self:
+            scores = processor(input_ids, scores)
+        return scores
+
+
+class MinLengthLogitsProcessor(LogitsProcessor):
+    r"""
+    :class:`transformers.LogitsProcessor` enforcing a min-length by setting EOS probability to 0.
+
+    Args:
+        min_length (:obj:`int`):
+            The minimum length below which the score of :obj:`eos_token_id` is set to :obj:`-float("Inf")`.
+        eos_token_id (:obj:`int`):
+            The id of the `end-of-sequence` token.
+    """
+
+    def __init__(self, min_length: int, eos_token_id: int):
+        if not isinstance(min_length, int) or min_length < 0:
+            raise ValueError(f"`min_length` has to be a positive integer, but is {min_length}")
+
+        if not isinstance(eos_token_id, int) or eos_token_id < 0:
+            raise ValueError(f"`eos_token_id` has to be a positive integer, but is {eos_token_id}")
+
+        self.min_length = min_length
+        self.eos_token_id = eos_token_id
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        cur_len = input_ids.shape[-1]
+        if cur_len < self.min_length:
+            scores[:, self.eos_token_id] = -float("inf")
+        return scores
+
+
+class NoRepeatNGramLogitsProcessor(LogitsProcessor):
+    r"""
+    :class:`transformers.LogitsProcessor` that enforces no repetition of n-grams. See `Fairseq
+    <https://github.com/pytorch/fairseq/blob/a07cb6f40480928c9e0548b737aadd36ee66ac76/fairseq/sequence_generator.py#L345>`__.
+
+    Args:
+        ngram_size (:obj:`int`):
+            All ngrams of size :obj:`ngram_size` can only occur once.
+    """
+
+    def __init__(self, ngram_size: int):
+        if not isinstance(ngram_size, int) or ngram_size <= 0:
+            raise ValueError(f"`ngram_size` has to be a strictly positive integer, but is {ngram_size}")
+        self.ngram_size = ngram_size
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        num_batch_hypotheses = scores.shape[0]
+        cur_len = input_ids.shape[-1]
+        banned_batch_tokens = self._calc_banned_ngram_tokens(input_ids, num_batch_hypotheses, cur_len)
+
+        for i, banned_tokens in enumerate(banned_batch_tokens):
+            scores[i, banned_tokens] = -float("inf")
+
+        return scores
+
+    def _calc_banned_ngram_tokens(
+            self, prev_input_ids: torch.Tensor, num_hypos: int, cur_len: int
+    ) -> List[Iterable[int]]:
+        """Copied from fairseq for no_repeat_ngram in beam_search"""
+        if cur_len + 1 < self.ngram_size:
+            # return no banned tokens if we haven't generated no_repeat_ngram_size tokens yet
+            return [[] for _ in range(num_hypos)]
+        generated_ngrams = [{} for _ in range(num_hypos)]
+        for idx in range(num_hypos):
+            gen_tokens = prev_input_ids[idx].tolist()
+            generated_ngram = generated_ngrams[idx]
+            for ngram in zip(*[gen_tokens[i:] for i in range(self.ngram_size)]):
+                prev_ngram_tuple = tuple(ngram[:-1])
+                generated_ngram[prev_ngram_tuple] = generated_ngram.get(prev_ngram_tuple, []) + [ngram[-1]]
+
+        def _get_generated_ngrams(hypo_idx):
+            # Before decoding the next token, prevent decoding of ngrams that have already appeared
+            start_idx = cur_len + 1 - self.ngram_size
+            ngram_idx = tuple(prev_input_ids[hypo_idx, start_idx:cur_len].tolist())
+            return generated_ngrams[hypo_idx].get(ngram_idx, [])
+
+        banned_tokens = [_get_generated_ngrams(hypo_idx) for hypo_idx in range(num_hypos)]
+        return banned_tokens

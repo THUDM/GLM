@@ -1,6 +1,10 @@
+import datetime
 import torch
 import torch.nn.functional as F
-from generation_utils import BeamSearchScorer
+import mpu
+from utils import print_rank_0
+from generation_utils import BeamSearchScorer, LogitsProcessorList, MinLengthLogitsProcessor, \
+    NoRepeatNGramLogitsProcessor
 from pretrain_gpt2 import get_batch
 from rouge import Rouge
 
@@ -27,16 +31,25 @@ class DecoderEvaluater:
         self.end_token = tokenizer.get_command('eop').Id
         self.mask_token = tokenizer.get_command('MASK').Id
         self.pad_token = tokenizer.get_command('pad').Id
+        self.processors = LogitsProcessorList()
+        if args.min_tgt_length > 0:
+            processor = MinLengthLogitsProcessor(args.min_tgt_length, self.end_token)
+            self.processors.append(processor)
+        if args.no_repeat_ngram_size > 0:
+            processor = NoRepeatNGramLogitsProcessor(args.no_repeat_ngram_size)
+            self.processors.append(processor)
 
     def evaluate(self, model, dataloader, example_dict, args):
         """Calculate correct over total answers and return prediction if the
         `output_predictions` is true."""
         model.eval()
+        print_rank_0(f"/tmp/seq2seq_{args.experiment_name}")
+        print_rank_0(mpu.get_data_parallel_world_size())
+        store = torch.distributed.FileStore(f"/tmp/seq2seq_{args.experiment_name}", mpu.get_data_parallel_world_size())
+        print_rank_0("Distributed store created")
         with torch.no_grad():
             # For all the batches in the dataset.
-            predictions, examples = [], []
-            breakpoint()
-            for _, data in enumerate(dataloader):
+            for idx, data in enumerate(dataloader):
                 tokens, attention_mask, position_ids = process_batch(data, args)
                 batch_size = tokens.size(0)
                 beam_scorer = BeamSearchScorer(
@@ -52,7 +65,7 @@ class DecoderEvaluater:
                 beam_scores = beam_scores.view((batch_size * args.num_beams,))
                 # Run the model forward.
                 counter = 0
-                while counter < args.out_seq_length:
+                while counter < args.tgt_seq_length:
                     if counter == 0:
                         next_token_logits, *mems = model(tokens, position_ids, attention_mask, return_memory=True)
                         seq_length = next_token_logits.size(1)
@@ -75,6 +88,7 @@ class DecoderEvaluater:
                                                          return_memory=True)
                         next_token_logits = next_token_logits[:, -1]
                     next_token_scores = F.log_softmax(next_token_logits, dim=-1)
+                    next_token_scores = self.processors(tokens, next_token_scores)
                     next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
                     vocab_size = next_token_scores.shape[-1]
                     next_token_scores = next_token_scores.view(batch_size, args.num_beams * vocab_size)
@@ -107,13 +121,22 @@ class DecoderEvaluater:
                     counter += 1
                 tokens, _ = beam_scorer.finalize(tokens, beam_scores, next_tokens, next_indices,
                                                  eos_token_id=self.end_token, pad_token_id=self.pad_token)
-                prediction = [self.tokenizer.DecodeIds(text) for text in tokens.tolist()]
-                predictions.extend(prediction)
+                predictions = []
+                for text in tokens.tolist():
+                    text = [token for token in text if token not in [self.end_token, self.pad_token]]
+                    text = self.tokenizer.DecodeIds(text)
+                    predictions.append(text)
                 uid_list = data['uid']
                 if isinstance(uid_list, torch.Tensor):
                     uid_list = uid_list.cpu().numpy().tolist()
-                if example_dict is not None:
-                    example_batch = [example_dict[uid] for uid in uid_list]
-                    examples.extend(example_batch)
+                for uid, prediction in zip(uid_list, predictions):
+                    store.set(uid, prediction)
+                if (idx + 1) % args.log_interval == 0:
+                    print_rank_0(f"Iteration {idx + 1} / {len(dataloader)}")
         model.train()
+        torch.distributed.barrier()
+        predictions, examples = [], []
+        for uid, example in example_dict.items():
+            predictions.append(store.get(uid).decode('utf-8'))
+            examples.append(example)
         return predictions, [], examples

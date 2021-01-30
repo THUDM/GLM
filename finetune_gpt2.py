@@ -326,14 +326,14 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             args.load = os.path.join(args.save, str(best_iteration))
             load_checkpoint(model, optimizer, lr_scheduler, args)
             args.load = None
-        if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
+        if end_of_train_callback is not None:
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
     # Or just evaluate.
     else:
-        if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
+        if end_of_train_callback is not None:
             print_rank_0('evaluation only mode, setting epoch to -1')
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
-    if score_dict is not None:
+    if score_dict is not None and torch.distributed.get_rank() == 0:
         score_dict.update({"type": "test"})
         with open(os.path.join(args.log_dir, "results.json"), "a") as output:
             output.write(json.dumps(score_dict) + "\n")

@@ -46,10 +46,11 @@ def f1_macro_metric(predictions, labels, examples):
     return f1_score(labels, predictions, average='macro')
 
 
-def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False, eval_func=None, output_func=None):
+def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False, eval_func=None, output_func=None,
+                           only_rank0=True):
     """Provide function that calculates accuracies."""
     # Build dataloaders.
-    if torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
+    if only_rank0 and torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
         return None
     if is_test:
         datapaths = args.test_data if args.test_data is not None else ['test']
@@ -63,7 +64,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
         dataset = single_dataset_provider(datapath)
         dataloader = build_data_loader(
             dataset, eval_batch_size, num_workers=args.num_workers,
-            drop_last=False, shuffle=False, only_rank0=True)
+            drop_last=False, shuffle=False, only_rank0=only_rank0)
         dataloaders.append((dataset.dataset_name, dataloader))
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):

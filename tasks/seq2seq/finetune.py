@@ -63,11 +63,13 @@ def metrics_func_provider(args, tokenizer, is_test):
     def single_dataset_provider(split):
         return Seq2SeqDataset(args.data_dir, split, tokenizer, max_src_length=args.src_seq_length,
                               max_tgt_length=args.tgt_seq_length)
+
     evaluater = DecoderEvaluater(args, tokenizer)
     eval_func = evaluater.evaluate
     metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1"),
                                "rouge-2": functools.partial(rouge_metric, metric="rouge-2"),
                                "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
+
     def output_func(predictions, examples, output):
         for prediction in predictions:
             output.write(prediction)
@@ -75,8 +77,9 @@ def metrics_func_provider(args, tokenizer, is_test):
         for example in examples:
             output.write(example.text_b)
             output.write("\n")
+
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
-                                  output_func=output_func)
+                                  output_func=output_func, only_rank0=False)
 
 
 def main(args):
