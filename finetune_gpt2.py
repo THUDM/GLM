@@ -162,7 +162,7 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
     valid_dataloader = None
     if valid_dataset is not None:
         valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
-                                          args.num_workers, drop_last=False)
+                                              args.num_workers, drop_last=False)
         valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
 
     return train_dataloader, valid_dataloader
@@ -280,13 +280,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if args.load is not None:
-        load_checkpoint(model, optimizer, lr_scheduler, args)
-        # This is critical when only model is loaded. We should make sure
-        # master parameters are also updated.
-        if args.fp16:
-            optimizer._model_params_to_master_params()
-    elif args.load_pretrained is not None and not args.pretrained_bert:
+    if (args.load_pretrained is not None and not args.pretrained_bert and not args.load) or (
+            args.src_seq_length > args.max_position_embeddings):
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module
@@ -295,7 +290,16 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         args.load = args.load_pretrained
         if not isinstance(module, GPT2Model):
             module = module.model
-        load_checkpoint(module, optimizer, lr_scheduler, args)
+        if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
+            load_checkpoint(module, optimizer, lr_scheduler, args)
+        if args.src_seq_length > args.max_position_embeddings:
+            module.extend_position_embeddings(args.src_seq_length)
+        # This is critical when only model is loaded. We should make sure
+        # master parameters are also updated.
+        if args.fp16:
+            optimizer._model_params_to_master_params()
+    if args.load is not None:
+        load_checkpoint(model, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:

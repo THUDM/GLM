@@ -107,6 +107,8 @@ class GPT2Model(torch.nn.Module):
         else:
             return (logits, *hidden_layers)
 
+    def extend_position_embeddings(self, length):
+        self.transformer.extend_position_embeddings(length)
 
 class EncoderDecoder(torch.nn.Module):
     """Seq2Seq Transformer Model
