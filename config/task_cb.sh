@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-CB
+EXPERIMENT_NAME=blocklm-base-generation-CB
 TASK_NAME=cb
 DATA_PATH="/root/data/superglue/CB"
 MAX_SEQ_LEN=256

@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-wic
+EXPERIMENT_NAME=blocklm-base-generation-wic
 TASK_NAME=wic
 DATA_PATH="/root/data/superglue/WiC"
 MAX_SEQ_LEN=256

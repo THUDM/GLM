@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-WSC
+EXPERIMENT_NAME=blocklm-base-generation-WSC
 TASK_NAME=wsc
 DATA_PATH="/root/data/superglue/WSC"
 MAX_SEQ_LEN=128

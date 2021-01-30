@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-MultiRC
+EXPERIMENT_NAME=blocklm-base-generation-MultiRC
 TASK_NAME=multirc
 DATA_PATH="/root/data/superglue/MultiRC"
 MAX_SEQ_LEN=512

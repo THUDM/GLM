@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-rte
+EXPERIMENT_NAME=blocklm-base-generation-rte
 TASK_NAME=RTE
 DATA_PATH="/root/data/superglue/RTE"
 MAX_SEQ_LEN=256

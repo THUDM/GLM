@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-boolq
+EXPERIMENT_NAME=blocklm-base-generation-boolq
 TASK_NAME=BoolQ
 DATA_PATH="/root/data/superglue/BoolQ"
 MAX_SEQ_LEN=256

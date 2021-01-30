@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=blank-base-copa
+EXPERIMENT_NAME=blocklm-base-generation-copa
 TASK_NAME=COPA
 DATA_PATH="/root/data/superglue/COPA"
 MAX_SEQ_LEN=256
