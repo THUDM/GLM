@@ -822,8 +822,8 @@ class BertWordPieceTokenizer(Tokenizer):
         for Id in Ids:
             if Id in self.command_id_map:
                 Tokens.append(self.command_id_map[Id].token)
-            else:
-                Tokens.append(self.text_tokenizer.ids_to_tokens[Id] if Id != -1 else '-1')
+            elif Id in self.text_tokenizer.ids_to_tokens:
+                Tokens.append(self.text_tokenizer.ids_to_tokens[Id])
         new_tokens = []
         for token in Tokens:
             if token.startswith('##') and len(new_tokens) > 0:
