@@ -52,7 +52,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
     # Build dataloaders.
     if only_rank0 and torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
         return None
-    if is_test:
+    if is_test and not args.eval_valid:
         datapaths = args.test_data if args.test_data is not None else ['test']
     else:
         datapaths = args.valid_data if args.valid_data is not None else ['dev']
@@ -80,8 +80,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             predictions, labels, examples = eval_func(model, dataloader, example_dict, args)
             elapsed_time = time.time() - start_time
             if output_predictions and torch.distributed.get_rank() == 0:
-                save_dir = args.load if args.load is not None else args.log_dir
-                filename = os.path.join(save_dir, name + '.jsonl')
+                filename = os.path.join(args.log_dir, name + '.jsonl')
                 output_func(predictions, examples, filename)
             total_count = len(predictions)
             single_dict = {key: metric(predictions, labels, examples) for key, metric in metric_dict.items()}
