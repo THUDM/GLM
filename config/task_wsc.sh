@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-WSC
 TASK_NAME=wsc
 DATA_PATH="/root/data/superglue/WSC"

@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-record
 TASK_NAME=ReCoRD
 DATA_PATH="/root/data/superglue/ReCoRD"

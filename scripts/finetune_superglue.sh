@@ -1,3 +1,4 @@
+source config/model_blocklm.sh
 source $1
 
 CHECKPOINT_PATH="/root/data/checkpoints"

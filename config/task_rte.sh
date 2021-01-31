@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-rte
 TASK_NAME=RTE
 DATA_PATH="/root/data/superglue/RTE"
