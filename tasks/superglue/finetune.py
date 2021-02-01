@@ -55,7 +55,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     output_func = get_output_func(args.task.lower())
     eval_func = None
-    if args.task.lower() == 'wsc':
+    if args.task.lower() == 'wsc' and args.cloze_eval:
         from tasks.language_model.finetune import classify_evaluate
         eval_func = classify_evaluate
     metric_dict = OrderedDict(default_metrics[args.task.lower()])

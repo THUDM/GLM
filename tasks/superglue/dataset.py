@@ -54,7 +54,10 @@ class GlueDataset(Dataset):
         elif split == TEST_SET:
             examples = processor.get_test_examples(data_dir)
         elif split == TRAIN_SET:
-            examples = processor.get_train_examples(data_dir)
+            if task_name == "wsc":
+                examples = processor.get_train_examples(data_dir, cloze_eval=cloze_format)
+            else:
+                examples = processor.get_train_examples(data_dir)
         elif split == UNLABELED_SET:
             examples = processor.get_unlabeled_examples(data_dir)
             for example in examples:
@@ -82,7 +85,6 @@ class GlueDataset(Dataset):
                 sample = processor.encode(example, tokenizer, max_seq_length, for_bert=for_bert)
                 self.samples.append(sample)
             print_rank_0(f"Truncate {processor.num_truncated} examples")
-
         print_rank_0(f"Creating {len(self.samples)} samples")
         self.examples = {example.guid: example for example in examples}
 
@@ -281,8 +283,8 @@ class WicProcessor(DataProcessor):
 class WscProcessor(DataProcessor):
     """Processor for the WSC data set."""
 
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
+    def get_train_examples(self, data_dir, cloze_eval=True):
+        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train", cloze_eval=cloze_eval)
 
     def get_dev_examples(self, data_dir, for_train=False):
         return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
@@ -308,7 +310,7 @@ class WscProcessor(DataProcessor):
         return text_a, text_b
 
     @staticmethod
-    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+    def _create_examples(path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
         examples = []
 
         with open(path, encoding='utf8') as f:
@@ -359,7 +361,7 @@ class WscProcessor(DataProcessor):
                 meta['span1_index'], meta['span2_index'] = span1_index, span2_index
 
                 example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
-                if set_type == 'train' and label != 'True':
+                if cloze_eval and set_type == 'train' and label != 'True':
                     continue
                 examples.append(example)
 
