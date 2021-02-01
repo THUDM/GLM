@@ -65,7 +65,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 def main(args):
     model_kwargs = {}
-    if args.task.lower() == 'wsc':
+    if args.task.lower() == 'wsc' and args.cloze_eval:
         from tasks.language_model.finetune import lm_forward_step
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
