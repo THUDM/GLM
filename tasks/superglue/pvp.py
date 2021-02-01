@@ -418,7 +418,7 @@ class RtePVP(PVP):
         text_b = example.text_b.rstrip(string.punctuation)
 
         if self.pattern_id == 0:
-            return ['"', self.shortenable(text_b), '" ?'], [self.mask, self.shortenable(', "' + text_a + '"')]
+            return ['"', self.shortenable(text_b), '" ?'], [self.mask, ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:
             return [self.shortenable(text_b), '?'], [self.mask, ',', self.shortenable(" " + text_a)]
         if self.pattern_id == 2:
