@@ -23,7 +23,7 @@ from utils import print_rank_0
 import mpu
 from tasks.data_utils import build_data_loader
 
-from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset
+from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset, build_lm_dataset
 from pretrain_gpt2 import get_batch
 from finetune_gpt2 import finetune
 
@@ -112,8 +112,8 @@ def evaluate(model, dataloader, eval_metric, args):
     """Evaluation."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
-    ids, predictions = [], []
     total_output, total_count = 0.0, 0
+    total_tokens = 0
     with torch.no_grad():
         # For all the batches in the dataset.
         for iteration, batch in enumerate(dataloader):
@@ -129,7 +129,8 @@ def evaluate(model, dataloader, eval_metric, args):
 
             total_output += output.item()
             total_count += count.item()
-
+            total_tokens += batch['loss_mask'].sum().item()
+    print(total_tokens)
     return {eval_metric: total_output}, total_count
 
 
@@ -182,11 +183,14 @@ def metrics_func_provider(args, tokenizer, is_test):
     elif args.task == 'wikitext':
         eval_metric = 'loss'
         dataset = build_wikitext103_dataset(tokenizer, args)
+    elif args.task == 'language_model':
+        eval_metric = 'loss'
+        dataset = build_lm_dataset(tokenizer, args)
     else:
         raise NotImplementedError('{} task is not implemented.'.format(args.task))
     # Data stuff
     dataloader = build_data_loader(dataset, args.eval_batch_size,
-                                   args.num_workers, drop_last=False)
+                                   args.num_workers, drop_last=False, shuffle=False)
 
     def metrics_func(model, epoch, output_predictions=False, summary_writer=None):
         return evaluate_and_print_results(dataloader, model, eval_metric=eval_metric, args=args)

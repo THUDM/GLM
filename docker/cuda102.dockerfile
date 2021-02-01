@@ -131,6 +131,7 @@ RUN pip install psutil \
                 nvidia-ml-py3 \
                 mpi4py \
                 nltk \
+                rouge \
                 filelock \
                 cupy-cuda102
 

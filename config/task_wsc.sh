@@ -1,8 +1,8 @@
-EXPERIMENT_NAME=blocklm-base-generation-WSC
+source config/model_blocklm.sh
+EXPERIMENT_NAME=${MODEL_TYPE}-WSC
 TASK_NAME=wsc
 DATA_PATH="/root/data/superglue/WSC"
 MAX_SEQ_LEN=128
-source config/task_blocklm.sh
 
 TRAIN_ARGS="--epochs 20 \
             --batch-size 8 \

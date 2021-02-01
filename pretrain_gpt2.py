@@ -479,7 +479,13 @@ def get_train_val_test_data(args, tokenizer):
     # Data loader only on rank 0 of each model parallel group.
     if mpu.get_model_parallel_rank() == 0:
         data_config = configure_data()
-        data_config.set_defaults(data_set_type='Block' if args.block_lm else 'GPT2', transpose=False)
+        if args.block_lm:
+            data_set_type = "Block"
+        elif args.transformer_xl:
+            data_set_type = "GPT-XL"
+        else:
+            data_set_type = "GPT2"
+        data_config.set_defaults(data_set_type=data_set_type, transpose=False)
         train_data, val_data, test_data = data_config.apply(args, tokenizer)
 
         data_counts = torch.cuda.LongTensor([int(args.do_train), int(args.do_valid), int(args.do_test)])

@@ -63,8 +63,8 @@ def qa_evaluate(predictions, labels, examples: List[InputExample], metric):
     for example, prediction in zip(examples, predictions):
         ground_truths = example.meta["answers"]
         prediction = example.meta["candidates"][prediction]
-
-        score += metric_max_over_ground_truths(metric, prediction, ground_truths)
+        if ground_truths:
+            score += metric_max_over_ground_truths(metric, prediction, ground_truths)
     score = 100.0 * score / len(predictions)
     return score
 

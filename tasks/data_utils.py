@@ -185,6 +185,34 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     return ids, types, paddings, position_ids, sep, target_ids, loss_masks
 
 
+def build_decoder_input(enc_ids, answer_ids, max_dec_seq_length, tokenizer):
+    mask_id = tokenizer.get_command('MASK').Id
+    eos_id = tokenizer.get_command('eos').Id
+    sop_id = tokenizer.get_command('sop').Id
+    sep = len(enc_ids)
+    mask_position = enc_ids.index(mask_id)
+    len_answer = len(answer_ids)
+    ids = [sop_id] + answer_ids[:-1]
+    types = [0] * len_answer # not used
+    paddings = [1] * len_answer
+    position_ids = [mask_position] * len_answer
+    block_position_ids = list(range(1, len_answer + 1))
+    target_ids = answer_ids
+    loss_masks = [1] * len_answer
+    # Padding.
+    padding_length = max_dec_seq_length - len(ids)
+    if padding_length > 0:
+        ids.extend([eos_id] * padding_length)
+        types.extend([0] * padding_length)
+        paddings.extend([0] * padding_length)
+        position_ids.extend([0] * padding_length)
+        block_position_ids.extend([0] * padding_length)
+        target_ids.extend([0] * padding_length)
+        loss_masks.extend([0] * padding_length)
+    position_ids = [dec_position_ids, block_position_ids]
+    return ids, types, paddings, position_ids, sep, target_ids, loss_masks
+    
+
 def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
                  logit_mask=None):
     """Convert to numpy and return a sample consumed by the batch producer."""
@@ -213,6 +241,9 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
         sample['uid'] = unique_id
     return sample
 
+def build_decoder_sample(sample, dec_ids, dec_position_ids, dec_masks, dec_target):
+    
+    return sample
 
 def my_collate(batch):
     new_batch = [{key: value for key, value in sample.items() if key != 'uid'} for sample in batch]

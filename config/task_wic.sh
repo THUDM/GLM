@@ -1,8 +1,8 @@
-EXPERIMENT_NAME=blocklm-base-generation-wic
+source config/model_blocklm.sh
+EXPERIMENT_NAME=${MODEL_TYPE}-wic
 TASK_NAME=wic
 DATA_PATH="/root/data/superglue/WiC"
 MAX_SEQ_LEN=256
-source config/task_blocklm.sh
 
 TRAIN_ARGS="--epochs 10 \
             --batch-size 8 \

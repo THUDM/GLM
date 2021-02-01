@@ -16,6 +16,8 @@
 import os
 import math
 import time
+import random
+import torch
 
 from .samplers import DistributedBatchSampler
 from .datasets import split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
@@ -47,7 +49,7 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_dataset(name, tokenizer, pre_tokenize, local_rank):
+def get_dataset(name, tokenizer, pre_tokenize):
     """gets dataset object based on keyword args and file at `path`"""
     if supported_corpus(name):
         dataset = corpora.NAMED_CORPORA[name]
@@ -55,7 +57,7 @@ def get_dataset(name, tokenizer, pre_tokenize, local_rank):
         if issubclass(dataset, corpora.PromptReader):
             if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
                 # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
+                if torch.distributed.get_rank() == 0:
                     prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
                     text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                     writers = {'prompt': prompt_writer, 'text': text_writer}
@@ -72,11 +74,18 @@ def get_dataset(name, tokenizer, pre_tokenize, local_rank):
                                is_array=pre_tokenize)
             text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
                                          to_tokenize=not pre_tokenize)
+            if torch.distributed.get_rank() == 0:
+                print(f"Create dataset {name} with {len(text)} documents")
+                for i in range(10):
+                    rand_id = i if i < 5 else random.randrange(len(text))
+                    sample_tokens = text[rand_id]['tokens'][:1024]
+                    print(sample_tokens)
+                    print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
             return text
         elif issubclass(dataset, corpora.KeyReader):
             if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
                 # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
+                if torch.distributed.get_rank() == 0:
                     text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                     mask_writer = LazyWriter(path, data_type='mask', is_array=True)
                     writers = {'mask': mask_writer, 'text': text_writer}
@@ -101,21 +110,18 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=False,
-                 shuffle=True, split=None, tokenizer=None, non_binary_cols=None, sample_one_document=False,
-                 pre_tokenize=False, ds_type='', **kwargs):
+def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
+                 sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
+                 save_test_data=None, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
-    if non_binary_cols is not None:
-        # multilabel dataset support (only for csvs)
-        label_key = non_binary_cols
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
-        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank)
+        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize)
     else:
-        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank) for p in path]
+        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize) for p in path]
         ds = ConcatDataset(ds)
 
     # Split dataset into train/val/test (and wrap bert dataset)
@@ -123,20 +129,28 @@ def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=
         if ds_type.lower() == 'bert':
             presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
             dataset = BertSentencepairDataset(dataset, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
+        elif ds_type.lower() == 'gpt-xl':
+            assert pre_tokenize
+            dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
+                                sample_across_doc=not sample_one_document)
         elif ds_type.lower() == 'gpt2':
-            if xl_style:
-                dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                                    sample_across_doc=not sample_one_document)
-            else:
-                dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length,
-                                      sample_across_doc=not sample_one_document)
+            dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
         elif ds_type.lower() == 'block':
             dataset = BlockDataset(dataset, tokenizer, max_seq_len=seq_length,
                                    sample_across_doc=not sample_one_document)
         return dataset
 
     if should_split(split):
-        ds = split_ds(ds, split, shuffle=shuffle)
+        ds = split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits)
+        if save_test_data is not None and torch.distributed.get_rank() == 0:
+            test_ds = ds[-1]
+            with open(save_test_data, "w", encoding='utf-8') as output:
+                for data in test_ds:
+                    text = data['tokens']
+                    text = tokenizer.DecodeIds(text)
+                    output.write(text)
+                    output.write("\n")
+            print(f"Write test data to {save_test_data}")
         ds = [wrap_dataset(d) if d is not None else None for d in ds]
     else:
         ds = wrap_dataset(ds)

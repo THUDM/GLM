@@ -1,11 +1,11 @@
-EXPERIMENT_NAME=blocklm-base-generation-record
+source config/model_blocklm_generation.sh
+EXPERIMENT_NAME=${MODEL_TYPE}-record
 TASK_NAME=ReCoRD
 DATA_PATH="/root/data/superglue/ReCoRD"
 MAX_SEQ_LEN=512
-source config/task_blocklm.sh
 
 TRAIN_ARGS="--epochs 4 \
-            --batch-size 8 \
+            --batch-size 4 \
             --lr 1e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \

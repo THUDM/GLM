@@ -21,27 +21,9 @@ import tqdm
 from multiprocessing import Queue, Process
 from torch.utils import data
 from .lazy_loader import LazyLoader
+from utils import print_rank_0
 
 NUM_PROCESSES = 40
-
-
-class webtext(json_dataset):
-    """
-    dataset for webtext with arguments configured for convenience
-
-    command line usage: `--train-data webtext`
-    """
-    PATH = 'data/webtext/data.json'
-    assert_str = "make sure to set PATH for webtext data_utils/corpora.py"
-
-    def __init__(self, **kwargs):
-        assert os.path.exists(webtext.PATH), \
-            webtext.assert_str
-        if not kwargs:
-            kwargs = {}
-        kwargs['text_key'] = 'text'
-        kwargs['loose_json'] = True
-        super(webtext, self).__init__(webtext.PATH, **kwargs)
 
 
 class KeyDataset(data.Dataset):
@@ -116,19 +98,25 @@ class DataReader:
                      not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
-        task_queue, done_queue = Queue(), Queue()
+        task_queue, done_queue = Queue(maxsize=1000000), Queue(maxsize=1000000)
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
                               args=(task_queue, done_queue, type(self), tokenizer, tokenize))
             process.start()
             processes.append(process)
-        for path in paths:
-            with open(path) as file:
-                for row in tqdm.tqdm(file):
-                    task_queue.put(row)
-        for i in range(len(processes)):
-            task_queue.put('STOP')
+
+        def read_input_to_queue():
+            for path in paths:
+                with open(path) as file:
+                    for row in file:
+                        task_queue.put(row)
+            print_rank_0("Read input complete")
+            for i in range(len(processes)):
+                task_queue.put('STOP')
+
+        process = Process(target=read_input_to_queue)
+        process.start()
         count = len(processes)
         progress_bar = tqdm.tqdm()
         while True:
@@ -348,8 +336,46 @@ class TestDataset(PromptReader):
         return [prompt], [text]
 
 
+class OpenWebText(PromptReader):
+    PATH = '/root/data/openwebtext2'
+    assert_str = "make sure to set PATH for openwebtext data_utils/corpora.py"
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        text = data['text']
+        if len(text) > 100:
+            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            return [prompt], [text]
+        else:
+            return [], []
+
+
+class CCNews(PromptReader):
+    PATH = "/root/data/cc_news"
+    assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        text = ""
+        title = data.get("title", None)
+        description = data.get("description", None)
+        maintext = data.get("maintext", None)
+        if title:
+            text += title.strip() + " "
+        if description and (not maintext or not maintext.startswith(description)):
+            text += description.strip() + " "
+        if maintext:
+            text += maintext
+        if len(text) > 100:
+            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            return [prompt], [text]
+        else:
+            return [], []
+
+
 class BertData(PromptReader):
     is_json = False
+    PATH = '/root/data/wikibook'
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
@@ -373,11 +399,13 @@ class BertLargeData(BertData):
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
     'wikipedia-key': KeyReader,
-    'webtext': webtext,
+    'openwebtext': OpenWebText,
     "zhihu": zhihu,
     "zhidao": zhidao,
     "baike": baike,
     "test": TestDataset,
+    'wikibook': BertData,
     "bert-base": BertBaseData,
-    "bert-large": BertLargeData
+    "bert-large": BertLargeData,
+    'cc-news': CCNews
 }

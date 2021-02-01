@@ -34,7 +34,7 @@ class PVP(ABC):
     """
 
     def __init__(self, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42):
+                 seed: int = 42, fast_decode: bool = False):
         """
         Create a new PVP.
 
@@ -49,6 +49,8 @@ class PVP(ABC):
         self.pattern_id = pattern_id
         self.rng = random.Random(seed)
         self.num_truncated = 0
+        self.fast_decode = fast_decode
+        self.max_dec_seq_length = 16
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
@@ -60,7 +62,7 @@ class PVP(ABC):
     @property
     def mask(self) -> str:
         """Return the underlying LM's mask token"""
-        return self.tokenizer.get_command('MASK').token
+        return self.tokenizer.get_command('MASK').Id
 
     @property
     def mask_id(self) -> int:
@@ -108,39 +110,69 @@ class PVP(ABC):
         parts_a, parts_b = self.get_parts(example)
 
         parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_a if x]
+        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts_a if x]
 
         if parts_b:
             parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_b if x]
+            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts_b if
+                       x]
 
         if self.is_multi_token:
             answers = self.get_answers(example)
-            ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
-            for answer in answers:
+            
+            if not self.fast_decode:
+                ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+                for answer in answers:
+                    this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
+                    answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+                    answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
+                    self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
+                                                        max_length=self.max_seq_length)
+                    tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
+                    tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+                    data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
+                                                add_cls=True, add_sep=False, add_piece=True)
+                    ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                    ids_list.append(ids)
+                    positions_list.append(position_ids)
+                    sep_list.append(sep)
+                    target_list.append(target_ids)
+                    mask_list.append(loss_masks)
+                if example.label is not None:
+                    label = self.label_list.index(example.label)
+                else:
+                    label = 0
+                sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                                      logit_mask=mask_list, target=target_list,
+                                      unique_id=example.guid)
+                return sample
+            
+            else:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
-                answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
-                answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
                 self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
-                                                    max_length=self.max_seq_length)
+                                                        max_length=self.max_seq_length)
                 tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                 tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
-                data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
-                                            add_cls=True, add_sep=False, add_piece=True)
+                data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer,
+                                                add_cls=True, add_sep=False, add_piece=False)
                 ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-                ids_list.append(ids)
-                positions_list.append(position_ids)
-                sep_list.append(sep)
-                target_list.append(target_ids)
-                mask_list.append(loss_masks)
-            if example.label is not None:
-                label = self.label_list.index(example.label)
-            else:
                 label = 0
-            sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
-                                  logit_mask=mask_list, target=target_list,
-                                  unique_id=example.guid)
-            return sample
+                sample = build_sample(ids, positions=position_ids, masks=sep, label=label, unique_id=example.guid)
+
+                ids_list, positions_list, mask_list, target_list = [], [], [], []
+                for answer in answers:
+                    answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+                    answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
+                    answer_ids = answer_ids[:self.max_dec_seq_length]
+                    data = build_decoder_input(ids, answer_ids, max_dec_seq_length, tokenizer)
+                    dec_ids, _, _, dec_position_ids, _, dec_target_ids, dec_loss_masks = data
+                    ids_list.append(dec_ids)
+                    positions_list.append(dec_position_ids)
+                    target_list.append(dec_target_ids)
+                    mask_list.append(dec_loss_masks)
+
+                return sample
+
         else:
             self.num_truncated += self.truncate(parts_a, parts_b, [], max_length=self.max_seq_length)
 
@@ -266,13 +298,13 @@ class CopaPVP(PVP):
         return True
 
     def get_answers(self, example: InputExample):
-        choice1 = self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
-        choice2 = self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
+        choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
+        choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
         return [choice1, choice2]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
 
-        premise = self.remove_final_punc(self.shortenable(example.text_a))
+        premise = self.remove_final_punc(self.shortenable(" " + example.text_a))
         choice1 = self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
 
@@ -281,14 +313,14 @@ class CopaPVP(PVP):
 
         if question == 'cause':
             if self.pattern_id == 0:
-                return ['"', choice1, '" or "', choice2, '"?', premise, 'because', self.mask, '.'], []
+                return ['"', choice1, '" or "', choice2, '"?', premise, ' because', self.mask, '.'], []
             elif self.pattern_id == 1:
-                return [choice1, 'or', choice2, '?', premise, 'because', self.mask, '.'], []
+                return [choice1, ' or', " " + choice2, '?', premise, ' because', self.mask, '.'], []
         else:
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ', so', self.mask, '.'], []
             elif self.pattern_id == 1:
-                return [choice1, 'or', choice2, '?', premise, ', so', self.mask, '.'], []
+                return [choice1, ' or', " " + choice2, '?', premise, ', so', self.mask, '.'], []
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -300,7 +332,7 @@ class WscPVP(PVP):
         return True
 
     def get_answers(self, example: InputExample):
-        target = example.meta['span1_text']
+        target = " " + example.meta['span1_text']
         return [target]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
@@ -313,13 +345,13 @@ class WscPVP(PVP):
         text_a = self.shortenable(text_a)
 
         if self.pattern_id == 0:
-            return [text_a, "The pronoun '*" + pronoun + "*' refers to", self.mask, '.'], []
+            return [text_a, " The pronoun '*" + pronoun + "*' refers to", self.mask, '.'], []
         elif self.pattern_id == 1:
-            return [text_a, "In the previous sentence, the pronoun '*" + pronoun + "*' refers to", self.mask,
+            return [text_a, " In the previous sentence, the pronoun '*" + pronoun + "*' refers to", self.mask,
                     '.'], []
         elif self.pattern_id == 2:
             return [text_a,
-                    "Question: In the passage above, what does the pronoun '*" + pronoun + "*' refer to? Answer: ",
+                    " Question: In the passage above, what does the pronoun '*" + pronoun + "*' refer to? Answer:",
                     self.mask, '.'], []
 
     def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
@@ -339,11 +371,12 @@ class WscPVP(PVP):
         parts_a, parts_b = self.get_parts(example)
 
         parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_a if x]
+        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts_a if x]
 
         if parts_b:
             parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization, s) for x, s in parts_b if x]
+            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts_b if
+                       x]
 
         answer = self.get_answers(example)[0]
         this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
@@ -375,14 +408,15 @@ class RecordPVP(PVP):
 
     def get_answers(self, example: InputExample):
         choices = example.meta['candidates']
+        choices = [" " + choice for choice in choices]
         return choices
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         premise = self.shortenable(example.text_a)
 
         assert '@placeholder' in example.text_b, f'question "{example.text_b}" does not contain a @placeholder token'
-        question = example.text_b.replace('@placeholder', " " + self.mask + " ")
-        return [premise, question], []
+        question_a, question_b = example.text_b.split('@placeholder')
+        return [premise,  " " + question_a.rstrip(), self.mask, question_b], []
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -390,73 +424,77 @@ class RecordPVP(PVP):
 
 class RtePVP(PVP):
     VERBALIZER = {
-        "not_entailment": ["No"],
-        "entailment": ["Yes"]
+        "not_entailment": [" No"],
+        "entailment": [" Yes"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         # switch text_a and text_b to get the correct order
-        text_a = self.shortenable(example.text_a)
-        text_b = self.shortenable(example.text_b.rstrip(string.punctuation))
+        text_a = example.text_a
+        text_b = example.text_b.rstrip(string.punctuation)
 
         if self.pattern_id == 0:
-            return ['"', text_b, '" ?'], [self.mask, ', "', text_a, '"']
+            return ['"', self.shortenable(text_b), '" ?'], [self.mask, self.shortenable(', "' + text_a + '"')]
         elif self.pattern_id == 1:
-            return [text_b, '?'], [self.mask, ',', text_a]
+            return [self.shortenable(text_b), '?'], [self.mask, ',', self.shortenable(" " + text_a)]
         if self.pattern_id == 2:
-            return ['"', text_b, '" ?'], [self.mask, '. "', text_a, '"']
+            return ['"', self.shortenable(text_b), '" ?'], [self.mask, '. "', self.shortenable(text_a), '"']
         elif self.pattern_id == 3:
-            return [text_b, '?'], [self.mask, '.', text_a]
+            return [self.shortenable(text_b), '?'], [self.mask, '.', self.shortenable(" " + text_a)]
         elif self.pattern_id == 4:
-            return [text_a, ' question: ', self.shortenable(example.text_b), ' True or False? answer:', self.mask], []
+            return [self.shortenable(text_a), ' question:', self.shortenable(" " + text_b), ' True or False? answer:',
+                    self.mask], []
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 4:
-            return ['true'] if label == 'entailment' else ['false']
+            return [' true'] if label == 'entailment' else [' false']
         return RtePVP.VERBALIZER[label]
 
 
 class CbPVP(RtePVP):
     VERBALIZER = {
-        "contradiction": ["No"],
-        "entailment": ["Yes"],
-        "neutral": ["Maybe"]
+        "contradiction": [" No"],
+        "entailment": [" Yes"],
+        "neutral": [" Maybe"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         if self.pattern_id == 4:
             text_a = self.shortenable(example.text_a)
-            text_b = self.shortenable(example.text_b)
-            return [text_a, ' question: ', text_b, ' true, false or neither? answer:', self.mask], []
+            text_b = self.shortenable(" " + example.text_b)
+            return [text_a, ' question:', text_b, ' true, false or neither? answer:', self.mask], []
         return super().get_parts(example)
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 4:
-            return ['true'] if label == 'entailment' else ['false'] if label == 'contradiction' else ['neither']
+            return [' true'] if label == 'entailment' else [' false'] if label == 'contradiction' else [' neither']
         return CbPVP.VERBALIZER[label]
 
 
 class BoolQPVP(PVP):
     VERBALIZER_A = {
-        "false": ["No"],
-        "true": ["Yes"]
+        "false": [" No"],
+        "true": [" Yes"]
     }
 
     VERBALIZER_B = {
-        "false": ["false"],
-        "true": ["true"]
+        "false": [" false"],
+        "true": [" true"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
-        passage = self.shortenable(example.text_a)
-        question = self.shortenable(example.text_b)
+        passage = example.text_a
+        question = example.text_b
 
         if self.pattern_id < 2:
-            return [passage, '. Question: ', question, '? Answer: ', self.mask, '.'], []
+            return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', self.mask,
+                    '.'], []
         elif self.pattern_id < 4:
-            return [passage, '. Based on the previous passage, ', question, '?', self.mask, '.'], []
+            return [self.shortenable(passage), ' Based on the previous passage,', self.shortenable(" " + question),
+                    '?', self.mask, '.'], []
         else:
-            return ['Based on the following passage, ', question, '?', self.mask, '.', passage], []
+            return ['Based on the following passage ', self.shortenable(" " + question), '?', self.mask, '.',
+                    self.shortenable(" " + passage)], []
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 0 or self.pattern_id == 2 or self.pattern_id == 4:
@@ -467,35 +505,36 @@ class BoolQPVP(PVP):
 
 class MultiRcPVP(PVP):
     VERBALIZER = {
-        0: ["No"],
-        1: ["Yes"]
+        0: [" No"],
+        1: [" Yes"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
-        passage = self.shortenable(example.text_a)
-        question = example.text_b
+        passage = self.remove_final_punc(self.shortenable(example.text_a.rstrip()))
+        question = self.remove_final_punc(example.text_b.rstrip())
         answer = example.meta['answer']
 
         if self.pattern_id == 0:
-            return [passage, '. Question: ', question, '? Is it ', answer, '?', self.mask, '.'], []
+            return [passage, '. Question:', " " + question, '? Is it', " " + answer, '?', self.mask, '.'], []
         if self.pattern_id == 1:
-            return [passage, '. Question: ', question, '? Is the correct answer "', answer, '"?', self.mask, '.'], []
+            return [passage, '. Question:', " " + question, '? Is the correct answer "', answer, '"?', self.mask,
+                    '.'], []
         if self.pattern_id == 2:
-            return [passage, '. Based on the previous passage, ', question, '? Is "', answer, '" a correct answer?',
-                    self.mask, '.'], []
+            return [passage, '. Based on the previous passage,', " " + question, '? Is "', answer,
+                    '" a correct answer?', self.mask, '.'], []
         if self.pattern_id == 3:
-            return [passage, question, '- [', self.mask, ']', answer], []
+            return [passage, " " + question, '- [', self.mask, ']', answer], []
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 3:
-            return ['False'] if label == "0" else ['True']
+            return [' False'] if label == "0" else [' True']
         return MultiRcPVP.VERBALIZER[label]
 
 
 class WicPVP(PVP):
     VERBALIZER_A = {
-        "false": ["No"],
-        "true": ["Yes"]
+        "false": [" No"],
+        "true": [" Yes"]
     }
     VERBALIZER_B = {
         "false": ["2"],
@@ -503,16 +542,19 @@ class WicPVP(PVP):
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
-        text_a = self.shortenable(example.text_a)
-        text_b = self.shortenable(example.text_b)
+        text_a = example.text_a
+        text_b = example.text_b
         word = example.meta['word']
 
         if self.pattern_id == 0:
-            return ['"', text_a, '" / "', text_b, '" Similar sense of "' + word + '"?', self.mask, '.'], []
+            return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), ' Similar sense of "' + word + '"?',
+                    self.mask, '.'], []
         if self.pattern_id == 1:
-            return [text_a, text_b, 'Does ' + word + ' have the same meaning in both sentences?', self.mask], []
+            return [self.shortenable(text_a), self.shortenable(" " + text_b),
+                    ' Does' + " " + word + ' have the same meaning in both sentences?', self.mask], []
         if self.pattern_id == 2:
-            return [word, ' . Sense (1) (a) "', text_a, '" (', self.mask, ') "', text_b, '"'], []
+            return [word, ' . Sense (1) (a)', self.shortenable(' "' + text_a + '"'), ' (', self.mask, ') "', text_b,
+                    '"'], []
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 2:

@@ -2,7 +2,7 @@ EXPERIMENT_NAME=blank-base-COPA-few
 TASK_NAME=COPA
 DATA_PATH="/root/data/fewglue/COPA"
 MAX_SEQ_LEN=256
-source config/task_blocklm.sh
+source config/model_blocklm.sh
 
 TRAIN_ARGS="--epochs 100 \
             --batch-size 8 \

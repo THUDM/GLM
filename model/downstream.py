@@ -52,6 +52,47 @@ class ClozeModel(torch.nn.Module):
         return (logits, *mems)
 
 
+class FastClozeModel(torch.nn.Module):
+    def __init__(self, language_model, take_softmax=True, length_penalty=0.0):
+        super(ClozeModel, self).__init__()
+        self.model = language_model
+        self.take_softmax = take_softmax
+        self.length_penalty = length_penalty
+
+    def forward(self, input_ids, position_ids, attention_mask, 
+                dec_input_ids, dec_position_ids, dec_target_ids, dec_logit_mask):
+        # encoder
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+        batch_size, num_choices, max_dec_len = dec_input_ids.size()
+
+        enc_mems = []
+        for hidden in mems:
+            hidden = hidden.unsqueeze(1).expand(-1,num_choices,-1,-1).reshape(batch_size*num_choices, *hidden.size()[1:])
+            enc_mems.append(hidden)
+
+        dec_input_ids = dec_input_ids.reshape(-1, max_dec_len)
+        dec_position_ids = dec_position_ids.reshape(-1, *dec_position_ids.size()[2:])
+        dec_attention_mask = dec_input_ids.new_zeros([batch_size*num_choices])
+        dec_target_ids = dec_target_ids.reshape(-1, dec_target_ids.size(-1))
+        dec_logit_mask = dec_logit_mask.reshape(-1, dec_logit_mask.size(-1))
+
+        outputs, *mems = self.model(dec_input_ids, dec_position_ids, dec_attention_mask, *enc_mems)
+        if self.take_softmax:
+            outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
+
+        batch_ids = torch.arange(dec_target_ids.size(0), dtype=torch.long, device=target_ids.device)
+        batch_ids = batch_ids.unsqueeze(1).expand_as(dec_target_ids)
+        seq_ids = torch.arange(dec_target_ids.size(-1), dtype=torch.long, device=target_ids.device)
+        seq_ids = seq_ids.unsqueeze(0).expand_as(dec_target_ids)
+        logits = outputs[batch_ids, seq_ids, dec_target_ids]
+        logits = (logits * dec_logit_mask).sum(dim=1)
+        if self.length_penalty > 0.0:
+            logits = logits / dec_logit_mask.sum(dim=1) ** self.length_penalty
+        if num_choices is not None:
+            logits = logits.view(-1, num_choices)
+        return (logits, *mems)
+
+
 class VerbalizerModel(torch.nn.Module):
     def __init__(self, language_model):
         super().__init__()

@@ -30,7 +30,7 @@ from . import sp_tokenizer
 import regex as re
 
 
-def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, model_type='bpe', pad_token=0,
+def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, model_type=None, pad_token=0,
                    character_coverage=1.0, command_tokens=None, type_tokens=None, **kwargs):
     """
     Helper function to instantiate a tokenizer given common combinations of options.
@@ -41,7 +41,9 @@ def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, mod
     if tokenizer_class is BertWordPieceTokenizer:
         return BertWordPieceTokenizer(model_type, **kwargs)
     elif tokenizer_class is GPT2BPETokenizer:
-        return GPT2BPETokenizer(**kwargs)
+        if model_type is None:
+            model_type = 'gpt2'
+        return GPT2BPETokenizer(model_type, **kwargs)
     elif tokenizer_class is ChineseSPTokenizer:
         return ChineseSPTokenizer(**kwargs)
     text_tokenizer = tokenizer_class(corpus=corpus, vocab_size=vocab_size, model_path=model_path, model_type=model_type,
@@ -840,27 +842,49 @@ class BertWordPieceTokenizer(Tokenizer):
 
 
 class GPT2BPETokenizer(Tokenizer):
-    def __init__(self, cache_dir=None, add_block_symbols=False, **kwargs):
-        self.text_tokenizer = GPT2Tokenizer.from_pretrained('gpt2',
+    def __init__(self, model_type_or_path, cache_dir=None, add_block_symbols=False, **kwargs):
+        self.text_tokenizer = GPT2Tokenizer.from_pretrained(model_type_or_path,
                                                             cache_dir=cache_dir)
 
         # disable max len warnings by increasing max len
         self.text_tokenizer.max_len = int(1e12)
-        self.num_command_tokens = 2
         self.num_tokens = len(self.text_tokenizer.encoder)
-        self.num_text_tokens = self.num_tokens - 1
         self.num_type_tokens = 2
-        self._command_tokens = [
-            CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
-            CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>'])
-        ]
-        if add_block_symbols:
-            self._command_tokens.extend([
-                CommandToken('sop', '<|startofpiece|>', self.num_tokens),
-                CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1)
-            ])
-            self.num_tokens += 2
-            self.num_command_tokens += 2
+        if model_type_or_path.startswith('roberta'):
+            self.num_command_tokens = 6
+            self.num_text_tokens = self.num_tokens - 3
+            self._command_tokens = [
+                CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['</s>']),
+                CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['</s>']),
+                CommandToken('sep', '[SEP]', self.text_tokenizer.encoder['</s>']),
+                CommandToken('ENC', '[CLS]', self.text_tokenizer.encoder['<s>']),
+                CommandToken('MASK', '[MASK]', self.text_tokenizer.encoder['<mask>']),
+                CommandToken('unk', '[UNK]', self.text_tokenizer.encoder['<unk>'])
+            ]
+            if add_block_symbols:
+                self._command_tokens.extend([
+                    CommandToken('sop', '<|startofpiece|>', self.num_tokens),
+                    CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1)
+                ])
+                self.num_tokens += 2
+                self.num_command_tokens += 2
+        else:
+            self.num_command_tokens = 2
+            self.num_text_tokens = self.num_tokens - 1
+            self._command_tokens = [
+                CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>']),
+                CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['<|endoftext|>'])
+            ]
+            if add_block_symbols:
+                self._command_tokens.extend([
+                    CommandToken('sop', '<|startofpiece|>', self.num_tokens),
+                    CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1),
+                    CommandToken('ENC', '[CLS]', self.num_tokens + 2),
+                    CommandToken('MASK', '[MASK]', self.num_tokens + 3),
+                    CommandToken('sep', '[SEP]', self.num_tokens + 4),
+                ])
+                self.num_tokens += 5
+                self.num_command_tokens += 5
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
@@ -906,7 +930,9 @@ class GPT2BPETokenizer(Tokenizer):
         tokenization = Tokenization(tokens, processed_text, text, asIds=False)
         tokenization.set_command_tokens(self._command_tokens)
         return tokenization
-        # return Tokenization(tokens, processed_text, text, asIds=False)
+
+    def DecodeAsTokens(self, Ids):
+        return [self.IdToToken(x) for x in Ids]
 
     def IdToToken(self, Id, type_token=False):
         if isinstance(Id, (TypeToken, CommandToken)):

@@ -1,3 +1,4 @@
+MODEL_TYPE="bert-base"
 MODEL_ARGS="--pretrained-bert \
             --num-layers 12 \
             --hidden-size 768 \

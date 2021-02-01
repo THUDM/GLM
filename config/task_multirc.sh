@@ -1,8 +1,8 @@
-EXPERIMENT_NAME=blocklm-base-generation-MultiRC
+source config/model_blocklm.sh
+EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
 TASK_NAME=multirc
 DATA_PATH="/root/data/superglue/MultiRC"
 MAX_SEQ_LEN=512
-source config/task_blocklm.sh
 
 TRAIN_ARGS="--epochs 12 \
             --batch-size 8 \

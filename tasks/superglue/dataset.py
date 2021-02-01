@@ -50,11 +50,11 @@ class GlueDataset(Dataset):
         )
         self.dataset_name = f"{task_name}-{split}"
         if split == DEV_SET:
-            examples = processor.get_dev_examples(data_dir, for_train=for_train)
+            examples = processor.get_dev_examples(data_dir, for_train=for_train)#[:100]
         elif split == TEST_SET:
-            examples = processor.get_test_examples(data_dir)
+            examples = processor.get_test_examples(data_dir)#[:100]
         elif split == TRAIN_SET:
-            examples = processor.get_train_examples(data_dir)
+            examples = processor.get_train_examples(data_dir)#[:100]
         elif split == UNLABELED_SET:
             examples = processor.get_unlabeled_examples(data_dir)
             for example in examples:
@@ -103,10 +103,11 @@ class DataProcessor(ABC):
         self.num_truncated = 0
 
     def output_prediction(self, predictions, examples, output_file):
-        for prediction, example in zip(predictions, examples):
-            prediction = self.get_labels()[prediction]
-            data = {"idx": example.idx, "label": prediction}
-            output_file.write(json.dumps(data) + "\n")
+        with open(output_file, "w") as output:
+            for prediction, example in zip(predictions, examples):
+                prediction = self.get_labels()[prediction]
+                data = {"idx": example.idx, "label": prediction}
+                output.write(json.dumps(data) + "\n")
 
     @abstractmethod
     def get_train_examples(self, data_dir) -> List[InputExample]:
@@ -526,21 +527,22 @@ class MultiRcProcessor(DataProcessor):
         return examples
 
     def output_prediction(self, predictions, examples, output_file):
-        passage_dict = defaultdict(list)
-        for prediction, example in zip(predictions, examples):
-            passage_dict[example.meta["passage_idx"]].append((prediction, example))
-        for passage_idx, data in passage_dict.items():
-            question_dict = defaultdict(list)
-            passage_data = {"idx": passage_idx, "passage": {"questions": []}}
-            for prediction, example in data:
-                question_dict[example.meta["question_idx"]].append((prediction, example))
-            for question_idx, data in question_dict.items():
-                question_data = {"idx": question_idx, "answers": []}
+        with open(output_file, "w") as output:
+            passage_dict = defaultdict(list)
+            for prediction, example in zip(predictions, examples):
+                passage_dict[example.meta["passage_idx"]].append((prediction, example))
+            for passage_idx, data in passage_dict.items():
+                question_dict = defaultdict(list)
+                passage_data = {"idx": passage_idx, "passage": {"questions": []}}
                 for prediction, example in data:
-                    prediction = self.get_labels()[prediction]
-                    question_data["answers"].append({"idx": example.meta["answer_idx"], "label": prediction})
-                passage_data["passage"]["questions"].append(question_data)
-            output_file.write(json.dumps(passage_data) + "\n")
+                    question_dict[example.meta["question_idx"]].append((prediction, example))
+                for question_idx, data in question_dict.items():
+                    question_data = {"idx": question_idx, "answers": []}
+                    for prediction, example in data:
+                        prediction = self.get_labels()[prediction]
+                        question_data["answers"].append({"idx": example.meta["answer_idx"], "label": prediction})
+                    passage_data["passage"]["questions"].append(question_data)
+                output.write(json.dumps(passage_data) + "\n")
 
 
 class RecordProcessor(DataProcessor):
@@ -562,10 +564,11 @@ class RecordProcessor(DataProcessor):
         return ["0", "1"]
 
     def output_prediction(self, predictions, examples, output_file):
-        for prediction, example in zip(predictions, examples):
-            prediction = example.meta["candidates"][prediction]
-            data = {"idx": example.idx, "label": prediction}
-            output_file.write(json.dumps(data) + "\n")
+        with open(output_file, "w") as output:
+            for prediction, example in zip(predictions, examples):
+                prediction = example.meta["candidates"][prediction]
+                data = {"idx": example.idx, "label": prediction}
+                output.write(json.dumps(data) + "\n")
 
     def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
         if for_bert:

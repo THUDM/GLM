@@ -20,6 +20,7 @@ import os
 import torch
 import deepspeed
 import json
+from utils import get_hostname
 
 
 def add_model_config_args(parser):
@@ -131,11 +132,12 @@ def add_training_args(parser):
                        help='gradient clipping')
     group.add_argument('--train-iters', type=int, default=1000000,
                        help='total number of iterations to train over all training runs')
+    group.add_argument('--label-smoothing', type=float, default=0.0)
     group.add_argument('--log-interval', type=int, default=100,
                        help='report interval')
     group.add_argument('--summary-dir', type=str, default="", help="The directory to store the summary")
     group.add_argument('--seed', type=int, default=1234, help='random seed')
-    # Batch prodecuer arguments
+    # Batch producer arguments
     group.add_argument('--reset-position-ids', action='store_true',
                        help='Reset posistion ids after end-of-document token.')
     group.add_argument('--reset-attention-mask', action='store_true',
@@ -213,9 +215,6 @@ def add_evaluation_args(parser):
                        help='Maximum number of predictions to use for '
                             'evaluation. Defaults to '
                             'math.ceil(`--eval-seq-length`*.15/10)*10')
-    group.add_argument('--eval-hf', action='store_true',
-                       help='perform evaluation with huggingface openai model.'
-                            'use `--load` to specify weights path to be loaded')
     group.add_argument('--overlapping-eval', type=int, default=32)
 
     return parser
@@ -231,6 +230,8 @@ def add_text_generate_args(parser):
     group.add_argument("--out-seq-length", type=int, default=256)
     group.add_argument("--num-beams", type=int, default=1)
     group.add_argument("--length-penalty", type=float, default=0.0)
+    group.add_argument("--no-repeat-ngram-size", type=int, default=0)
+    group.add_argument("--min-tgt-length", type=int, default=0)
     return parser
 
 
@@ -252,10 +253,6 @@ def add_data_args(parser):
     group.add_argument('--test-data', nargs='*', default=None,
                        help="""Filename for testing""")
     group.add_argument('--data-dir', type=str, default=None, help="The data path to all the data files")
-    group.add_argument('--use-npy-data-loader', action='store_true',
-                       help='Use the numpy data loader. If set, then'
-                            'train-data-path, val-data-path, and test-data-path'
-                            'should also be provided.')
     group.add_argument('--input-data-sizes-file', type=str, default='sizes.txt',
                        help='the filename containing all the shards sizes')
 
@@ -282,7 +279,7 @@ def add_data_args(parser):
     group.add_argument('--num-workers', type=int, default=2,
                        help="""Number of workers to use for dataloading""")
     group.add_argument('--tokenizer-model-type', type=str,
-                       default='bert-large-uncased',
+                       default=None,
                        help="Model type to use for sentencepiece tokenization \
                        (one of ['bpe', 'char', 'unigram', 'word']) or \
                        bert vocab to use for BertWordPieceTokenizer (one of \
@@ -316,7 +313,9 @@ def add_data_args(parser):
     group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
     group.add_argument('--no-block-position', action='store_true',
                        help='Use (rough) absolute positions instead of block positions')
-
+    group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")
+    group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")
+    group.add_argument('--save-test-data', type=str, default=None, help="The path to save the test data")
     return parser
 
 
@@ -331,6 +330,9 @@ def add_finetune_config_args(parser):
     group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--eval-valid', action='store_true', help="Whether evaluate on the valid set")
     group.add_argument('--validation-metric', type=str, default=None)
+    group.add_argument('--unidirectional', action='store_true', help="Use the left to right language model")
+    group.add_argument('--src-seq-length', type=int, default=None)
+    group.add_argument('--tgt-seq-length', type=int, default=None)
     return parser
 
 
@@ -409,16 +411,13 @@ def get_args():
 
 def mpi_define_env(args):
     from mpi4py import MPI
-    import subprocess
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     world_size = comm.Get_size()
 
     master_addr = None
     if rank == 0:
-        hostname_cmd = ["hostname -I"]
-        result = subprocess.check_output(hostname_cmd, shell=True)
-        master_addr = result.decode('utf-8').split()[0]
+        master_addr = get_hostname()
     master_addr = comm.bcast(master_addr, root=0)
 
     # Determine local rank by assuming hostnames are unique

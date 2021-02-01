@@ -112,7 +112,21 @@ def finetune_forward_step(batch, model, args, timers, mems):
                   tokenizer.DecodeIds(target_ids[batch_id, choice_id, target_positions].tolist()),
                   position_ids[batch_id, choice_id, :, target_positions])
 
+        # model.eval()
+
         logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+        # mem_layers = mems
+        # print('mem_layers', len(mem_layers))
+        # # print(mem_layers[-1])
+        # print(mem_layers[-1].shape)
+        # batch_size, n_choices, seq_len = tokens.size()
+        # hidden_states = mem_layers[-1].view(batch_size, n_choices, seq_len, -1)
+        # for i in range(200, 225):
+        #     print(tokenizer.IdToToken(tokens[0,0,i].item()),tokenizer.IdToToken(tokens[0,1,i].item()))
+        #     print(logit_mask[0,1,i].item(), tokenizer.IdToToken(target_ids[0,1,i].item()))
+        #     print(hidden_states[0,0,i].tolist() == hidden_states[0,1,i].tolist())
+        # print(attention_mask[0].tolist())
+        # exit()
     else:
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
             'attention_mask']
@@ -159,9 +173,11 @@ def _build_train_valid_dataloaders(train_dataset, valid_dataset, args):
     args.train_iters = args.epochs * args.train_iters_per_epoch
     # Validation dataset. For this dataset, we do not need to set up
     # shuffling so we can just use a simple infinite loop.
-    valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
-                                          args.num_workers, drop_last=False)
-    valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
+    valid_dataloader = None
+    if valid_dataset is not None:
+        valid_dataloader_ = build_data_loader(valid_dataset, args.batch_size,
+                                              args.num_workers, drop_last=False)
+        valid_dataloader = _build_infinite_size_dataloader(valid_dataloader_)
 
     return train_dataloader, valid_dataloader
 
@@ -215,7 +231,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 total_lm_loss = 0.0
 
             # Evaluation
-            if args.eval_interval and args.iteration % args.eval_interval == 0:
+            if args.eval_interval and valid_dataloader is not None and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
                 evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, step=args.iteration,
                                            verbose=False, forward_step_func=finetune_forward_step,
@@ -278,7 +294,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if args.load_pretrained is not None and not args.pretrained_bert:
+    if (args.load_pretrained is not None and not args.pretrained_bert and not args.load) or (
+            args.src_seq_length > args.max_position_embeddings):
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module
@@ -287,7 +304,10 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         args.load = args.load_pretrained
         if not isinstance(module, GPT2Model):
             module = module.model
-        load_checkpoint(module, optimizer, lr_scheduler, args)
+        if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
+            load_checkpoint(module, optimizer, lr_scheduler, args)
+        if args.src_seq_length and args.src_seq_length > args.max_position_embeddings:
+            module.extend_position_embeddings(args.src_seq_length)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:
@@ -303,8 +323,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-        if os.path.exists(args.log_dir):
-            raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
+        # if os.path.exists(args.log_dir):
+        #     raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
         summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
         print_and_save_args(args, verbose=False, log_dir=args.log_dir)
 
@@ -324,14 +344,14 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             args.load = os.path.join(args.save, str(best_iteration))
             load_checkpoint(model, optimizer, lr_scheduler, args)
             args.load = None
-        if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
+        if end_of_train_callback is not None:
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
     # Or just evaluate.
     else:
-        if end_of_train_callback is not None and torch.distributed.get_rank() == 0:
+        if end_of_train_callback is not None:
             print_rank_0('evaluation only mode, setting epoch to -1')
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
-    if score_dict is not None:
+    if score_dict is not None and torch.distributed.get_rank() == 0:
         score_dict.update({"type": "test"})
         with open(os.path.join(args.log_dir, "results.json"), "a") as output:
             output.write(json.dumps(score_dict) + "\n")
@@ -359,8 +379,10 @@ if __name__ == '__main__':
         from tasks.race.finetune import main
     elif args.task.lower() in superglue_tasks:
         from tasks.superglue.finetune import main
-    elif args.task.lower() == 'lambda' or args.task.lower() == 'wikitext':
+    elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
+    elif args.task.lower() in ['cnn_dm']:
+        from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
 
