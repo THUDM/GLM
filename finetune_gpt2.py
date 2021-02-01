@@ -224,7 +224,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                                            summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
-        if args.save and (epoch + 1) % args.eval_epoch == 0:
+        if args.save and (epoch + 1) % args.save_epoch == 0:
             save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Callback at the end of each epoch.
