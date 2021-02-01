@@ -25,7 +25,7 @@ COMMON_ARGS="--save-interval 10000 \
 mkdir logs
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --finetune \
-       --experiment-name ${EXPERIMENT_NAME}_topk \
+       --experiment-name ${EXPERIMENT_NAME}_topk_penalty \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
@@ -33,7 +33,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --src-seq-length 608 \
        --tgt-seq-length 160 \
        --min-tgt-length 55 \
-       --length-penalty 0.7 \
+       --length-penalty 2.0 \
        --no-repeat-ngram-size 3 \
        --num-beams 5 \
        --select-topk \

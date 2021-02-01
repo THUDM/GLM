@@ -21,6 +21,7 @@ from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TO
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
+from tasks.superglue.pvp import PVPS
 
 default_metrics = {
     "record": [("EM", qa_exact_match), ("F1", qa_f1)],
@@ -69,14 +70,14 @@ def main(args):
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
-        if args.task.lower() in SINGLE_TOKEN_DATASETS:
+        processor = PROCESSORS[args.task.lower()]()
+        pvp = PVPS[args.task.lower()](None, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
+        if not pvp.is_multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
             model_kwargs["multi_token"] = False
             model_kwargs["num_labels"] = len(PROCESSORS[args.task.lower()]().get_labels())
-        elif args.task.lower() in MULTI_TOKEN_DATASETS:
+        else:
             model_kwargs["model_type"] = "multiple_choice"
             model_kwargs["multi_token"] = True
-        else:
-            raise NotImplementedError(args.task)
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider)

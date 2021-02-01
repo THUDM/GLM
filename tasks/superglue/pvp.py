@@ -264,15 +264,18 @@ class PVP(ABC):
 class CopaPVP(PVP):
     @property
     def is_multi_token(self):
-        return True
+        return True if self.pattern_id < 2 else False
 
     def get_answers(self, example: InputExample):
-        choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
-        choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
-        return [choice1, choice2]
+        if self.pattern_id < 2:
+            choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
+            choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
+            return [choice1, choice2]
+        else:
+            return []
 
     def get_parts(self, example: InputExample) -> FilledPattern:
-
+        assert self.pattern_id in [0, 1, 2, 3]
         premise = self.remove_final_punc(self.shortenable(" " + example.text_a))
         choice1 = self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -285,14 +288,26 @@ class CopaPVP(PVP):
                 return ['"', choice1, '" or "', choice2, '"?', premise, ' because', self.mask, '.'], []
             elif self.pattern_id == 1:
                 return [choice1, ' or', " " + choice2, '?', premise, ' because', self.mask, '.'], []
+            elif self.pattern_id == 2:
+                return ['"', choice1, '" or "', choice2, '"?', premise, ' due to the', self.mask, '.'], []
+            elif self.pattern_id == 3:
+                return [choice1, ' or', " " + choice2, '?', premise, ' due to the', self.mask, '.'], []
         else:
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ', so', self.mask, '.'], []
             elif self.pattern_id == 1:
                 return [choice1, ' or', " " + choice2, '?', premise, ', so', self.mask, '.'], []
+            elif self.pattern_id == 2:
+                return ['"', choice1, '" or "', choice2, '"?', premise, ', so the', self.mask, '.'], []
+            elif self.pattern_id == 3:
+                return [choice1, ' or', " " + choice2, '?', premise, ', so the', self.mask, '.'], []
 
     def verbalize(self, label) -> List[str]:
-        return []
+        if self.pattern_id < 2:
+            return []
+        else:
+            assert label in [0, 1]
+            return [' former'] if label == 0 else [' latter']
 
 
 class WscPVP(PVP):
