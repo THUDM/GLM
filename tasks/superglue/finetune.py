@@ -71,13 +71,18 @@ def main(args):
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
         processor = PROCESSORS[args.task.lower()]()
-        pvp = PVPS[args.task.lower()](None, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
-        if not pvp.is_multi_token:
+        if args.cloze_eval:
+            pvp = PVPS[args.task.lower()](None, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
+            multi_token = pvp.is_multi_token
+        else:
+            multi_token = args.task.lower() in MULTI_TOKEN_DATASETS
+        if not multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
             model_kwargs["multi_token"] = False
             model_kwargs["num_labels"] = len(PROCESSORS[args.task.lower()]().get_labels())
         else:
             model_kwargs["model_type"] = "multiple_choice"
             model_kwargs["multi_token"] = True
+            model_kwargs["num_labels"] = 1
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider)

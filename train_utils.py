@@ -33,7 +33,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
             raise NotImplementedError
     else:
         output_predict, paralle_output = True, True
-        if model_type == "multiple_choice" and not args.cloze_eval:
+        if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
             output_predict = False
         if model_type is not None:
             paralle_output = False
@@ -61,7 +61,11 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                     else:
                         model = VerbalizerModel(model)
                 else:
-                    model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token)
+                    model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                         num_class=num_labels)
+            elif model_type == 'classification':
+                model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                     num_class=num_labels)
             elif model_type == 'generation':
                 pass
             else:
