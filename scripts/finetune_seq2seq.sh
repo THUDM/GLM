@@ -9,7 +9,7 @@ DATESTR=$(date +"%m-%d-%H-%M")
 TASK_NAME=cnn_dm
 DATA_PATH="/root/data/cnn_dm"
 
-TRAIN_ARGS="--epochs 0 \
+TRAIN_ARGS="--epochs 4 \
             --batch-size 8 \
             --lr 3e-5 \
             --lr-decay-style linear \
@@ -25,7 +25,7 @@ COMMON_ARGS="--save-interval 10000 \
 mkdir logs
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --finetune \
-       --experiment-name ${EXPERIMENT_NAME}_topk_penalty \
+       --experiment-name ${EXPERIMENT_NAME}_608_prompt \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
@@ -33,7 +33,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --src-seq-length 608 \
        --tgt-seq-length 160 \
        --min-tgt-length 55 \
-       --length-penalty 2.0 \
+       --length-penalty 0.7 \
        --no-repeat-ngram-size 3 \
        --num-beams 5 \
        --select-topk \
@@ -42,5 +42,4 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
-       --load /root/data/checkpoints/generation-large-cnndm-608 \
        2>&1 | tee logs/log-${DATESTR}.txt

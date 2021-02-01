@@ -39,14 +39,12 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             meta = {"ref": tokenizer.DecodeIds(tokenizer.EncodeAsIds(target_text).tokenization)}
             example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
             self.examples[guid] = example
-            source_tokens = tokenizer.EncodeAsIds(source_text).tokenization
-            source_tokens = [cls_id] + source_tokens
-            prompt = tokenizer.EncodeAsIds(" Summary:").tokenization
-            prompt = prompt + [mask_id]
+            source_tokens = tokenizer.EncodeAsIds(" " + source_text).tokenization
+            prompt = [cls_id, mask_id] + tokenizer.EncodeAsIds(" Content:").tokenization
             if len(source_tokens) > max_src_length - len(prompt):
                 source_tokens = source_tokens[:max_src_length - len(prompt)]
                 source_truncated = True
-            source_tokens = source_tokens + prompt
+            source_tokens = prompt + source_tokens
             if len(source_tokens) < max_src_length:
                 source_tokens = source_tokens + [pad_id] * (max_src_length - len(source_tokens))
             sep = len(source_tokens)
