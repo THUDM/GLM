@@ -1,5 +1,5 @@
 source config/model_blocklm_large_generation.sh
-EXPERIMENT_NAME=${MODEL_TYPE}-cnndm-608
+EXPERIMENT_NAME=${MODEL_TYPE}-cnndm
 CHECKPOINT_PATH="/root/data/checkpoints"
 
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
@@ -9,7 +9,7 @@ DATESTR=$(date +"%m-%d-%H-%M")
 TASK_NAME=cnn_dm
 DATA_PATH="/root/data/cnn_dm"
 
-TRAIN_ARGS="--epochs 4 \
+TRAIN_ARGS="--epochs 0 \
             --batch-size 8 \
             --lr 3e-5 \
             --lr-decay-style linear \
@@ -25,7 +25,7 @@ COMMON_ARGS="--save-interval 10000 \
 mkdir logs
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --finetune \
-       --experiment-name ${EXPERIMENT_NAME}_608_prompt \
+       --experiment-name ${EXPERIMENT_NAME}_608_prompt_test \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
@@ -38,8 +38,8 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --num-beams 5 \
        --select-topk \
        --eval-batch-size 4 \
-       --eval-valid \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
+       --load /root/data/checkpoints/generation-large-cnndm-608_608_prompt \
        2>&1 | tee logs/log-${DATESTR}.txt
