@@ -50,6 +50,8 @@ def exact_match_score(prediction, ground_truth):
 
 
 def metric_max_over_ground_truths(metric_fn, prediction, ground_truths):
+    if not ground_truths:
+        return 0.0
     scores_for_ground_truths = []
     for ground_truth in ground_truths:
         score = metric_fn(prediction, ground_truth)
