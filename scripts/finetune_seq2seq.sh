@@ -2,14 +2,10 @@ source config/model_blocklm_large_generation.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-cnndm
 CHECKPOINT_PATH="/root/data/checkpoints"
 
-MASTER_PORT=$(shuf -n 1 -i 10000-65535)
-DISTRIBUTED_ARGS="--nproc_per_node 8 --nnodes 1 --node_rank 0 --master_addr localhost --master_port $MASTER_PORT"
-DATESTR=$(date +"%m-%d-%H-%M")
-
 TASK_NAME=cnn_dm
 DATA_PATH="/root/data/cnn_dm"
 
-TRAIN_ARGS="--epochs 0 \
+TRAIN_ARGS="--epochs 15 \
             --batch-size 8 \
             --lr 3e-5 \
             --lr-decay-style linear \
@@ -22,10 +18,21 @@ COMMON_ARGS="--save-interval 10000 \
              --eval-interval 1000 \
              --eval-iters 100"
 
-mkdir logs
-python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
+export NCCL_DEBUG=info
+export NCCL_IB_DISABLE=0
+export NCCL_SOCKET_IFNAME=bond0
+export NCCL_IB_GID_INDEX=3
+export NCCL_NET_GDR_LEVEL=2
+export PATH="/opt/conda/bin:$PATH"
+
+NUM_WORKERS=2
+NUM_GPUS_PER_WORKER=8
+MASTER_PORT=$(shuf -n 1 -i 10000-65535)
+HOST_FILE_PATH="/root/code/config/hostfile"
+
+deepspeed --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} finetune_gpt2.py \
        --finetune \
-       --experiment-name ${EXPERIMENT_NAME}_608_prompt_test \
+       --experiment-name ${EXPERIMENT_NAME}_608_epoch \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
@@ -40,6 +47,4 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --eval-batch-size 4 \
        $MODEL_ARGS \
        $TRAIN_ARGS \
-       $COMMON_ARGS \
-       --load /root/data/checkpoints/generation-large-cnndm-608_608_prompt \
-       2>&1 | tee logs/log-${DATESTR}.txt
+       $COMMON_ARGS
