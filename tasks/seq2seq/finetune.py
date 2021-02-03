@@ -79,7 +79,7 @@ def metrics_func_provider(args, tokenizer, is_test):
                 output.write("\n")
         with open(output_file + ".refs", "w") as output:
             for example in examples:
-                output.write(example.text_b)
+                output.write(example.meta["ref"])
                 output.write("\n")
 
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
