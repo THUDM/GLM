@@ -89,7 +89,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() == 'cnn_dm':
+    if args.task.lower() in ['cnn_dm', 'gigaword']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

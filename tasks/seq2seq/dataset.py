@@ -5,6 +5,7 @@ import numpy as np
 from tasks.data_utils import InputExample
 from tqdm import tqdm
 from utils import print_rank_0
+import random
 
 
 class Seq2SeqDataset(torch.utils.data.Dataset):
@@ -17,6 +18,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             filename = "test"
         else:
             raise NotImplementedError(split)
+        print_rank_0(f"Creating {split} dataset from {data_dir}")
         self.dataset_name = split
         source_texts, target_texts = [], []
         with open(os.path.join(data_dir, f"{filename}.source")) as file:
@@ -33,7 +35,9 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         pad_id = tokenizer.get_command('pad').Id
         sop_id = tokenizer.get_command('sop').Id
         eop_id = tokenizer.get_command('eop').Id
-        for idx, (source_text, target_text) in enumerate(tqdm(zip(source_texts, target_texts))):
+        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+            if (idx + 1) % 20000 == 0:
+                print_rank_0(f"Complete {idx + 1} examples")
             guid = "%s-%s" % (split, idx)
             source_truncated, target_truncated = False, False
             meta = {"ref": tokenizer.DecodeIds(tokenizer.EncodeAsIds(target_text).tokenization)}

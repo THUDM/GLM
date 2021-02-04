@@ -1,9 +1,9 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-ggw
 TASK_NAME=gigaword
-DATA_PATH="/root/data/gigaword"
+DATA_PATH="/root/data/gigaword/org_data"
 
-TRAIN_ARGS="--epochs 15 \
-            --batch-size 8 \
+TRAIN_ARGS="--epochs 10 \
+            --batch-size 16 \
             --lr 3e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \
@@ -16,7 +16,7 @@ COMMON_ARGS="--save-interval 10000 \
              --eval-iters 100"
 
 TASK_ARGS="--src-seq-length 192 \
-           --tgt-seq-length 64 \
+           --tgt-seq-length 32 \
            --min-tgt-length 0 \
            --length-penalty 0.6 \
            --no-repeat-ngram-size 3 \
