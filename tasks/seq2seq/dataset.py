@@ -8,8 +8,15 @@ from utils import print_rank_0
 import random
 
 
+def gigaword_detokenize(string):
+    # string = string.replace("UNK", "[UNK]")
+    # string = string.replace("<unk>", "[UNK]")
+    string = string.replace("UNK", "<unk>")
+    return string
+
+
 class Seq2SeqDataset(torch.utils.data.Dataset):
-    def __init__(self, data_dir, split, tokenizer, max_src_length, max_tgt_length):
+    def __init__(self, task, data_dir, split, tokenizer, max_src_length, max_tgt_length):
         if split == "train":
             filename = "train"
         elif split == "dev":
@@ -18,15 +25,22 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             filename = "test"
         else:
             raise NotImplementedError(split)
-        print_rank_0(f"Creating {split} dataset from {data_dir}")
+        print_rank_0(f"Creating {task}-{split} dataset from {data_dir}")
         self.dataset_name = split
+        detokenizer = None
+        if task == "gigaword":
+            detokenizer = gigaword_detokenize
         source_texts, target_texts = [], []
         with open(os.path.join(data_dir, f"{filename}.source")) as file:
             for line in file:
-                source_texts.append(line.strip())
+                line = line.strip()
+                line = detokenizer(line) if detokenizer else line
+                source_texts.append(line)
         with open(os.path.join(data_dir, f"{filename}.target")) as file:
             for line in file:
-                target_texts.append(line.strip())
+                line = line.strip()
+                line = detokenizer(line) if detokenizer else line
+                target_texts.append(line)
         assert len(source_texts) == len(target_texts)
         self.examples, self.samples = {}, []
         num_source_truncated, num_target_truncated = 0, 0

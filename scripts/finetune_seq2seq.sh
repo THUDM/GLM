@@ -1,4 +1,4 @@
-source config/model_blocklm_1.25.sh
+source config/model_blocklm_large_generation.sh
 source $1
 CHECKPOINT_PATH="/root/data/checkpoints"
 DATESTR=$(date +"%m-%d-%H-%M")
