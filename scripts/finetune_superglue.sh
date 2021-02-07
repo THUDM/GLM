@@ -1,4 +1,4 @@
-source config/model_blocklm.sh
+source config_tasks/model_blocklm.sh
 source $1
 
 CHECKPOINT_PATH="/root/data/checkpoints"
