@@ -78,6 +78,6 @@ class AnnealingLR(_LRScheduler):
         self.num_iters = sd['num_iters']
         # self.end_iter = sd['end_iter']
         self.decay_style = sd['decay_style']
-        if 'decay_ratio' in sd:
-            self.decay_ratio = sd['decay_ratio']
+        # if 'decay_ratio' in sd:
+        #     self.decay_ratio = sd['decay_ratio']
         self.step(self.num_iters)

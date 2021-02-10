@@ -17,16 +17,16 @@ gpt_options=" \
        --save /root/data/checkpoints \
        --train-iters 500000 \
        --resume-dataloader \
-       --train-data wikibook openwebtext \
+       --train-data wikibook openwebtext cc-news \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \
-       --lr-decay-iters 400000 \
-       --lr-decay-ratio 0.05 \
-       --warmup .075 \
+       --lr-decay-iters 300000 \
+       --lr-decay-ratio 0.01 \
+       --warmup .1 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
