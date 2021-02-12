@@ -47,8 +47,9 @@ def setup_model(args):
     #         mpu=mpu,
     #         dist_init_required=False
     #     )
-    if args.load is not None:
+    if args.load_pretrained is not None:
         args.no_load_optim = True
+        args.load = args.load_pretrained
         _ = load_checkpoint(
             model, None, None, args)
     # if args.deepspeed:
