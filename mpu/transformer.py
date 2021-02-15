@@ -637,7 +637,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  use_scaled_init_for_output_weights=True,
                  relative_encoding=False,
                  block_position_encoding=False,
-                 type_encoding=False,
                  performer=False,
                  use_decoder_layer=False
                  ):
@@ -659,7 +658,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
         self.embedding_dropout = torch.nn.Dropout(embedding_dropout_prob)
         self.relative_encoding = relative_encoding
         self.block_position_encoding = block_position_encoding
-        self.type_encoding = type_encoding
         if relative_encoding:
             # Relative position embedding
             self.position_embeddings = PositionalEmbedding(hidden_size)
@@ -689,11 +687,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 self.position_embeddings = torch.nn.Embedding(max_sequence_length, hidden_size)
             # Initialize the position embeddings.
             torch.nn.init.normal_(self.position_embeddings.weight, mean=0.0, std=init_method_std)
-
-        # A B block embedding
-        if self.type_encoding:
-            self.type_embedding = torch.nn.Parameter(torch.zeros(2, hidden_size))
-            torch.nn.init.normal_(self.type_embedding.data, mean=0.0, std=init_method_std)
 
         def get_layer():
             if use_decoder_layer:
@@ -779,12 +772,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
             if self.block_position_encoding:
                 block_position_embeddings = self.block_position_embeddings(block_position_ids)
                 hidden_states = hidden_states + block_position_embeddings
-        # add AB embedding, hidden_states (b, s, h)
-        if self.type_encoding:
-            type_ids = position_ids.new_zeros(query_length)
-            type_ids[sep:] = 1
-            type_embeddings = torch.nn.functional.embedding(type_ids, self.type_embedding)
-            hidden_states = hidden_states + type_embeddings
         hidden_states = self.embedding_dropout(hidden_states)
 
         if self.max_memory_length > 0 or return_memory:
