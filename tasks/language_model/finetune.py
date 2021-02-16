@@ -66,7 +66,7 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
             print(global_tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), "|",
                   global_tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()))
             print(position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
-    breakpoint()
+
     # Forward model.
     logits, *mems = model(tokens, position_ids, attention_mask, *mems)
     if eval_metric is None or eval_metric == 'loss':
