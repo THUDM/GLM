@@ -42,8 +42,9 @@ def get_output_func(task_name):
 
 
 class GlueDataset(Dataset):
-    def __init__(self, task_name, split, data_dir, tokenizer, max_seq_length, for_train=False, cloze_format=True,
-                 for_bert=False, pattern_id=0):
+    def __init__(self, args, split, tokenizer, for_train=False):
+        task_name = args.task.lower()
+        data_dir = args.data_dir
         processor = PROCESSORS[task_name]()
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
@@ -55,7 +56,7 @@ class GlueDataset(Dataset):
             examples = processor.get_test_examples(data_dir)
         elif split == TRAIN_SET:
             if task_name == "wsc":
-                examples = processor.get_train_examples(data_dir, cloze_eval=cloze_format)
+                examples = processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
             else:
                 examples = processor.get_train_examples(data_dir)
         elif split == UNLABELED_SET:
@@ -74,15 +75,15 @@ class GlueDataset(Dataset):
             f"Returning {len(examples)} {split} examples with label dist.: {list(label_distribution.items())}")
         self.samples = []
         examples.sort(key=lambda x: x.num_choices)
-        if cloze_format:
-            pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length, pattern_id=pattern_id)
+        if args.cloze_eval:
+            pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
             print_rank_0(f"Truncate {pvp.num_truncated} examples")
         else:
             for example in examples:
-                sample = processor.encode(example, tokenizer, max_seq_length, for_bert=for_bert)
+                sample = processor.encode(example, tokenizer, args)
                 self.samples.append(sample)
             print_rank_0(f"Truncate {processor.num_truncated} examples")
         print_rank_0(f"Creating {len(self.samples)} samples")
@@ -139,22 +140,22 @@ class DataProcessor(ABC):
     def get_classifier_input(self, example: InputExample, tokenizer):
         return example.text_a, example.text_b
 
-    def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
+    def encode(self, example: InputExample, tokenizer, args):
         text_a, text_b = self.get_classifier_input(example, tokenizer)
         tokens_a = tokenizer.EncodeAsIds(text_a).tokenization
         tokens_b = tokenizer.EncodeAsIds(text_b).tokenization
         num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
                                                        add_piece=False)
-        if len(tokens_a) + len(tokens_b) + num_special_tokens > max_seq_length:
+        if len(tokens_a) + len(tokens_b) + num_special_tokens > args.seq_length:
             self.num_truncated += 1
-        data = build_input_from_ids(tokens_a, tokens_b, None, max_seq_length, tokenizer,
+        data = build_input_from_ids(tokens_a, tokens_b, None, args.seq_length, tokenizer, args=args,
                                     add_cls=True, add_sep=True, add_piece=False)
         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
         label = 0
         if example.label is not None:
             label = example.label
             label = self.get_labels().index(label)
-        if for_bert:
+        if args.pretrained_bert:
             sample = build_sample(ids, label=label, types=types, paddings=paddings,
                                   unique_id=example.guid)
         else:
@@ -422,8 +423,8 @@ class CopaProcessor(DataProcessor):
     def get_labels(self):
         return [0, 1]
 
-    def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
-        if for_bert:
+    def encode(self, example: InputExample, tokenizer, args):
+        if args.pretrained_bert:
             ids_list, types_list, paddings_list = [], [], []
         else:
             ids_list, positions_list, sep_list = [], [], []
@@ -435,12 +436,12 @@ class CopaProcessor(DataProcessor):
             tokens_b = tokenizer.EncodeAsIds(choice).tokenization
             num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
                                                            add_piece=False)
-            if len(tokens_a) + len(tokens_b) + num_special_tokens > max_seq_length:
+            if len(tokens_a) + len(tokens_b) + num_special_tokens > args.seq_length:
                 self.num_truncated += 1
-            data = build_input_from_ids(tokens_a, tokens_b, None, max_seq_length, tokenizer,
+            data = build_input_from_ids(tokens_a, tokens_b, None, args.seq_length, tokenizer,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-            if for_bert:
+            if args.pretrained_bert:
                 ids_list.append(ids)
                 types_list.append(types)
                 paddings_list.append(paddings)
@@ -452,7 +453,7 @@ class CopaProcessor(DataProcessor):
         if example.label is not None:
             label = example.label
             label = self.get_labels().index(label)
-        if for_bert:
+        if args.pretrained_bert:
             sample = build_sample(ids_list, label=label, types=types_list, paddings=paddings_list,
                                   unique_id=example.guid)
         else:
@@ -598,8 +599,8 @@ class RecordProcessor(DataProcessor):
                 data = {"idx": example.idx, "label": prediction}
                 output.write(json.dumps(data) + "\n")
 
-    def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
-        if for_bert:
+    def encode(self, example: InputExample, tokenizer, args):
+        if args.pretrained_bert:
             ids_list, types_list, paddings_list = [], [], []
         else:
             ids_list, positions_list, sep_list = [], [], []
@@ -610,12 +611,12 @@ class RecordProcessor(DataProcessor):
             total_length = len(tokens_a) + len(tokens_b) + len(answer_ids)
             total_length += num_special_tokens_to_add(tokens_a, tokens_b + answer_ids, None, add_cls=True, add_sep=True,
                                                       add_piece=False)
-            if total_length > max_seq_length:
+            if total_length > args.seq_length:
                 self.num_truncated += 1
-            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, max_seq_length, tokenizer,
+            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, args.seq_length, tokenizer,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-            if for_bert:
+            if args.pretrained_bert:
                 ids_list.append(ids)
                 types_list.append(types)
                 paddings_list.append(paddings)
@@ -625,7 +626,7 @@ class RecordProcessor(DataProcessor):
                 sep_list.append(sep)
         label = example.label
         label = self.get_labels().index(label)
-        if for_bert:
+        if args.pretrained_bert:
             sample = build_sample(ids_list, label=label, types=types_list, paddings=paddings_list,
                                   unique_id=example.guid)
         else:

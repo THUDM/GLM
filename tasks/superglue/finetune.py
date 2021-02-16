@@ -17,7 +17,8 @@
 
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
-from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, get_output_func
+from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, \
+    get_output_func
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
@@ -37,11 +38,8 @@ default_metrics = {
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
-    valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                for_train=True, cloze_format=args.cloze_eval, for_bert=args.pretrained_bert,
-                                pattern_id=args.pattern_id)
+    train_dataset = GlueDataset(args, "train", tokenizer)
+    valid_dataset = GlueDataset(args, "dev", tokenizer, for_train=True)
 
     return train_dataset, valid_dataset
 
@@ -50,8 +48,7 @@ def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
 
     def single_dataset_provider(split):
-        return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
+        return GlueDataset(args, split, tokenizer)
 
     output_func = get_output_func(args.task.lower())
     eval_func = None
@@ -72,7 +69,8 @@ def main(args):
     else:
         processor = PROCESSORS[args.task.lower()]()
         if args.cloze_eval:
-            pvp = PVPS[args.task.lower()](None, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
+            pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
+                                          pattern_id=args.pattern_id)
             multi_token = pvp.is_multi_token
         else:
             multi_token = args.task.lower() in MULTI_TOKEN_DATASETS

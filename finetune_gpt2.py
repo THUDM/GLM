@@ -95,22 +95,22 @@ def finetune_forward_step(batch, model, args, timers, mems):
         tokens, labels, position_ids = data['text'], data['label'], data['position']
         attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
 
-        def print_masked_text(batch_id, choice_id):
+        def print_masked_text(batch_id):
             output_tokens = []
-            sep = attention_mask[batch_id, choice_id].item()
-            for i, token in enumerate(tokens[batch_id, choice_id, :sep].tolist()):
+            sep = attention_mask[batch_id].item()
+            for i, token in enumerate(tokens[batch_id][:sep].tolist()):
                 token = tokenizer.IdToToken(token)
                 if token == '[MASK]':
-                    token = f"[{position_ids[batch_id, choice_id, 0, i].item()}]"
+                    token = f"[{position_ids[batch_id][0, i].item()}]"
                 output_tokens.append(token)
             print(" ".join(output_tokens))
             target_positions = []
             for i in range(sep, tokens.size(-1)):
-                if logit_mask[batch_id, choice_id, i]:
+                if logit_mask[batch_id][i]:
                     target_positions.append(i)
-            print(target_positions, tokenizer.DecodeIds(tokens[batch_id, choice_id, target_positions].tolist()),
-                  tokenizer.DecodeIds(target_ids[batch_id, choice_id, target_positions].tolist()),
-                  position_ids[batch_id, choice_id, :, target_positions])
+            print(target_positions)
+            print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
+            print(position_ids[batch_id][:, target_positions])
 
         logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
     else:
