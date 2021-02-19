@@ -52,7 +52,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
     # Build dataloaders.
     if only_rank0 and torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
         return None
-    if is_test:
+    if is_test and not args.eval_valid:
         datapaths = args.test_data if args.test_data is not None else ['test']
     else:
         datapaths = args.valid_data if args.valid_data is not None else ['dev']
@@ -80,8 +80,7 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             predictions, labels, examples = eval_func(model, dataloader, example_dict, args)
             elapsed_time = time.time() - start_time
             if output_predictions and torch.distributed.get_rank() == 0:
-                save_dir = args.load if args.load is not None else args.log_dir
-                filename = os.path.join(save_dir, name + '.jsonl')
+                filename = os.path.join(args.log_dir, name + '.jsonl')
                 output_func(predictions, examples, filename)
             total_count = len(predictions)
             single_dict = {key: metric(predictions, labels, examples) for key, metric in metric_dict.items()}
@@ -123,8 +122,13 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                 inputs = [tokens, types, attention_mask]
             elif args.cloze_eval:
                 tokens, labels_, position_ids = data['text'], data['label'], data['position']
-                attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
-                inputs = [tokens, position_ids, attention_mask, target_ids, logit_mask]
+                attention_mask, target_ids, logit_mask = data['attention_mask'], data.get('target'), data.get('logit_mask')
+                if not args.fast_decode:
+                    inputs = [tokens, position_ids, attention_mask, target_ids, logit_mask]
+                else:
+                    dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
+                    dec_target_ids, dec_logit_mask = data['dec_target'], data['dec_logit_mask']
+                    inputs = [tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask]
             else:
                 tokens, labels_, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
                     'attention_mask']
@@ -137,6 +141,14 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                         logits = model(*input_batch)
                     else:
                         logits, *mems = model(*input_batch)
+                    logit_list.append(logits)
+                logits = torch.cat(logit_list, dim=1)
+            elif args.cloze_eval and args.fast_decode:
+                logit_list = []
+                num_choices = inputs[3].size(1)
+                for i in range((num_choices - 1) // segment_length + 1):
+                    input_batch = inputs[:3] + [arg[:, i*segment_length: (i+1)*segment_length] for arg in inputs[3:]]
+                    logits, *mems = model(*input_batch)
                     logit_list.append(logits)
                 logits = torch.cat(logit_list, dim=1)
             else:

@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
 TASK_NAME=multirc
 DATA_PATH="/root/data/superglue/MultiRC"

@@ -22,6 +22,7 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from typing import List, Dict, Callable
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from tasks.data_utils import InputExample
 from utils import print_rank_0
@@ -43,18 +44,18 @@ def get_output_func(task_name):
 
 class GlueDataset(Dataset):
     def __init__(self, task_name, split, data_dir, tokenizer, max_seq_length, for_train=False, cloze_format=True,
-                 for_bert=False, pattern_id=0):
+                 for_bert=False, pattern_id=0, fast_decode=False):
         processor = PROCESSORS[task_name]()
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
         )
         self.dataset_name = f"{task_name}-{split}"
         if split == DEV_SET:
-            examples = processor.get_dev_examples(data_dir, for_train=for_train)#[:100]
+            examples = processor.get_dev_examples(data_dir, for_train=for_train)
         elif split == TEST_SET:
-            examples = processor.get_test_examples(data_dir)#[:100]
+            examples = processor.get_test_examples(data_dir)
         elif split == TRAIN_SET:
-            examples = processor.get_train_examples(data_dir)#[:100]
+            examples = processor.get_train_examples(data_dir)
         elif split == UNLABELED_SET:
             examples = processor.get_unlabeled_examples(data_dir)
             for example in examples:
@@ -72,8 +73,8 @@ class GlueDataset(Dataset):
         self.samples = []
         examples.sort(key=lambda x: x.num_choices)
         if cloze_format:
-            pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length, pattern_id=pattern_id)
-            for example in examples:
+            pvp = PVPS[task_name](tokenizer, processor.get_labels(), max_seq_length, pattern_id=pattern_id, fast_decode=fast_decode)
+            for example in tqdm(examples):
                 sample = pvp.encode(example)
                 self.samples.append(sample)
             print_rank_0(f"Truncate {pvp.num_truncated} examples")
@@ -134,9 +135,13 @@ class DataProcessor(ABC):
         """Get the list of labels for this data set."""
         pass
 
+    def get_classifier_input(self, example: InputExample, tokenizer):
+        return example.text_a, example.text_b
+
     def encode(self, example: InputExample, tokenizer, max_seq_length, for_bert=False):
-        tokens_a = tokenizer.EncodeAsIds(example.text_a).tokenization
-        tokens_b = tokenizer.EncodeAsIds(example.text_b).tokenization
+        text_a, text_b = self.get_classifier_input(example, tokenizer)
+        tokens_a = tokenizer.EncodeAsIds(text_a).tokenization
+        tokens_b = tokenizer.EncodeAsIds(text_b).tokenization
         num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
                                                        add_piece=False)
         if len(tokens_a) + len(tokens_b) + num_special_tokens > max_seq_length:
@@ -269,6 +274,10 @@ class WicProcessor(DataProcessor):
                 examples.append(example)
         return examples
 
+    def get_classifier_input(self, example: InputExample, tokenizer):
+        text_a = example.meta['word'] + ': ' + example.text_a
+        return text_a, example.text_b
+
 
 class WscProcessor(DataProcessor):
     """Processor for the WSC data set."""
@@ -287,6 +296,17 @@ class WscProcessor(DataProcessor):
 
     def get_labels(self):
         return ["False", "True"]
+
+    def get_classifier_input(self, example: InputExample, tokenizer):
+        target = example.meta['span1_text']
+        pronoun_idx = example.meta['span2_index']
+
+        # mark the pronoun with asterisks
+        words_a = example.text_a.split()
+        words_a[pronoun_idx] = '*' + words_a[pronoun_idx] + '*'
+        text_a = ' '.join(words_a)
+        text_b = target
+        return text_a, text_b
 
     @staticmethod
     def _create_examples(path: str, set_type: str) -> List[InputExample]:
@@ -406,7 +426,9 @@ class CopaProcessor(DataProcessor):
             ids_list, types_list, paddings_list = [], [], []
         else:
             ids_list, positions_list, sep_list = [], [], []
-        text_a = example.text_a + " " + example.meta["question"]
+        question = example.meta['question']
+        joiner = 'because' if question == 'cause' else 'so'
+        text_a = example.text_a + " " + joiner
         tokens_a = tokenizer.EncodeAsIds(text_a).tokenization
         for choice in [example.meta["choice1"], example.meta["choice2"]]:
             tokens_b = tokenizer.EncodeAsIds(choice).tokenization
@@ -543,6 +565,11 @@ class MultiRcProcessor(DataProcessor):
                         question_data["answers"].append({"idx": example.meta["answer_idx"], "label": prediction})
                     passage_data["passage"]["questions"].append(question_data)
                 output.write(json.dumps(passage_data) + "\n")
+
+    def get_classifier_input(self, example: InputExample, tokenizer):
+        text_a = example.text_a
+        text_b = ' '.join([example.text_b, "answer:", example.meta['answer']])
+        return text_a, text_b
 
 
 class RecordProcessor(DataProcessor):
@@ -901,8 +928,8 @@ class XStanceProcessor(DataProcessor):
         return examples
 
 
-SINGLE_TOKEN_DATASETS = {"wic", "rte", "cb", "boolq", "multirc"}
-MULTI_TOKEN_DATASETS = {"wsc", "copa", "record"}
+SINGLE_TOKEN_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
+MULTI_TOKEN_DATASETS = {"copa", "record"}
 
 PROCESSORS = {
     "mnli": MnliProcessor,

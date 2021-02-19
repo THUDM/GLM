@@ -63,6 +63,11 @@ def process_batch(batch, args):
         new_batch["loss_mask"] = batch["loss_mask"].float().cuda().contiguous()
         if args.fp16:
             new_batch['loss_mask'] = new_batch['loss_mask'].half()
+
+    for key in ['dec_text', 'dec_position', 'dec_mask', 'dec_target', 'dec_logit_mask']:
+        if key in batch:
+            new_batch[key] = batch[key].long().cuda().contiguous()
+    
     return new_batch
     # if args.fp16:
     #     attention_mask = attention_mask.half()
@@ -93,7 +98,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
         logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
     elif args.cloze_eval:
         tokens, labels, position_ids = data['text'], data['label'], data['position']
-        attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
+        attention_mask, target_ids, logit_mask = data['attention_mask'], data.get('target'), data.get('logit_mask')
 
         def print_masked_text(batch_id, choice_id):
             output_tokens = []
@@ -114,7 +119,12 @@ def finetune_forward_step(batch, model, args, timers, mems):
 
         # model.eval()
 
-        logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+        if not args.fast_decode:
+            logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+        else:
+            dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
+            dec_target_ids, dec_logit_mask = data['dec_target'], data['dec_logit_mask']
+            logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask)
         # mem_layers = mems
         # print('mem_layers', len(mem_layers))
         # # print(mem_layers[-1])
@@ -282,7 +292,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     if end_of_epoch_callback_provider is not None:
         if train_valid_datasets_provider is not None and args.epochs > 0:
             end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=False)
-        end_of_train_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=not args.eval_valid)
+        end_of_train_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=True)
     timers('callback function').stop()
 
     # Build model, optimizer and learning rate scheduler.
@@ -294,25 +304,22 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if (args.load_pretrained is not None and not args.pretrained_bert and not args.load) or (
-            args.src_seq_length > args.max_position_embeddings):
+    if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
         module = model
         if isinstance(module, (LocalDDP, TorchDDP)):
             module = module.module
         if isinstance(module, FP16_Module):
             module = module.module
-        args.load = args.load_pretrained
         if not isinstance(module, GPT2Model):
             module = module.model
-        if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
-            load_checkpoint(module, optimizer, lr_scheduler, args)
-        if args.src_seq_length and args.src_seq_length > args.max_position_embeddings:
-            module.extend_position_embeddings(args.src_seq_length)
+        args.load = args.load_pretrained
+        load_checkpoint(module, optimizer, lr_scheduler, args)
+        args.load = None
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16:
             optimizer._model_params_to_master_params()
-    elif args.load is not None:
+    if args.load is not None:
         load_checkpoint(model, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.

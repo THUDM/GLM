@@ -21,7 +21,7 @@ from collections import defaultdict
 from typing import Tuple, List, Union, Dict
 import numpy as np
 
-from tasks.data_utils import InputExample, num_special_tokens_to_add, build_input_from_ids, build_sample
+from tasks.data_utils import InputExample, num_special_tokens_to_add, build_input_from_ids, build_sample, build_decoder_input, build_decoder_sample
 from utils import print_rank_0
 
 FilledPattern = Tuple[List[Union[str, Tuple[str, bool]]], List[Union[str, Tuple[str, bool]]]]
@@ -149,8 +149,7 @@ class PVP(ABC):
             
             else:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
-                self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
-                                                        max_length=self.max_seq_length)
+                self.num_truncated += self.truncate(this_parts_a, this_parts_b, None, max_length=self.max_seq_length)
                 tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                 tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
                 data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer,
@@ -159,18 +158,20 @@ class PVP(ABC):
                 label = 0
                 sample = build_sample(ids, positions=position_ids, masks=sep, label=label, unique_id=example.guid)
 
-                ids_list, positions_list, mask_list, target_list = [], [], [], []
+                ids_list, positions_list, mask_list, target_list, logit_mask_list = [], [], [], [], []
                 for answer in answers:
                     answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
                     answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
                     answer_ids = answer_ids[:self.max_dec_seq_length]
-                    data = build_decoder_input(ids, answer_ids, max_dec_seq_length, tokenizer)
+                    data = build_decoder_input(ids, answer_ids, self.max_seq_length, self.max_dec_seq_length, tokenizer)
                     dec_ids, _, _, dec_position_ids, _, dec_target_ids, dec_loss_masks = data
                     ids_list.append(dec_ids)
                     positions_list.append(dec_position_ids)
+                    mask_list.append(sep)
                     target_list.append(dec_target_ids)
-                    mask_list.append(dec_loss_masks)
+                    logit_mask_list.append(dec_loss_masks)
 
+                sample = build_decoder_sample(sample, ids_list, positions_list, mask_list, target_list, logit_mask_list)
                 return sample
 
         else:
@@ -295,15 +296,18 @@ class PVP(ABC):
 class CopaPVP(PVP):
     @property
     def is_multi_token(self):
-        return True
+        return True if self.pattern_id < 2 else False
 
     def get_answers(self, example: InputExample):
-        choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
-        choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
-        return [choice1, choice2]
+        if self.pattern_id < 2:
+            choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
+            choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
+            return [choice1, choice2]
+        else:
+            return []
 
     def get_parts(self, example: InputExample) -> FilledPattern:
-
+        assert self.pattern_id in [0, 1, 2, 3]
         premise = self.remove_final_punc(self.shortenable(" " + example.text_a))
         choice1 = self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -316,14 +320,26 @@ class CopaPVP(PVP):
                 return ['"', choice1, '" or "', choice2, '"?', premise, ' because', self.mask, '.'], []
             elif self.pattern_id == 1:
                 return [choice1, ' or', " " + choice2, '?', premise, ' because', self.mask, '.'], []
+            elif self.pattern_id == 2:
+                return ['"', choice1, '" or "', choice2, '"?', premise, ' due to the', self.mask, '.'], []
+            elif self.pattern_id == 3:
+                return [choice1, ' or', " " + choice2, '?', premise, ' due to the', self.mask, '.'], []
         else:
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ', so', self.mask, '.'], []
             elif self.pattern_id == 1:
                 return [choice1, ' or', " " + choice2, '?', premise, ', so', self.mask, '.'], []
+            elif self.pattern_id == 2:
+                return ['"', choice1, '" or "', choice2, '"?', premise, ', so the', self.mask, '.'], []
+            elif self.pattern_id == 3:
+                return [choice1, ' or', " " + choice2, '?', premise, ', so the', self.mask, '.'], []
 
     def verbalize(self, label) -> List[str]:
-        return []
+        if self.pattern_id < 2:
+            return []
+        else:
+            assert label in [0, 1]
+            return [' former'] if label == 0 else [' latter']
 
 
 class WscPVP(PVP):

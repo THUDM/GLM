@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-copa
 TASK_NAME=COPA
 DATA_PATH="/root/data/superglue/COPA"

@@ -21,6 +21,7 @@ from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TO
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
+from tasks.superglue.pvp import PVPS
 
 default_metrics = {
     "record": [("EM", qa_exact_match), ("F1", qa_f1)],
@@ -37,10 +38,11 @@ default_metrics = {
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
     train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
+                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id,
+                                fast_decode=args.fast_decode)
     valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length,
                                 for_train=True, cloze_format=args.cloze_eval, for_bert=args.pretrained_bert,
-                                pattern_id=args.pattern_id)
+                                pattern_id=args.pattern_id, fast_decode=args.fast_decode)
 
     return train_dataset, valid_dataset
 
@@ -50,7 +52,8 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     def single_dataset_provider(split):
         return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id)
+                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id,
+                           fast_decode=args.fast_decode)
 
     output_func = get_output_func(args.task.lower())
     eval_func = None
@@ -64,19 +67,24 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 def main(args):
     model_kwargs = {}
-    if args.task.lower() == 'wsc':
+    if args.task.lower() == 'wsc' and args.cloze_eval:
         from tasks.language_model.finetune import lm_forward_step
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
-        if args.task.lower() in SINGLE_TOKEN_DATASETS:
+        processor = PROCESSORS[args.task.lower()]()
+        if args.cloze_eval:
+            pvp = PVPS[args.task.lower()](None, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
+            multi_token = pvp.is_multi_token
+        else:
+            multi_token = args.task.lower() in MULTI_TOKEN_DATASETS
+        if not multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
             model_kwargs["multi_token"] = False
             model_kwargs["num_labels"] = len(PROCESSORS[args.task.lower()]().get_labels())
-        elif args.task.lower() in MULTI_TOKEN_DATASETS:
+        else:
             model_kwargs["model_type"] = "multiple_choice"
             model_kwargs["multi_token"] = True
-        else:
-            raise NotImplementedError(args.task)
+            model_kwargs["num_labels"] = 1
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider)

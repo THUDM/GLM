@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-boolq
 TASK_NAME=BoolQ
 DATA_PATH="/root/data/superglue/BoolQ"

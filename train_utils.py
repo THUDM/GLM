@@ -6,7 +6,7 @@ from torch import distributed as dist
 import mpu
 from fp16 import FP16_Module, FP16_Optimizer
 from learning_rates import AnnealingLR
-from model import VerbalizerModel, ClozeModel, PoolingModel, GPT2Model, PyTorchDistributedDataParallel as TorchDDP, \
+from model import VerbalizerModel, ClozeModel, FastClozeModel, PoolingModel, GPT2Model, PyTorchDistributedDataParallel as TorchDDP, \
     DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
 from model.modeling import BertForMultipleChoice, BertForSequenceClassification
 from utils import print_rank_0
@@ -33,7 +33,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
             raise NotImplementedError
     else:
         output_predict, paralle_output = True, True
-        if model_type == "multiple_choice" and not args.cloze_eval:
+        if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
             output_predict = False
         if model_type is not None:
             paralle_output = False
@@ -57,11 +57,18 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
             if model_type == 'multiple_choice':
                 if args.cloze_eval:
                     if multi_token:
-                        model = ClozeModel(model, length_penalty=args.length_penalty)
+                        if args.fast_decode:
+                            model = FastClozeModel(model, length_penalty=args.length_penalty)
+                        else:
+                            model = ClozeModel(model, length_penalty=args.length_penalty)
                     else:
                         model = VerbalizerModel(model)
                 else:
-                    model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token)
+                    model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                         num_class=num_labels)
+            elif model_type == 'classification':
+                model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                     num_class=num_labels)
             elif model_type == 'generation':
                 pass
             else:

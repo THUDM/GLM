@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-wic
 TASK_NAME=wic
 DATA_PATH="/root/data/superglue/WiC"

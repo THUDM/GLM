@@ -43,7 +43,8 @@ class DecoderEvaluater:
         """Calculate correct over total answers and return prediction if the
         `output_predictions` is true."""
         model.eval()
-        store = torch.distributed.FileStore(f"/tmp/seq2seq_{args.experiment_name}", mpu.get_data_parallel_world_size())
+        store = torch.distributed.TCPStore(args.master_ip, 18931, mpu.get_data_parallel_world_size(),
+                                           torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
         print_rank_0("Distributed store created")
         with torch.no_grad():
             # For all the batches in the dataset.
@@ -92,7 +93,10 @@ class DecoderEvaluater:
                     next_token_scores = next_token_scores.view(batch_size, args.num_beams * vocab_size)
 
                     probs = F.softmax(next_token_scores, dim=-1)
-                    next_tokens = torch.multinomial(probs, num_samples=2 * args.num_beams)
+                    if args.select_topk:
+                        _, next_tokens = torch.topk(probs, k=2 * args.num_beams, dim=-1, largest=True)
+                    else:
+                        next_tokens = torch.multinomial(probs, num_samples=2 * args.num_beams)
                     next_token_scores = torch.gather(next_token_scores, -1, next_tokens)
                     next_token_scores, _indices = torch.sort(next_token_scores, descending=True, dim=1)
                     next_tokens = torch.gather(next_tokens, -1, _indices)
@@ -133,8 +137,10 @@ class DecoderEvaluater:
                     print_rank_0(f"Iteration {idx + 1} / {len(dataloader)}")
         model.train()
         torch.distributed.barrier()
+        print_rank_0("Evaluation completed")
         predictions, examples = [], []
         for uid, example in example_dict.items():
             predictions.append(store.get(uid).decode('utf-8'))
             examples.append(example)
+        torch.distributed.barrier()
         return predictions, [], examples

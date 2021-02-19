@@ -730,24 +730,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
             get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
             checkpoint = deepspeed.checkpointing.checkpoint
 
-    def extend_position_embeddings(self, length):
-        if not self.relative_encoding:
-            original_length = self.position_embeddings.num_embeddings
-            assert original_length <= length
-            position_embeddings = torch.nn.Embedding(length, self.hidden_size)
-            position_embeddings.weight.data[:original_length] = self.position_embeddings.weight.data
-            self.position_embeddings = position_embeddings
-            if self.block_position_encoding:
-                original_length = self.block_position_embeddings.num_embeddings
-                assert original_length <= length
-                block_position_embeddings = torch.nn.Embedding(length, self.hidden_size)
-                block_position_embeddings.weight.data[:original_length] = self.block_position_embeddings.weight.data
-                self.block_position_embeddings = block_position_embeddings
-            if torch.distributed.get_rank() == 0:
-                print(f"Extend position embedding from {original_length} to {length}")
-
     def forward(self, hidden_states, position_ids, attention_mask, memory_states=None, encoder_states=None,
-                return_memory=False):
+                return_memory=False, detach_memory=True):
         batch_size, query_length = hidden_states.size()[:2]
         memory_length = memory_states[0].size(1) if memory_states else 0
         key_length = query_length + memory_length
@@ -803,8 +787,13 @@ class GPT2ParallelTransformer(torch.nn.Module):
             hidden_states = hidden_states + type_embeddings
         hidden_states = self.embedding_dropout(hidden_states)
 
+        def check_detach(hidden_states):
+            if detach_memory:
+                return hidden_states.detach()
+            return hidden_states
+
         if self.max_memory_length > 0 or return_memory:
-            mem_layers = [hidden_states.detach()]
+            mem_layers = [check_detach(hidden_states)]
         else:
             mem_layers = []
 
@@ -820,7 +809,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                     mem_i_ = mems_[i] if mems_ else None
                     x_ = layer(x_, *inputs, mem=mem_i_)
                     if self.max_memory_length > 0 or return_memory:
-                        mem_layers.append(x_.detach())
+                        mem_layers.append(check_detach(x_))
                 return x_
 
             return custom_forward
@@ -849,7 +838,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 mem_i = memory_states[i] if memory_states else None
                 hidden_states = layer(*args, mem=mem_i)
                 if self.max_memory_length > 0 or return_memory:
-                    mem_layers.append(hidden_states.detach())
+                    mem_layers.append(check_detach(hidden_states))
 
         # Final layer norm.
         output = self.final_layernorm(hidden_states)

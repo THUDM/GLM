@@ -1,4 +1,3 @@
-source config/model_blocklm.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-CB
 TASK_NAME=cb
 DATA_PATH="/root/data/superglue/CB"

@@ -232,6 +232,7 @@ def add_text_generate_args(parser):
     group.add_argument("--length-penalty", type=float, default=0.0)
     group.add_argument("--no-repeat-ngram-size", type=int, default=0)
     group.add_argument("--min-tgt-length", type=int, default=0)
+    group.add_argument("--select-topk", action='store_true')
     return parser
 
 
@@ -324,10 +325,11 @@ def add_finetune_config_args(parser):
     group.add_argument('--task', type=str, help='Task name.')
     group.add_argument('--load-pretrained', type=str, help="Load pretrained model", default=None)
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
-                       help='The token to pool the sequence representation', default='start')
+                       help='The token to pool the sequence representation', default='cls')
     group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
     group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge"], default="cross_entropy")
     group.add_argument('--pattern-id', type=int, default=0)
+    group.add_argument('--fast-decode', action='store_true', help="Fast decode for multi-token cloze")
     group.add_argument('--eval-valid', action='store_true', help="Whether evaluate on the valid set")
     group.add_argument('--validation-metric', type=str, default=None)
     group.add_argument('--unidirectional', action='store_true', help="Use the left to right language model")

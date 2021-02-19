@@ -12,7 +12,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         if split == "train":
             filename = "train"
         elif split == "dev":
-            filename = "dev"
+            filename = "val"
         elif split == "test":
             filename = "test"
         else:

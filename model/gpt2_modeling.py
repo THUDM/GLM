@@ -85,14 +85,14 @@ class GPT2Model(torch.nn.Module):
                                                        type_encoding=type_encoding,
                                                        block_position_encoding=block_position_encoding)
 
-    def forward(self, input_ids, position_ids, attention_mask, *mems, return_memory=False):
+    def forward(self, input_ids, position_ids, attention_mask, *mems, return_memory=False, detach_memory=True):
         # Embeddings.
         words_embeddings = self.word_embeddings(input_ids)
         embeddings = words_embeddings
 
         # Transformer.
         transformer_output = self.transformer(embeddings, position_ids, attention_mask, mems,
-                                              return_memory=return_memory)
+                                              return_memory=return_memory, detach_memory=detach_memory)
         logits, hidden_layers = transformer_output
         if self.output_predict:
             # Parallel logits.
@@ -107,8 +107,6 @@ class GPT2Model(torch.nn.Module):
         else:
             return (logits, *hidden_layers)
 
-    def extend_position_embeddings(self, length):
-        self.transformer.extend_position_embeddings(length)
 
 class EncoderDecoder(torch.nn.Module):
     """Seq2Seq Transformer Model

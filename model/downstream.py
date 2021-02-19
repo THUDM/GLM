@@ -54,25 +54,45 @@ class ClozeModel(torch.nn.Module):
 
 class FastClozeModel(torch.nn.Module):
     def __init__(self, language_model, take_softmax=True, length_penalty=0.0):
-        super(ClozeModel, self).__init__()
+        super(FastClozeModel, self).__init__()
         self.model = language_model
         self.take_softmax = take_softmax
         self.length_penalty = length_penalty
 
     def forward(self, input_ids, position_ids, attention_mask, 
-                dec_input_ids, dec_position_ids, dec_target_ids, dec_logit_mask):
+                dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask):
         # encoder
-        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask, return_memory=True, detach_memory=False)
         batch_size, num_choices, max_dec_len = dec_input_ids.size()
+        max_enc_len = input_ids.size(-1)
 
         enc_mems = []
         for hidden in mems:
             hidden = hidden.unsqueeze(1).expand(-1,num_choices,-1,-1).reshape(batch_size*num_choices, *hidden.size()[1:])
             enc_mems.append(hidden)
 
+        def build_dec_mask_matrix(seq_length, sep, memory_length=0):
+            m = enc_mems[0].new_ones((1, seq_length, seq_length))
+            m = torch.tril(m)
+
+            # sep = dec_attention_mask
+            ids = torch.arange(memory_length, device=sep.device, dtype=sep.dtype).view(1, -1)
+            mask = ids < sep.view(-1, 1) # batch * mem
+            mask = mask.unsqueeze(1).float().expand(-1, seq_length, -1)
+
+            m = m.expand(batch_size*num_choices, -1, -1)
+            # print(mask)
+            # print(mask.shape)
+            # print(m)
+            # print(m.shape)
+            m = torch.cat((mask, m), dim=2)
+            m = m.unsqueeze(1)
+            return m
+
         dec_input_ids = dec_input_ids.reshape(-1, max_dec_len)
         dec_position_ids = dec_position_ids.reshape(-1, *dec_position_ids.size()[2:])
-        dec_attention_mask = dec_input_ids.new_zeros([batch_size*num_choices])
+        # dec_attention_mask = dec_attention_mask.reshape(-1, *dec_attention_mask.size()[2:]).unsqueeze(1)
+        dec_attention_mask = build_dec_mask_matrix(max_dec_len, dec_attention_mask.reshape(-1), max_enc_len)
         dec_target_ids = dec_target_ids.reshape(-1, dec_target_ids.size(-1))
         dec_logit_mask = dec_logit_mask.reshape(-1, dec_logit_mask.size(-1))
 
@@ -80,9 +100,9 @@ class FastClozeModel(torch.nn.Module):
         if self.take_softmax:
             outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
 
-        batch_ids = torch.arange(dec_target_ids.size(0), dtype=torch.long, device=target_ids.device)
+        batch_ids = torch.arange(dec_target_ids.size(0), dtype=torch.long, device=dec_target_ids.device)
         batch_ids = batch_ids.unsqueeze(1).expand_as(dec_target_ids)
-        seq_ids = torch.arange(dec_target_ids.size(-1), dtype=torch.long, device=target_ids.device)
+        seq_ids = torch.arange(dec_target_ids.size(-1), dtype=torch.long, device=dec_target_ids.device)
         seq_ids = seq_ids.unsqueeze(0).expand_as(dec_target_ids)
         logits = outputs[batch_ids, seq_ids, dec_target_ids]
         logits = (logits * dec_logit_mask).sum(dim=1)
