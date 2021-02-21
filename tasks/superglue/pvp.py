@@ -318,6 +318,8 @@ class CopaPVP(PVP):
         assert question in ['cause', 'effect']
         answer = " because" if question == 'cause' else " so"
         answer_ids = [get_verbalization_ids(answer, tokenizer, force_single_token=True)]
+        if self.is_multi_token:
+            answer_ids.append(tokenizer.get_command('eop').Id)
 
         ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
 

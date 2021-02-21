@@ -110,6 +110,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
                     target_positions.append(i)
             print(target_positions)
             print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
+            print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
 
         logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
