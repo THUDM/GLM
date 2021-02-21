@@ -20,4 +20,6 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
+       --epochs ${EPOCH_SINGLE} \
+       --lr ${LR_SINGLE} \
        2>&1 | tee logs/log-${DATESTR}.txt
