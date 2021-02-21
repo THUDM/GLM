@@ -931,8 +931,8 @@ class XStanceProcessor(DataProcessor):
         return examples
 
 
-SINGLE_TOKEN_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
-MULTI_TOKEN_DATASETS = {"copa", "record"}
+CLASSIFICATION_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
+MULTI_CHOICE_DATASETS = {"copa", "record"}
 
 PROCESSORS = {
     "mnli": MnliProcessor,

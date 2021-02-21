@@ -17,7 +17,7 @@
 
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
-from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, \
+from tasks.superglue.dataset import GlueDataset, CLASSIFICATION_DATASETS, MULTI_CHOICE_DATASETS, PROCESSORS, \
     get_output_func
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
@@ -73,7 +73,7 @@ def main(args):
                                           pattern_id=args.pattern_id, is_multi_token=args.multi_token)
             multi_token = pvp.is_multi_token
         else:
-            multi_token = args.task.lower() in MULTI_TOKEN_DATASETS
+            multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
         if not multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
             model_kwargs["multi_token"] = False
