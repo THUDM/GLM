@@ -34,7 +34,7 @@ class PVP(ABC):
     """
 
     def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42):
+                 seed: int = 42, is_multi_token=False):
         """
         Create a new PVP.
 
@@ -50,13 +50,14 @@ class PVP(ABC):
         self.pattern_id = pattern_id
         self.rng = random.Random(seed)
         self.num_truncated = 0
+        self._is_multi_token = is_multi_token
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
 
     @property
     def is_multi_token(self):
-        return False
+        return self._is_multi_token
 
     @property
     def mask(self) -> str:
@@ -214,7 +215,7 @@ class PVP(ABC):
         pass
 
     def get_answers(self, example: InputExample):
-        return []
+        return [self.verbalize(label)[0] for label in self.label_list]
 
     def get_verbalizer_ids(self):
         target_ids = []

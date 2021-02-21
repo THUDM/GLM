@@ -76,7 +76,8 @@ class GlueDataset(Dataset):
         self.samples = []
         examples.sort(key=lambda x: x.num_choices)
         if args.cloze_eval:
-            pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
+            pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id,
+                                  is_multi_token=args.multi_token)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
@@ -954,10 +955,3 @@ PROCESSORS = {
     "ax-g": AxGProcessor,
     "ax-b": AxBProcessor,
 }  # type: Dict[str,Callable[[],DataProcessor]]
-
-# TASK_HELPERS = {
-#     "wsc": task_helpers.WscTaskHelper,
-#     "multirc": task_helpers.MultiRcTaskHelper,
-#     "copa": task_helpers.CopaTaskHelper,
-#     "record": task_helpers.RecordTaskHelper,
-# }

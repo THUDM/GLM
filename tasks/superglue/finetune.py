@@ -70,7 +70,7 @@ def main(args):
         processor = PROCESSORS[args.task.lower()]()
         if args.cloze_eval:
             pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
-                                          pattern_id=args.pattern_id)
+                                          pattern_id=args.pattern_id, is_multi_token=args.multi_token)
             multi_token = pvp.is_multi_token
         else:
             multi_token = args.task.lower() in MULTI_TOKEN_DATASETS
