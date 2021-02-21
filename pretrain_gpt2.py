@@ -213,34 +213,32 @@ def forward_step(data_iterator, model, args, timers, mems):
     timers('batch generator').stop()
 
     def print_masked_text(batch_id):
-        if not args.no_block_position:
-            block_position_ids = position_ids[:, 1]
-            position_ids_ = position_ids[:, 0]
-        else:
-            position_ids_ = position_ids
+        block_position_ids = position_ids[:, 1]
+        position_ids_ = position_ids[:, 0]
         output_tokens = []
         sep = attention_mask.item()
         for i, token in enumerate(tokens[batch_id, :sep].tolist()):
             token = tokenizer.IdToToken(token)
-            if token == '[MASK]':
-                token = f"[{position_ids_[batch_id, i].item()}]"
-            output_tokens.append(token)
+            if token.startswith('[MASK'):
+                token = f"[{position_ids_[batch_id, i].item()}, {token}]"
+            if token.startswith('##') and len(output_tokens) > 0 and not output_tokens[-1].endswith(']'):
+                output_tokens[-1] += token[2:]
+            else:
+                output_tokens.append(token)
         print(" ".join(output_tokens))
         last_index = None
-        last_position = None
         for i in range(sep, tokens.size(1)):
-            if (not args.no_block_position and block_position_ids[batch_id, i] == 1) or (args.no_block_position and (
-                    last_position is None or position_ids_[batch_id, i] != last_position + 1)):
+            if tokenizer.IdToToken(tokens[batch_id, i].item()).startswith("<|startofpiece"):
                 if last_index is not None:
-                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), ";",
+                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), "|",
                           tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
-                          position_ids_[batch_id, last_index: i].tolist())
+                          position_ids_[batch_id, last_index: i].tolist(),
+                          block_position_ids[batch_id, last_index:i].tolist())
                 last_index = i
-            last_position = position_ids_[batch_id, i]
         if last_index is not None:
-            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
+            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), "|",
                   tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
-                  position_ids_[batch_id, last_index:].tolist())
+                  position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
     if tokens.size(1) <= args.seq_length + 2:
         mode = 'gpt'

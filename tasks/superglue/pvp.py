@@ -93,6 +93,13 @@ class PVP(ABC):
             return PVP.lowercase_first(s[0]), s[1]
         return s[0].lower() + s[1:]
 
+    @staticmethod
+    def uppercase_first(s: Union[str, Tuple[str, bool]]):
+        """Lowercase the first character"""
+        if isinstance(s, tuple):
+            return PVP.uppercase_first(s[0]), s[1]
+        return s[0].upper() + s[1:]
+
     def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
         """
         Encode an input example using this pattern-verbalizer pair.
@@ -296,15 +303,12 @@ class PVP(ABC):
 class CopaPVP(PVP):
     @property
     def is_multi_token(self):
-        return True if self.pattern_id < 2 else False
+        return True
 
     def get_answers(self, example: InputExample):
-        if self.pattern_id < 2:
-            choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
-            choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
-            return [choice1, choice2]
-        else:
-            return []
+        choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
+        choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
+        return [choice1, choice2]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         assert self.pattern_id in [0, 1, 2, 3]
@@ -320,26 +324,63 @@ class CopaPVP(PVP):
                 return ['"', choice1, '" or "', choice2, '"?', premise, ' because', self.mask, '.'], []
             elif self.pattern_id == 1:
                 return [choice1, ' or', " " + choice2, '?', premise, ' because', self.mask, '.'], []
-            elif self.pattern_id == 2:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ' due to the', self.mask, '.'], []
-            elif self.pattern_id == 3:
-                return [choice1, ' or', " " + choice2, '?', premise, ' due to the', self.mask, '.'], []
         else:
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ', so', self.mask, '.'], []
             elif self.pattern_id == 1:
                 return [choice1, ' or', " " + choice2, '?', premise, ', so', self.mask, '.'], []
-            elif self.pattern_id == 2:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ', so the', self.mask, '.'], []
-            elif self.pattern_id == 3:
-                return [choice1, ' or', " " + choice2, '?', premise, ', so the', self.mask, '.'], []
 
     def verbalize(self, label) -> List[str]:
+        return []
+
+    def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
+        """
+        Encode an input example using this pattern-verbalizer pair.
+
+        :param example: the input example to encode
+        :param priming: whether to use this example for priming
+        :param labeled: if ``priming=True``, whether the label should be appended to this example
+        :return: A tuple, consisting of a list of input ids and a list of token type ids
+        """
         if self.pattern_id < 2:
-            return []
+            return super().encode(example, priming=priming, labeled=labeled)
+        if not priming:
+            assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
+
+        tokenizer = self.tokenizer
+        premise = self.remove_final_punc(self.shortenable(example.text_a))
+        choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
+        choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
+        question = example.meta['question']
+        assert question in ['cause', 'effect']
+        answer = " because" if question == 'cause' else " so"
+        answer_ids = [get_verbalization_ids(answer, tokenizer, force_single_token=True)]
+
+        ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+
+        for choice in [choice1, choice2]:
+            parts = ['"', choice1[1:], '" or "', choice2[1:], '"?', premise, self.mask, choice]
+            parts = [x if isinstance(x, tuple) else (x, False) for x in parts]
+            parts = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts if
+                     x]
+            self.num_truncated += self.truncate(parts, None, answer_ids, max_length=self.max_seq_length)
+            tokens_a = [token_id for part, _ in parts for token_id in part]
+            data = build_input_from_ids(tokens_a, None, answer_ids, self.max_seq_length, self.tokenizer,
+                                        add_cls=True, add_sep=False, add_piece=True)
+            ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            ids_list.append(ids)
+            positions_list.append(position_ids)
+            sep_list.append(sep)
+            target_list.append(target_ids)
+            mask_list.append(loss_masks)
+        if example.label is not None:
+            label = self.label_list.index(example.label)
         else:
-            assert label in [0, 1]
-            return [' former'] if label == 0 else [' latter']
+            label = 0
+        sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                              logit_mask=mask_list, target=target_list,
+                              unique_id=example.guid)
+        return sample
 
 
 class WscPVP(PVP):
@@ -432,7 +473,7 @@ class RecordPVP(PVP):
 
         assert '@placeholder' in example.text_b, f'question "{example.text_b}" does not contain a @placeholder token'
         question_a, question_b = example.text_b.split('@placeholder')
-        return [premise,  " " + question_a.rstrip(), self.mask, question_b], []
+        return [premise, " " + question_a.rstrip(), self.mask, question_b], []
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -450,7 +491,7 @@ class RtePVP(PVP):
         text_b = example.text_b.rstrip(string.punctuation)
 
         if self.pattern_id == 0:
-            return ['"', self.shortenable(text_b), '" ?'], [self.mask, self.shortenable(', "' + text_a + '"')]
+            return ['"', self.shortenable(text_b), '" ?'], [self.mask, ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:
             return [self.shortenable(text_b), '?'], [self.mask, ',', self.shortenable(" " + text_a)]
         if self.pattern_id == 2:
@@ -502,6 +543,8 @@ class BoolQPVP(PVP):
         passage = example.text_a
         question = example.text_b
 
+        # if self.pattern_id == 0:
+        #     return [self.shortenable(passage), self.shortenable(" " + self.uppercase_first(question)), '? ', self.mask, '.'], []
         if self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', self.mask,
                     '.'], []

@@ -111,8 +111,6 @@ def add_training_args(parser):
 
     group.add_argument('--experiment-name', type=str, default="gpt-345M",
                        help="The experiment name for summary and checkpoint")
-    group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
-    group.add_argument('--bert-prob', type=float, default=0.5)
     group.add_argument('--batch-size', type=int, default=4,
                        help='Data Loader batch size')
     group.add_argument('--gradient-accumulation-steps', type=int, default=1,
@@ -160,6 +158,8 @@ def add_training_args(parser):
     # model checkpointing
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
+    group.add_argument('--save-epoch', type=int, default=1,
+                       help='number of epochs between saves')
     group.add_argument('--save-interval', type=int, default=5000,
                        help='number of iterations between saves')
     group.add_argument('--no-save-optim', action='store_true',
@@ -189,7 +189,14 @@ def add_training_args(parser):
 
     group.add_argument('--local_rank', type=int, default=None,
                        help='local rank passed from distributed launcher')
-
+    # BlockLM training args
+    group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
+    group.add_argument('--bert-prob', type=float, default=0.5)
+    group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
+    group.add_argument('--no-block-position', action='store_true',
+                       help='Use (rough) absolute positions instead of block positions')
+    group.add_argument('--sentinel-token', action='store_true',
+                       help="Use sentinel (mask) tokens to replace 2d position encoding")
     return parser
 
 
@@ -296,7 +303,7 @@ def add_data_args(parser):
                                 'GPT2BPETokenizer',
                                 'ChineseSPTokenizer'],
                        help='what type of tokenizer to use')
-    group.add_argument('--not-pre-tokenize', action='store_true')
+    group.add_argument('--no-pre-tokenize', action='store_true')
     group.add_argument("--cache-dir", default=None, type=str,
                        help="Where to store pre-trained BERT downloads")
     group.add_argument('--use-tfrecords', action='store_true',
@@ -312,8 +319,6 @@ def add_data_args(parser):
                             'Defaults to math.ceil(`--seq-length`*.15/10)*10.'
                             'MUST BE SPECIFIED IF `--use-tfrecords` is True.')
     group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
-    group.add_argument('--no-block-position', action='store_true',
-                       help='Use (rough) absolute positions instead of block positions')
     group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")
     group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")
     group.add_argument('--save-test-data', type=str, default=None, help="The path to save the test data")

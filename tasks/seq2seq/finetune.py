@@ -49,7 +49,7 @@ def seq2seq_forward_step(data, model, args, timers, mems):
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = Seq2SeqDataset(args.data_dir, split='train', tokenizer=tokenizer,
+    train_dataset = Seq2SeqDataset(args.task.lower(), args.data_dir, split='train', tokenizer=tokenizer,
                                    max_src_length=args.src_seq_length, max_tgt_length=args.tgt_seq_length)
     valid_dataset = None
     global global_tokenizer
@@ -63,7 +63,7 @@ def metrics_func_provider(args, tokenizer, is_test):
         return None
 
     def single_dataset_provider(split):
-        return Seq2SeqDataset(args.data_dir, split, tokenizer, max_src_length=args.src_seq_length,
+        return Seq2SeqDataset(args.task.lower(), args.data_dir, split, tokenizer, max_src_length=args.src_seq_length,
                               max_tgt_length=args.tgt_seq_length)
 
     evaluater = DecoderEvaluater(args, tokenizer)
@@ -79,7 +79,7 @@ def metrics_func_provider(args, tokenizer, is_test):
                 output.write("\n")
         with open(output_file + ".refs", "w") as output:
             for example in examples:
-                output.write(example.text_b)
+                output.write(example.meta["ref"])
                 output.write("\n")
 
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
@@ -89,7 +89,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() == 'cnn_dm':
+    if args.task.lower() in ['cnn_dm', 'gigaword']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

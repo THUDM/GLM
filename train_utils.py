@@ -50,8 +50,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                           checkpoint_num_layers=args.checkpoint_num_layers,
                           parallel_output=paralle_output,
                           relative_encoding=args.transformer_xl,
-                          type_encoding=args.block_lm and args.no_block_position,
-                          block_position_encoding=args.block_lm and not args.no_block_position,
+                          block_position_encoding=args.block_lm,
                           output_predict=output_predict)
         if model_type is not None:
             if model_type == 'multiple_choice':

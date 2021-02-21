@@ -5,10 +5,18 @@ import numpy as np
 from tasks.data_utils import InputExample
 from tqdm import tqdm
 from utils import print_rank_0
+import random
+
+
+def gigaword_detokenize(string):
+    # string = string.replace("UNK", "[UNK]")
+    # string = string.replace("<unk>", "[UNK]")
+    string = string.replace("UNK", "<unk>")
+    return string
 
 
 class Seq2SeqDataset(torch.utils.data.Dataset):
-    def __init__(self, data_dir, split, tokenizer, max_src_length, max_tgt_length):
+    def __init__(self, task, data_dir, split, tokenizer, max_src_length, max_tgt_length):
         if split == "train":
             filename = "train"
         elif split == "dev":
@@ -17,14 +25,22 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             filename = "test"
         else:
             raise NotImplementedError(split)
+        print_rank_0(f"Creating {task}-{split} dataset from {data_dir}")
         self.dataset_name = split
+        detokenizer = None
+        if task == "gigaword":
+            detokenizer = gigaword_detokenize
         source_texts, target_texts = [], []
         with open(os.path.join(data_dir, f"{filename}.source")) as file:
             for line in file:
-                source_texts.append(line.strip())
+                line = line.strip()
+                line = detokenizer(line) if detokenizer else line
+                source_texts.append(line)
         with open(os.path.join(data_dir, f"{filename}.target")) as file:
             for line in file:
-                target_texts.append(line.strip())
+                line = line.strip()
+                line = detokenizer(line) if detokenizer else line
+                target_texts.append(line)
         assert len(source_texts) == len(target_texts)
         self.examples, self.samples = {}, []
         num_source_truncated, num_target_truncated = 0, 0
@@ -33,20 +49,20 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         pad_id = tokenizer.get_command('pad').Id
         sop_id = tokenizer.get_command('sop').Id
         eop_id = tokenizer.get_command('eop').Id
-        for idx, (source_text, target_text) in enumerate(tqdm(zip(source_texts, target_texts))):
+        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+            if (idx + 1) % 20000 == 0:
+                print_rank_0(f"Complete {idx + 1} examples")
             guid = "%s-%s" % (split, idx)
             source_truncated, target_truncated = False, False
             meta = {"ref": tokenizer.DecodeIds(tokenizer.EncodeAsIds(target_text).tokenization)}
             example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
             self.examples[guid] = example
-            source_tokens = tokenizer.EncodeAsIds(source_text).tokenization
-            source_tokens = [cls_id] + source_tokens
-            prompt = tokenizer.EncodeAsIds(" Summary:").tokenization
-            prompt = prompt + [mask_id]
+            source_tokens = tokenizer.EncodeAsIds(" " + source_text).tokenization
+            prompt = [cls_id, mask_id] + tokenizer.EncodeAsIds(" Content:").tokenization
             if len(source_tokens) > max_src_length - len(prompt):
                 source_tokens = source_tokens[:max_src_length - len(prompt)]
                 source_truncated = True
-            source_tokens = source_tokens + prompt
+            source_tokens = prompt + source_tokens
             if len(source_tokens) < max_src_length:
                 source_tokens = source_tokens + [pad_id] * (max_src_length - len(source_tokens))
             sep = len(source_tokens)

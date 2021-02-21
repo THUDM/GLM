@@ -7,4 +7,4 @@ MODEL_ARGS="--block-lm \
             --max-position-embeddings 512 \
             --tokenizer-model-type roberta \
             --tokenizer-type GPT2BPETokenizer \
-            --load-pretrained /public/home/sleepychord/zhengxiao/data/checkpoints/blocklm-roberta-large-blank01-23-00-03"
+            --load-pretrained /root/data/checkpoints/blocklm-roberta-large/300000"

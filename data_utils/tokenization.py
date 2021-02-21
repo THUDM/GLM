@@ -715,7 +715,8 @@ class BertWordPieceTokenizer(Tokenizer):
     in BERT training. Default to bert-large-uncased tokenizer.
     """
 
-    def __init__(self, tokenizer_model_type=None, cache_dir=None, add_block_symbols=False, **kwargs):
+    def __init__(self, tokenizer_model_type=None, cache_dir=None, add_block_symbols=False, add_sentinel_token=0,
+                 **kwargs):
         # default to bert-large-uncased tokenizer
         if tokenizer_model_type not in PRETRAINED_VOCAB_ARCHIVE_MAP:
             tokenizer_model_type = 'bert-large-uncased'
@@ -750,6 +751,12 @@ class BertWordPieceTokenizer(Tokenizer):
             ])
             self.num_tokens += 2
             self.num_command_tokens += 2
+        if add_sentinel_token > 0:
+            for i in range(1, add_sentinel_token):
+                self._command_tokens.extend([CommandToken(f'MASK{i}', f'[MASK{i}]', self.num_tokens),
+                                             CommandToken(f'sop{i}', f'<|startofpiece{i}|>', self.num_tokens + 1)])
+                self.num_tokens += 2
+                self.num_command_tokens += 2
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
