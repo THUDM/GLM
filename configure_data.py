@@ -115,7 +115,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
     use_block = args.block_lm or args.encoder_decoder
     if use_block:
         strategy = ConstructBlockStrategy(args, tokenizer, args.max_position_embeddings, bert_prob=args.bert_prob,
-                                          shuffle_blocks=not args.no_shuffle_block,
+                                          infill_prob=args.infill_prob, shuffle_blocks=not args.no_shuffle_block,
                                           block_position_encoding=not args.no_block_position,
                                           sentinel_token=args.sentinel_token,
                                           encoder_decoder=args.encoder_decoder)
