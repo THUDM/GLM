@@ -155,6 +155,7 @@ def add_training_args(parser):
     group.add_argument('--warmup', type=float, default=0.01,
                        help='percentage of data to warmup on (.01 = 1% of all '
                             'training iters). Default 0.01')
+    group.add_argument('--switch-linear', action='store_true', help="Switch to linear decay for cosine decay")
     # model checkpointing
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')

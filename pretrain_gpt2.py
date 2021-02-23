@@ -538,6 +538,8 @@ def main():
     else:
         args.iteration = 0
     torch.distributed.barrier()
+    if args.switch_linear:
+        lr_scheduler.switch_linear(args)
 
     summary_writer = None
     if torch.distributed.get_rank() == 0:

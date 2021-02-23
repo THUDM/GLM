@@ -25,7 +25,7 @@ gpt_options=" \
        --distributed-backend nccl \
        --lr-decay-style cosine \
        --lr-decay-iters 300000 \
-       --lr-decay-ratio 0.01 \
+       --lr-decay-ratio 0.025 \
        --warmup .1 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
