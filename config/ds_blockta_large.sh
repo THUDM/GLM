@@ -23,10 +23,10 @@ gpt_options=" \
        --tokenizer-model-type roberta \
        --split 949,50,1 \
        --distributed-backend nccl \
-       --lr-decay-style cosine \
-       --lr-decay-iters 300000 \
+       --lr-decay-style linear \
+       --lr-decay-iters 500000 \
        --lr-decay-ratio 0.025 \
-       --warmup .1 \
+       --warmup .06 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
