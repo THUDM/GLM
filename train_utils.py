@@ -162,7 +162,7 @@ def get_learning_rate_scheduler(optimizer, args):
     lr_scheduler = AnnealingLR(optimizer,
                                start_lr=args.lr,
                                warmup_iter=warmup_iter,
-                               num_iters=num_iters,
+                               num_iters=num_iters - warmup_iter,
                                decay_style=args.lr_decay_style,
                                last_iter=init_step,
                                decay_ratio=args.lr_decay_ratio)

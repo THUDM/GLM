@@ -43,7 +43,8 @@ class AnnealingLR(_LRScheduler):
             return float(self.start_lr) * self.num_iters / self.warmup_iter
         else:
             if self.decay_style == self.DECAY_STYLES[0]:
-                return self.start_lr * ((self.end_iter - (self.num_iters - self.warmup_iter)) / self.end_iter)
+                decay_step_ratio = (self.num_iters - self.warmup_iter) / self.end_iter
+                return self.start_lr - self.start_lr * (1 - 1 / self.decay_ratio) * decay_step_ratio
             elif self.decay_style == self.DECAY_STYLES[1]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
                 return self.start_lr / self.decay_ratio * (
