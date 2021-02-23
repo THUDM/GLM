@@ -19,9 +19,9 @@ import os
 import time
 import json
 import torch
+from torch_scatter import scatter_sum
 
 from utils import print_rank_0
-import mpu
 from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
 from collections import OrderedDict
@@ -143,7 +143,11 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                     logits = model(*inputs)
                 else:
                     logits, *mems = model(*inputs)
-            if "loss_mask" in data:
+            if "segment_id" in data:
+                if "loss_mask" in data:
+                    logits = logits * data["loss_mask"]
+                logits = scatter_sum(logits, data["segment_id"], dim=1)
+            elif "loss_mask" in data:
                 loss_mask = data["loss_mask"]
                 logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
             uid_list = batch['uid']

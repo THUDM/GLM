@@ -25,6 +25,7 @@ from arguments import get_args
 
 import torch
 import torch.utils.data
+from torch_scatter import scatter_sum
 from configure_data import prepare_tokenizer
 
 from utils import print_rank_0
@@ -63,6 +64,8 @@ def process_batch(batch, args):
         new_batch["loss_mask"] = batch["loss_mask"].float().cuda().contiguous()
         if args.fp16:
             new_batch['loss_mask'] = new_batch['loss_mask'].half()
+    if "segment_id" in batch:
+        new_batch["segment_id"] = batch["segment_id"].long().cuda().contiguous()
     return new_batch
     # if args.fp16:
     #     attention_mask = attention_mask.half()
@@ -118,8 +121,11 @@ def finetune_forward_step(batch, model, args, timers, mems):
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
             'attention_mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
-
-    if "loss_mask" in data:
+    if "segment_id" in data:
+        if "loss_mask" in data:
+            logits = logits * data["loss_mask"]
+        logits = scatter_sum(logits, data["segment_id"], dim=1)
+    elif "loss_mask" in data:
         loss_mask = data["loss_mask"]
         logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
     if args.loss_func == "cross_entropy":
