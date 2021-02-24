@@ -181,7 +181,7 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False, zero=False):
     if release:
         d = 'release'
     else:
-        d = '{:d}'.format(iteration)
+        d = '{}'.format(iteration)
     if zero:
         dp_rank = mpu.get_data_parallel_rank()
         d += '_zero_dp_rank_{}'.format(dp_rank)
@@ -207,17 +207,19 @@ def save_zero_checkpoint(args, iteration, optimizer):
     print('  successfully saved {}'.format(zero_checkpoint_name))
 
 
-def save_checkpoint(iteration, model, optimizer, lr_scheduler, args):
+def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, barrier=True):
     """Save a model checkpoint."""
+    if tag is None:
+        tag = str(iteration)
     if args.deepspeed:
-        save_ds_checkpoint(iteration, model, lr_scheduler, args)
+        save_ds_checkpoint(iteration, model, lr_scheduler, args, tag=tag)
     else:
         # Only rank zer0 of the data parallel writes to the disk.
         if isinstance(model, torchDDP):
             model = model.module
 
         if mpu.get_data_parallel_rank() == 0:
-            checkpoint_name = get_checkpoint_name(args.save, iteration)
+            checkpoint_name = get_checkpoint_name(args.save, tag)
             print('global rank {} is saving checkpoint at iteration {:7d} to {}'.
                   format(torch.distributed.get_rank(), iteration, checkpoint_name))
 
@@ -245,17 +247,16 @@ def save_checkpoint(iteration, model, optimizer, lr_scheduler, args):
             print('  successfully saved {}'.format(checkpoint_name))
 
     # Wait so everyone is done (necessary)
-    torch.distributed.barrier()
+    if barrier:
+        torch.distributed.barrier()
     # And update the latest iteration
     if torch.distributed.get_rank() == 0:
         tracker_filename = get_checkpoint_tracker_filename(args.save)
         with open(tracker_filename, 'w') as f:
-            f.write(str(iteration))
-    # Wait so everyone is done (not necessary)
-    torch.distributed.barrier()
+            f.write(tag)
 
 
-def save_ds_checkpoint(iteration, model, lr_scheduler, args):
+def save_ds_checkpoint(iteration, model, lr_scheduler, args, tag):
     """Save a model checkpoint."""
 
     sd = {}
@@ -269,8 +270,7 @@ def save_ds_checkpoint(iteration, model, lr_scheduler, args):
         sd['torch_rng_state'] = torch.get_rng_state()
         sd['cuda_rng_state'] = torch.cuda.get_rng_state()
         sd['rng_tracker_states'] = mpu.get_cuda_rng_tracker().get_states()
-
-    model.save_checkpoint(args.save, str(iteration), client_state=sd)
+    model.save_checkpoint(args.save, tag, client_state=sd)
 
 
 def get_checkpoint_iteration(args):
