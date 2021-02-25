@@ -17,6 +17,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --checkpoint-activations \
        --seq-length ${MAX_SEQ_LEN} \
        --eval-batch-size 16 \
+       --save-epoch 5 \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
