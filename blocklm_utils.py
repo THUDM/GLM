@@ -246,17 +246,16 @@ class ConstructBlockStrategy:
                     token_batch.append(tokens)
                     target_batch.append(targets)
                     loss_mask_batch.append(loss_masks)
+                    position_ids = np.arange(len(source_tokens) + len(target_tokens) + 2, dtype=np.long)
+                    position_ids[len(source_tokens) + 1:] = len(source_tokens)
                     if self.block_position_encoding:
-                        position_ids = np.arange(len(source_tokens) + len(target_tokens) + 2, dtype=np.long)
-                        position_ids[len(source_tokens) + 1:] = len(source_tokens)
                         block_position_ids = np.concatenate(
                             (np.zeros(len(source_tokens), dtype=np.long),
                              np.arange(len(target_tokens) + 2, dtype=np.long)))
-                        position_id_batch.append([position_ids, block_position_ids])
                     else:
-                        position_ids = np.arange(len(source_tokens) + len(target_tokens) + 2, dtype=np.long)
-                        position_ids[len(source_tokens) + 1:] -= 1
-                        position_id_batch.append(position_ids)
+                        block_position_ids = np.concatenate((np.zeros(len(source_tokens) + 1, dtype=np.long),
+                                                             np.ones(len(target_tokens) + 1, dtype=np.long)))
+                    position_id_batch.append([position_ids, block_position_ids])
                 else:
                     tokens, targets, loss_masks, position_ids = self.generate_blank_data(sample, [generation_length],
                                                                                          attention_mask, rng,
