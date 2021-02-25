@@ -16,7 +16,9 @@ def gigaword_detokenize(string):
 
 
 class Seq2SeqDataset(torch.utils.data.Dataset):
-    def __init__(self, task, data_dir, split, tokenizer, max_src_length, max_tgt_length):
+    def __init__(self, args, split, tokenizer):
+        task, data_dir = args.task.lower(), args.data_dir
+        max_src_length, max_tgt_length = args.src_seq_length, args.tgt_seq_length
         if split == "train":
             filename = "train"
         elif split == "dev":
@@ -45,7 +47,8 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         self.examples, self.samples = {}, []
         num_source_truncated, num_target_truncated = 0, 0
         cls_id = tokenizer.get_command('ENC').Id
-        mask_id = tokenizer.get_command('MASK').Id
+        mask_token = 'gMASK' if args.task_mask else 'MASK'
+        mask_id = tokenizer.get_command(mask_token).Id
         pad_id = tokenizer.get_command('pad').Id
         sop_id = tokenizer.get_command('sop').Id
         eop_id = tokenizer.get_command('eop').Id

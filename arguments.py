@@ -195,6 +195,7 @@ def add_training_args(parser):
     group.add_argument('--bert-prob', type=float, default=0.5)
     group.add_argument('--infill-prob', type=float, default=0.5)
     group.add_argument('--avg-block-length', type=int, default=3)
+    group.add_argument('--task-mask', action='store_true', help="Use different mask for generation and blank filling")
     group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
     group.add_argument('--no-block-position', action='store_true',
                        help='Use (rough) absolute positions instead of block positions')
