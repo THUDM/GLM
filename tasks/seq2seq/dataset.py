@@ -76,7 +76,6 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         sop_id = tokenizer.get_command('sop').Id
         eop_id = tokenizer.get_command('eop').Id
         for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
-            breakpoint()
             if (idx + 1) % 20000 == 0:
                 print_rank_0(f"Complete {idx + 1} examples")
             guid = "%s-%s" % (split, idx)
