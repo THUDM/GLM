@@ -56,12 +56,12 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         else:
             detokenizer = None
         source_texts, target_texts = [], []
-        with open(os.path.join(data_dir, f"{filename}.source")) as file:
+        with open(os.path.join(data_dir, f"{filename}.source"), encoding='utf-8') as file:
             for line in file:
                 line = line.strip()
                 line = detokenizer(line) if detokenizer else line
                 source_texts.append(line)
-        with open(os.path.join(data_dir, f"{filename}.target")) as file:
+        with open(os.path.join(data_dir, f"{filename}.target"), encoding='utf-8') as file:
             for line in file:
                 line = line.strip()
                 line = detokenizer(line, is_target=True) if detokenizer else line
