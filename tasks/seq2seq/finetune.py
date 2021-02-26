@@ -49,8 +49,7 @@ def seq2seq_forward_step(data, model, args, timers, mems):
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = Seq2SeqDataset(args.task.lower(), args.data_dir, split='train', tokenizer=tokenizer,
-                                   max_src_length=args.src_seq_length, max_tgt_length=args.tgt_seq_length)
+    train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
     valid_dataset = None
     global global_tokenizer
     global_tokenizer = tokenizer
@@ -63,8 +62,7 @@ def metrics_func_provider(args, tokenizer, is_test):
         return None
 
     def single_dataset_provider(split):
-        return Seq2SeqDataset(args.task.lower(), args.data_dir, split, tokenizer, max_src_length=args.src_seq_length,
-                              max_tgt_length=args.tgt_seq_length)
+        return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
 
     evaluater = DecoderEvaluater(args, tokenizer)
     eval_func = evaluater.evaluate
