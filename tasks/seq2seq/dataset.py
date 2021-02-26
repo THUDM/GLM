@@ -70,7 +70,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                 line = detokenizer(line, is_target=True) if detokenizer else line
                 target_texts.append(line)
         assert len(source_texts) == len(target_texts)
-        self.examples = {}
+        self.examples, self.example_list = {}, []
         for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
             if (idx + 1) % 20000 == 0:
                 print_rank_0(f"Complete {idx + 1} examples")
@@ -78,13 +78,14 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             meta = {"ref": tokenizer.DecodeIds(tokenizer.EncodeAsIds(target_text).tokenization)}
             example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
             self.examples[guid] = example
+            self.example_list.append(example)
         print_rank_0(f"Return {len(self.examples)} {split} examples")
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.example_list)
 
     def __getitem__(self, idx):
-        example = self.examples[idx]
+        example = self.example_list[idx]
         source_text, target_text = example.text_a, example.text_b
         cls_id = self.tokenizer.get_command('ENC').Id
         mask_token = 'gMASK' if self.args.task_mask else 'MASK'
