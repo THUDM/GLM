@@ -8,10 +8,30 @@ from utils import print_rank_0
 import random
 
 
-def gigaword_detokenize(string):
+def gigaword_detokenize(string, is_target=False):
     # string = string.replace("UNK", "[UNK]")
     # string = string.replace("<unk>", "[UNK]")
     string = string.replace("UNK", "<unk>")
+    return string
+
+
+def cnndm_detokenize(string, is_target=False):
+    _tok_dict = {"(": "-LRB-", ")": "-RRB-",
+                 "[": "-LSB-", "]": "-RSB-",
+                 "{": "-LCB-", "}": "-RCB-"}
+    if not is_target:
+        string = string.replace("<S_SEP>", "")
+    else:
+        string = string.replace("<S_SEP>", "[SEP]")
+    for key, value in _tok_dict.items():
+        string = string.replace(value, key)
+    string = string.replace("''", "\"")
+    string = string.replace("``", "\"")
+    string = string.replace("`", "'")
+    string = string.replace(" n't", "n't")
+    string = string.replace(" 's", "'s")
+    string = string.replace(" 'd", "'d")
+    string = string.replace(" 'll", "'ll")
     return string
 
 
@@ -29,9 +49,12 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             raise NotImplementedError(split)
         print_rank_0(f"Creating {task}-{split} dataset from {data_dir}")
         self.dataset_name = split
-        detokenizer = None
         if task == "gigaword":
             detokenizer = gigaword_detokenize
+        elif task == "cnn_dm":
+            detokenizer = cnndm_detokenize
+        else:
+            detokenizer = None
         source_texts, target_texts = [], []
         with open(os.path.join(data_dir, f"{filename}.source")) as file:
             for line in file:
@@ -41,7 +64,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         with open(os.path.join(data_dir, f"{filename}.target")) as file:
             for line in file:
                 line = line.strip()
-                line = detokenizer(line) if detokenizer else line
+                line = detokenizer(line, is_target=True) if detokenizer else line
                 target_texts.append(line)
         assert len(source_texts) == len(target_texts)
         self.examples, self.samples = {}, []
@@ -53,6 +76,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         sop_id = tokenizer.get_command('sop').Id
         eop_id = tokenizer.get_command('eop').Id
         for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+            breakpoint()
             if (idx + 1) % 20000 == 0:
                 print_rank_0(f"Complete {idx + 1} examples")
             guid = "%s-%s" % (split, idx)

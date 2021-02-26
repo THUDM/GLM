@@ -1,3 +1,4 @@
+import string
 import datetime
 import torch
 import torch.nn.functional as F
@@ -6,14 +7,160 @@ from utils import print_rank_0
 from generation_utils import BeamSearchScorer, LogitsProcessorList, MinLengthLogitsProcessor, \
     NoRepeatNGramLogitsProcessor
 from pretrain_gpt2 import get_batch
-from rouge import Rouge
+from rouge_score import rouge_scorer
 
 
-def rouge_metric(predictions, labels, examples, metric="rouge-1"):
-    rouge = Rouge()
+def _is_digit(w):
+    for ch in w:
+        if not (ch.isdigit() or ch == ','):
+            return False
+    return True
+
+
+def fix_tokenization(text):
+    input_tokens = text.split()
+    output_tokens = []
+    has_left_quote = False
+    has_left_single_quote = False
+
+    i = 0
+    prev_dash = False
+    while i < len(input_tokens):
+        tok = input_tokens[i]
+        flag_prev_dash = False
+        if tok == "\"":
+            if has_left_quote:
+                output_tokens.append("''")
+            else:
+                output_tokens.append("``")
+            has_left_quote = not has_left_quote
+            i += 1
+        elif tok == "'" and len(output_tokens) > 0 and output_tokens[-1].endswith("n") and i < len(input_tokens) - 1 and \
+                input_tokens[i + 1] == "t":
+            output_tokens[-1] = output_tokens[-1][:-1]
+            output_tokens.append("n't")
+            i += 2
+        elif tok == "'" and i < len(input_tokens) - 1 and input_tokens[i + 1] in ("s", "d", "ll"):
+            output_tokens.append("'" + input_tokens[i + 1])
+            i += 2
+        elif tok == "'":
+            if has_left_single_quote:
+                output_tokens.append("'")
+            else:
+                output_tokens.append("`")
+            has_left_single_quote = not has_left_single_quote
+            i += 1
+        elif tok == "." and i < len(input_tokens) - 2 and input_tokens[i + 1] == "." and input_tokens[i + 2] == ".":
+            output_tokens.append("...")
+            i += 3
+        elif tok == "," and len(output_tokens) > 0 and _is_digit(output_tokens[-1]) and i < len(
+                input_tokens) - 1 and _is_digit(input_tokens[i + 1]):
+            # $ 3 , 000 -> $ 3,000
+            output_tokens[-1] += ',' + input_tokens[i + 1]
+            i += 2
+        elif tok == "." and len(output_tokens) > 0 and output_tokens[-1].isdigit() and i < len(input_tokens) - 1 and \
+                input_tokens[i + 1].isdigit():
+            # 3 . 03 -> $ 3.03
+            output_tokens[-1] += '.' + input_tokens[i + 1]
+            i += 2
+        elif tok == "." and len(output_tokens) > 0 and len(output_tokens[-1]) == 1 and output_tokens[
+            -1].isupper() and i < len(input_tokens) - 2 and len(input_tokens[i + 1]) == 1 and input_tokens[
+            i + 1].isupper() and input_tokens[i + 2] == '.':
+            # U . N . -> U.N.
+            k = i + 3
+            while k + 2 < len(input_tokens):
+                if len(input_tokens[k + 1]) == 1 and input_tokens[k + 1].isupper() and input_tokens[k + 2] == '.':
+                    k += 2
+                else:
+                    break
+            output_tokens[-1] += ''.join(input_tokens[i:k])
+            i += 2
+        elif tok == "-":
+            if i < len(input_tokens) - 1 and input_tokens[i + 1] == "-":
+                output_tokens.append("--")
+                i += 2
+            elif i == len(input_tokens) - 1 or i == 0:
+                output_tokens.append("-")
+                i += 1
+            elif output_tokens[-1] not in string.punctuation and input_tokens[i + 1][0] not in string.punctuation:
+                output_tokens[-1] += "-"
+                i += 1
+                flag_prev_dash = True
+            else:
+                output_tokens.append("-")
+                i += 1
+        elif prev_dash and len(output_tokens) > 0 and tok[0] not in string.punctuation:
+            output_tokens[-1] += tok
+            i += 1
+        else:
+            output_tokens.append(tok)
+            i += 1
+        prev_dash = flag_prev_dash
+    return " ".join(output_tokens)
+
+
+def count_tokens(tokens):
+    counter = {}
+    for t in tokens:
+        if t in counter.keys():
+            counter[t] += 1
+        else:
+            counter[t] = 1
+    return counter
+
+
+def get_f1(text_a, text_b):
+    tokens_a = text_a.lower().split()
+    tokens_b = text_b.lower().split()
+    if len(tokens_a) == 0 or len(tokens_b) == 0:
+        return 1 if len(tokens_a) == len(tokens_b) else 0
+    set_a = count_tokens(tokens_a)
+    set_b = count_tokens(tokens_b)
+    match = 0
+    for token in set_a.keys():
+        if token in set_b.keys():
+            match += min(set_a[token], set_b[token])
+    p = match / len(tokens_a)
+    r = match / len(tokens_b)
+    return 2.0 * p * r / (p + r + 1e-5)
+
+
+def remove_duplicate(l_list, duplicate_rate):
+    tk_list = [l.lower().split() for l in l_list]
+    r_list = []
+    history_set = set()
+    for i, w_list in enumerate(tk_list):
+        w_set = set(w_list)
+        if len(w_set & history_set) / len(w_set) <= duplicate_rate:
+            r_list.append(l_list[i])
+        history_set |= w_set
+    return r_list
+
+
+def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7):
+    metric_dict = {"rouge-1": "rouge1", "rouge-2": "rouge2", "rouge-l": "rougeLsum"}
     refs = [example.meta["ref"] for example in examples]
-    scores = rouge.get_scores(predictions, refs, avg=True)
-    return scores[metric.lower()]["f"]
+    refs = [ref.replace("[SEP]", "\n") for ref in refs]
+    pred_list = []
+    for prediction in predictions:
+        buf = []
+        for sentence in prediction.strip().split("[SEP]"):
+            sentence = fix_tokenization(sentence)
+            if any(get_f1(sentence, s) > 1.0 for s in buf):
+                continue
+            s_len = len(sentence.split())
+            if s_len <= 4:
+                continue
+            buf.append(sentence)
+        if duplicate_rate and duplicate_rate < 1:
+            buf = remove_duplicate(buf, duplicate_rate)
+        line = "\n".join(buf)
+        pred_list.append(line)
+    scorer = rouge_scorer.RougeScorer([metric_dict[metric]], use_stemmer=True)
+    scores = [scorer.score(pred, ref) for pred, ref in zip(pred_list, refs)]
+    scores = [score[metric_dict[metric]].fmeasure for score in scores]
+    scores = sum(scores) / len(scores)
+    return scores
 
 
 def process_batch(batch, args):
