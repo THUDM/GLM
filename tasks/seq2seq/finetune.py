@@ -71,11 +71,11 @@ def metrics_func_provider(args, tokenizer, is_test):
                                "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
 
     def output_func(predictions, examples, output_file):
-        with open(output_file + ".hyps", "w") as output:
+        with open(output_file + ".hyps", "w", encoding='utf-8') as output:
             for prediction in predictions:
                 output.write(prediction)
                 output.write("\n")
-        with open(output_file + ".refs", "w") as output:
+        with open(output_file + ".refs", "w", encoding='utf-8') as output:
             for example in examples:
                 output.write(example.meta["ref"])
                 output.write("\n")

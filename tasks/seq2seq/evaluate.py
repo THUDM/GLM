@@ -140,7 +140,12 @@ def remove_duplicate(l_list, duplicate_rate):
 def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7):
     metric_dict = {"rouge-1": "rouge1", "rouge-2": "rouge2", "rouge-l": "rougeLsum"}
     refs = [example.meta["ref"] for example in examples]
-    refs = [ref.replace("[SEP]", "\n") for ref in refs]
+    ref_list = []
+    for ref in refs:
+        ref = ref.strip().split('[SEP]')
+        ref = [fix_tokenization(sentence) for sentence in ref]
+        ref = "\n".join(ref)
+        ref_list.append(ref)
     pred_list = []
     for prediction in predictions:
         buf = []
@@ -157,7 +162,7 @@ def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate
         line = "\n".join(buf)
         pred_list.append(line)
     scorer = rouge_scorer.RougeScorer([metric_dict[metric]], use_stemmer=True)
-    scores = [scorer.score(pred, ref) for pred, ref in zip(pred_list, refs)]
+    scores = [scorer.score(pred, ref) for pred, ref in zip(pred_list, ref_list)]
     scores = [score[metric_dict[metric]].fmeasure for score in scores]
     scores = sum(scores) / len(scores)
     return scores
