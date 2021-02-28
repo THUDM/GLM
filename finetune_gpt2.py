@@ -137,6 +137,10 @@ def finetune_forward_step(batch, model, args, timers, mems):
         hinge_loss = 1 + logits - correct_logits.unsqueeze(1)
         hinge_loss[hinge_loss < 0.0] = 0.0
         loss = hinge_loss.sum(dim=1).mean() - 1.0
+    elif args.loss_func == "generative":
+        batch_size = logits.size(0)
+        logits = logits[range(batch_size), labels]
+        loss = - logits.mean()
     else:
         raise NotImplementedError
 
