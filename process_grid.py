@@ -1,7 +1,7 @@
 import sys
 import os
 import json
-from tasks.superglue.finetune import default_metrics
+from tasks.superglue import default_metrics
 
 root_path = sys.argv[1]
 best_value, best_result, best_name = None, None, None
