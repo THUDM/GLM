@@ -4,7 +4,7 @@
 
 NUM_WORKERS=8
 NUM_GPUS_PER_WORKER=8
-MP_SIZE=2
+MP_SIZE=1
 
 script_path=$(realpath $0)
 script_dir=$(dirname $script_path)
@@ -19,7 +19,7 @@ config_json="$script_dir/ds_config.json"
 gpt_options=" \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
-       --hidden-size 1536 \
+       --hidden-size 1024 \
        --num-attention-heads 16 \
        --seq-length 1024 \
        --max-position-embeddings 1024 \
