@@ -137,10 +137,12 @@ def finetune_forward_step(batch, model, args, timers, mems):
         hinge_loss = 1 + logits - correct_logits.unsqueeze(1)
         hinge_loss[hinge_loss < 0.0] = 0.0
         loss = hinge_loss.sum(dim=1).mean() - 1.0
-    elif args.loss_func == "generative":
+    elif args.loss_func == "generative" or args.loss_func == "mix":
         batch_size = logits.size(0)
-        logits = logits[range(batch_size), labels]
-        loss = - logits.mean()
+        loss = - logits[range(batch_size), labels].sum() / logit_mask.sum()
+        if args.loss_func == "mix":
+            loss_func = torch.nn.CrossEntropyLoss()
+            loss = loss + loss_func(logits.contiguous().float(), labels)
     else:
         raise NotImplementedError
 
