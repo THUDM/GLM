@@ -378,7 +378,7 @@ if __name__ == '__main__':
         from tasks.superglue.finetune import main
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
-    elif args.task.lower() in ['cnn_dm', 'gigaword']:
+    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword']:
         from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
