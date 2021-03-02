@@ -217,6 +217,7 @@ def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None):
         rng.shuffle(inds)
     if load_splits is not None:
         inds = np.load(load_splits)
+        assert len(inds) == ds_len
         print_rank_0(f"Load split indices from {load_splits}")
     elif save_splits is not None:
         if torch.distributed.get_rank() == 0:

@@ -27,7 +27,10 @@ class ClozeModel(torch.nn.Module):
         self.take_softmax = take_softmax
         self.length_penalty = length_penalty
 
-    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
+    def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None):
+        if target_ids == None:
+            outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+            return (outputs, *mems)
         num_choices = None
         if len(input_ids.shape) == 3:
             batch_size, num_choices = input_ids.shape[:2]
@@ -81,10 +84,6 @@ class FastClozeModel(torch.nn.Module):
             mask = mask.unsqueeze(1).float().expand(-1, seq_length, -1)
 
             m = m.expand(batch_size*num_choices, -1, -1)
-            # print(mask)
-            # print(mask.shape)
-            # print(m)
-            # print(m.shape)
             m = torch.cat((mask, m), dim=2)
             m = m.unsqueeze(1)
             return m

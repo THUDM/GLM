@@ -10,13 +10,12 @@ from itertools import accumulate
 
 
 class LMDataset(torch.utils.data.Dataset):
-
-    def __init__(self, documents, max_seq_length, tokenizer, num_original_tokens, num_tokenized_tokens,
-                 overalapping_eval=None, unidirectional=False, block_lm=False):
+    def __init__(self, args, documents, tokenizer, num_original_tokens, num_tokenized_tokens):
+        self.args = args
         self.documents = documents
-        self.max_seq_len = max_seq_length - 1
+        self.max_seq_len = args.seq_length - 1
         self.tokenizer = tokenizer
-        self.overalapping_eval = overalapping_eval
+        self.overalapping_eval = args.overlapping_eval
         if self.overalapping_eval is None:
             self.overalapping_eval = self.max_seq_len
         self.overalapping_eval = max(1, self.overalapping_eval)
@@ -27,8 +26,8 @@ class LMDataset(torch.utils.data.Dataset):
         self.num_sequences = [max(math.ceil(target / self.overalapping_eval) + 1, 1) for target in targets]
         self.weights = list(accumulate(self.num_sequences))
         self.left_weights = [0] + self.weights[:-1]
-        self.unidirectional = unidirectional
-        self.block_lm = block_lm
+        self.unidirectional = args.unidirectional
+        self.block_lm = args.block_lm
 
     def __len__(self):
         return sum(self.num_sequences)
@@ -50,7 +49,7 @@ class LMDataset(torch.utils.data.Dataset):
                                                            add_piece=True,
                                                            add_eos=False)
             data = build_input_from_ids(prompt, None, text, self.max_seq_len + num_special_tokens + 1, self.tokenizer,
-                                        add_cls=True, add_sep=False, add_piece=True, add_eos=False)
+                                        args=self.args, add_cls=True, add_sep=False, add_piece=True, add_eos=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if idx != 0 and self.unidirectional:
                 loss_masks = np.array(loss_masks, dtype=np.int64)
@@ -70,14 +69,16 @@ class LMDataset(torch.utils.data.Dataset):
 
 
 class LambadaDataset(torch.utils.data.Dataset):
-    def __init__(self, data_path, tokenizer, max_seq_length, strict=True, unidirectional=False, block_lm=False):
+    def __init__(self, args, tokenizer, strict=True):
+        data_path = args.valid_data[0]
         print_rank_0('> building lambada dataset from {} ...'.format(data_path))
-        self.max_seq_length = max_seq_length
+        self.args = args
+        self.max_seq_length = args.seq_length
         self.tokenizer = tokenizer
         self.pad_idx = tokenizer.get_command('pad').Id
         self.strict = strict
-        self.block_lm = block_lm
-        self.unidirectional = unidirectional
+        self.block_lm = args.block_lm
+        self.unidirectional = args.unidirectional
 
         self.tokens = []
         self.labels = []
@@ -115,7 +116,7 @@ class LambadaDataset(torch.utils.data.Dataset):
             if left_shift > 0:
                 tokens = tokens[left_shift:]
             data = build_input_from_ids(tokens, None, answer_tokens, self.max_seq_length, self.tokenizer,
-                                        add_cls=True, add_sep=False, add_piece=True)
+                                        args=self.args, add_cls=True, add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if self.unidirectional:
                 loss_masks = np.array(loss_masks, dtype=np.int64)
@@ -142,8 +143,7 @@ class LambadaDataset(torch.utils.data.Dataset):
 def build_lambada_dataset(tokenizer, args):
     """Build lambada dataset."""
     assert len(args.valid_data) == 1
-    val_dataset = LambadaDataset(args.valid_data[0], tokenizer, args.seq_length, strict=True,
-                                 unidirectional=args.unidirectional, block_lm=args.block_lm)
+    val_dataset = LambadaDataset(args, tokenizer, strict=True)
     print_rank_0(' > found {} samples, {} label tokens.'.format(len(val_dataset), sum(map(len, val_dataset.labels))))
     return val_dataset
 
@@ -157,8 +157,7 @@ def build_lm_dataset(tokenizer, args):
             num_tokens += len(tokens)
             num_original_tokens += len(line.strip().split(" "))
             documents.append(tokens)
-    val_dataset = LMDataset(documents, args.seq_length, tokenizer, num_original_tokens, num_tokens,
-                            args.overlapping_eval, unidirectional=args.unidirectional, block_lm=args.block_lm)
+    val_dataset = LMDataset(args, documents, tokenizer, num_original_tokens, num_tokens)
     print_rank_0(
         ' > number of document: {}, number of original tokens {}, number of detokenized tokens: {}'.format(
             len(documents), num_original_tokens, num_tokens))
@@ -176,9 +175,7 @@ def build_wikitext103_dataset(tokenizer, args):
     tokenized_data = tokenizer.EncodeAsIds(entire_data).tokenization
     num_tokenized_tokens = len(tokenized_data)
 
-    val_dataset = LMDataset([tokenized_data], args.seq_length, tokenizer,
-                            num_original_tokens, num_tokenized_tokens,
-                            args.overlapping_eval, unidirectional=args.unidirectional, block_lm=args.block_lm)
+    val_dataset = LMDataset(args, [tokenized_data], tokenizer, num_original_tokens, num_tokenized_tokens)
     print_rank_0(' > number of original tokens: {}, number of detokenized '
                  'tokens: {}'.format(num_original_tokens, num_tokenized_tokens))
     return val_dataset

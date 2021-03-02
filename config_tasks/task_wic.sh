@@ -3,11 +3,15 @@ TASK_NAME=wic
 DATA_PATH="/root/data/superglue/WiC"
 MAX_SEQ_LEN=256
 
-TRAIN_ARGS="--epochs 10 \
-            --batch-size 8 \
-            --lr 1e-5 \
+LR_RANGE=(1e-5)
+EPOCH_RANGE=(20)
+
+LR_SINGLE=1e-5
+EPOCH_SINGLE=20
+
+TRAIN_ARGS="--batch-size 8 \
             --lr-decay-style linear \
-            --warmup 0.06 \
+            --warmup 0.1 \
             --weight-decay 1.0e-1"
 
 COMMON_ARGS="--save-interval 10000 \

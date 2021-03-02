@@ -25,10 +25,8 @@ from collections import OrderedDict
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = RaceDataset('training', args.train_data, tokenizer, args.seq_length, is_bert=args.pretrained_bert,
-                                pool_token=args.pool_token, cloze_format=args.cloze_eval)
-    valid_dataset = RaceDataset('validation', args.valid_data, tokenizer, args.seq_length, is_bert=args.pretrained_bert,
-                                pool_token=args.pool_token, cloze_format=args.cloze_eval)
+    train_dataset = RaceDataset(args, 'training', args.train_data, tokenizer)
+    valid_dataset = RaceDataset(args, 'validation', args.valid_data, tokenizer)
 
     return train_dataset, valid_dataset
 
@@ -38,8 +36,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     def single_dataset_provider(datapath):
         name = datapath.split('RACE')[-1].strip('/').replace('/', '-')
-        return RaceDataset(name, [datapath], tokenizer, args.seq_length, is_bert=args.pretrained_bert,
-                           pool_token=args.pool_token, cloze_format=args.cloze_eval)
+        return RaceDataset(args, name, [datapath], tokenizer)
     metric_dict = OrderedDict([('accuracy', accuracy_metric)])
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test)
 

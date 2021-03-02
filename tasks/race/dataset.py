@@ -16,9 +16,8 @@ MAX_QA_LENGTH = 128
 
 class RaceDataset(Dataset):
 
-    def __init__(self, dataset_name, datapaths, tokenizer, max_seq_length, max_qa_length=MAX_QA_LENGTH, is_bert=False,
-                 pool_token=None, cloze_format=False):
-
+    def __init__(self, args, dataset_name, datapaths, tokenizer, max_qa_length=MAX_QA_LENGTH):
+        self.args = args
         self.dataset_name = dataset_name
         print_rank_0(' > building RACE dataset for {}:'.format(
             self.dataset_name))
@@ -32,8 +31,9 @@ class RaceDataset(Dataset):
         for datapath in datapaths:
             self.samples.extend(process_single_datapath(datapath, tokenizer,
                                                         max_qa_length,
-                                                        max_seq_length, is_bert=is_bert, pool_token=pool_token,
-                                                        cloze_format=cloze_format))
+                                                        args.seq_length, is_bert=args.pretrained_bert,
+                                                        pool_token=args.pool_token, cloze_format=args.cloze_eval,
+                                                        args=self.args))
 
         print_rank_0('  >> total number of samples: {}'.format(len(self.samples)))
         self.labeled = True
@@ -45,7 +45,8 @@ class RaceDataset(Dataset):
         return self.samples[idx]
 
 
-def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, pool_token, is_bert, cloze_format):
+def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, pool_token, is_bert, cloze_format,
+                            args):
     """Read in RACE files, combine, clean-up, tokenize, and convert to
     samples."""
 
@@ -120,8 +121,8 @@ def process_single_datapath(datapath, tokenizer, max_qa_length, max_seq_length, 
                                 context_ids = context_ids[:max_seq_length - len(q_ids) - len(answer_ids) - 2]
                             ids = context_ids + q_ids
                             # Padding.
-                            data = build_input_from_ids(ids, None, answer_ids, max_seq_length, tokenizer, add_cls=True,
-                                                        add_sep=False)
+                            data = build_input_from_ids(ids, None, answer_ids, max_seq_length, tokenizer, args=args,
+                                                        add_cls=True, add_sep=False)
                             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                             ids_list.append(ids)
                             positions_list.append(position_ids)

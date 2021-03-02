@@ -207,8 +207,7 @@ def save_zero_checkpoint(args, iteration, optimizer):
     print('  successfully saved {}'.format(zero_checkpoint_name))
 
 
-def save_checkpoint(iteration, model, optimizer,
-                    lr_scheduler, args):
+def save_checkpoint(iteration, model, optimizer, lr_scheduler, args):
     """Save a model checkpoint."""
     if args.deepspeed:
         save_ds_checkpoint(iteration, model, lr_scheduler, args)

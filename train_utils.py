@@ -109,6 +109,7 @@ def get_optimizer_param_groups(model):
 
     # Add model parallel attribute if it is not set.
     for param_group in param_groups:
+        # print('## param_group', len(param_group['params']))
         for param in param_group['params']:
             if not hasattr(param, 'model_parallel'):
                 param.model_parallel = False
@@ -129,8 +130,17 @@ def get_optimizer(param_groups, args):
                                        lr=args.lr, weight_decay=args.weight_decay)
     else:
         # Use FusedAdam.
-        optimizer = Adam(param_groups,
-                         lr=args.lr, weight_decay=args.weight_decay)
+        if args.optimizer == 'adam':
+            optimizer = Adam(param_groups,
+                             lr=args.lr,
+                             weight_decay=args.weight_decay,
+                             betas=(args.adam_beta1, args.adam_beta2),
+                             eps=args.adam_eps)
+        elif args.optimizer == 'adafactor':
+            from transformers import Adafactor
+            optimizer = Adafactor(param_groups, lr=args.lr, relative_step=False, warmup_init=False)
+        else:
+            raise NotImplementedError
 
     print(f'Optimizer = {optimizer.__class__.__name__}')
     if hasattr(args, "deepspeed") and args.deepspeed:
@@ -209,7 +219,7 @@ def backward_step(optimizer, model, lm_loss, args, timers):
     if args.deepspeed:
         model.backward(loss)
     else:
-        optimizer.zero_grad()
+        # optimizer.zero_grad()
         if args.fp16:
             optimizer.backward(loss, update_master_grads=False)
         else:
@@ -264,6 +274,8 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
     """Single training step."""
     lm_loss_total, count = 0.0, 0
     mems = [] if mems is None else mems
+    if not args.deepspeed:
+        optimizer.zero_grad()
     while True:
         # Forward model for one step.
         timers('forward').start()
@@ -271,6 +283,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
         timers('forward').stop()
 
         # print_rank_0("loss is {}".format(lm_loss))
+        lm_loss /= args.gradient_accumulation_steps
 
         # Calculate gradients, reduce across processes, and clip.
         timers('backward').start()
@@ -292,14 +305,15 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
             else:
                 model.step()
         else:
-            optimizer.step()
-            complete = True
-            # Update learning rate.
-            if not (args.fp16 and optimizer.overflow):
-                lr_scheduler.step()
-            else:
-                skipped_iter = 1
+            if count == args.gradient_accumulation_steps:
+                optimizer.step()
+                complete = True
+                # Update learning rate.
+                if not (args.fp16 and optimizer.overflow):
+                    lr_scheduler.step()
+                else:
+                    skipped_iter = 1
         timers('optimizer').stop()
         if complete:
             break
-    return lm_loss_total / count, skipped_iter, mems
+    return lm_loss_total, skipped_iter, mems

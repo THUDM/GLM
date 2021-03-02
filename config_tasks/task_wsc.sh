@@ -1,14 +1,21 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-WSC
 TASK_NAME=wsc
-DATA_PATH="/root/data/superglue/WSC"
+DATA_PATH="/root/data/superglue/WSC-negative"
 MAX_SEQ_LEN=128
 
-TRAIN_ARGS="--epochs 20 \
-            --batch-size 8 \
-            --lr 1e-5 \
+LR_RANGE=(1e-5)
+EPOCH_RANGE=(50)
+
+LR_SINGLE=1e-5
+EPOCH_SINGLE=50
+
+TRAIN_ARGS="--batch-size 8 \
             --lr-decay-style linear \
-            --warmup 0.06 \
-            --weight-decay 1.0e-1"
+            --warmup 0.1 \
+            --weight-decay 0.1 \
+            --wsc-negative \
+            --length-penalty 1 \
+            --gradient-accumulation-steps 4"
 
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \

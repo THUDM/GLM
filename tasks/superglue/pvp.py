@@ -33,8 +33,8 @@ class PVP(ABC):
     custom implementation of a PVP.
     """
 
-    def __init__(self, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42, fast_decode: bool = False):
+    def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
+                 seed: int = 42, is_multi_token=False, fast_decode: bool = False, split='train'):
         """
         Create a new PVP.
 
@@ -43,6 +43,7 @@ class PVP(ABC):
         :param verbalizer_file: an optional file that contains the verbalizer to be used
         :param seed: a seed to be used for generating random numbers if necessary
         """
+        self.args = args
         self.tokenizer = tokenizer
         self.label_list = label_list
         self.max_seq_length = max_seq_length
@@ -50,14 +51,16 @@ class PVP(ABC):
         self.rng = random.Random(seed)
         self.num_truncated = 0
         self.fast_decode = fast_decode
+        self.split = split
         self.max_dec_seq_length = 16
+        self._is_multi_token = is_multi_token
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
 
     @property
     def is_multi_token(self):
-        return False
+        return self._is_multi_token
 
     @property
     def mask(self) -> str:
@@ -138,7 +141,7 @@ class PVP(ABC):
                     tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                     tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
                     data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
-                                                add_cls=True, add_sep=False, add_piece=True)
+                                                args=self.args, add_cls=True, add_sep=False, add_piece=True)
                     ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                     ids_list.append(ids)
                     positions_list.append(position_ids)
@@ -199,8 +202,8 @@ class PVP(ABC):
                     verbalizer_id = get_verbalization_ids(verbalizer, self.tokenizer, force_single_token=True)
                     input_ids[mask_idx] = verbalizer_id
                 return input_ids
-            data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer, add_cls=True,
-                                        add_sep=False, add_piece=True)
+            data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer, args=self.args,
+                                        add_cls=True, add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             target_ids = self.get_verbalizer_ids()
             if example.label is not None:
@@ -252,7 +255,7 @@ class PVP(ABC):
         pass
 
     def get_answers(self, example: InputExample):
-        return []
+        return [self.verbalize(label)[0] for label in self.label_list]
 
     def get_verbalizer_ids(self):
         target_ids = []
@@ -355,6 +358,8 @@ class CopaPVP(PVP):
         assert question in ['cause', 'effect']
         answer = " because" if question == 'cause' else " so"
         answer_ids = [get_verbalization_ids(answer, tokenizer, force_single_token=True)]
+        if self.is_multi_token:
+            answer_ids.append(tokenizer.get_command('eop').Id)
 
         ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
 
@@ -365,7 +370,7 @@ class CopaPVP(PVP):
                      x]
             self.num_truncated += self.truncate(parts, None, answer_ids, max_length=self.max_seq_length)
             tokens_a = [token_id for part, _ in parts for token_id in part]
-            data = build_input_from_ids(tokens_a, None, answer_ids, self.max_seq_length, self.tokenizer,
+            data = build_input_from_ids(tokens_a, None, answer_ids, self.max_seq_length, self.tokenizer, args=self.args,
                                         add_cls=True, add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             ids_list.append(ids)
@@ -390,7 +395,14 @@ class WscPVP(PVP):
 
     def get_answers(self, example: InputExample):
         target = " " + example.meta['span1_text']
-        return [target]
+        answers = [target]
+        if 'candidates' in example.meta:
+            candidates = copy.deepcopy(example.meta['candidates'])
+            # if len(candidates) > 10:
+            #     random.shuffle(candidates)
+            #     candidates = candidates[:10]
+            answers += [" " + cand for cand in candidates]
+        return answers
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         pronoun = example.meta['span2_text']
@@ -400,6 +412,8 @@ class WscPVP(PVP):
         words_a[pronoun_idx] = '*' + words_a[pronoun_idx] + '*'
         text_a = ' '.join(words_a)
         text_a = self.shortenable(text_a)
+
+        # return [' '.join(words_a[:pronoun_idx]), self.mask, ' '.join(words_a[pronoun_idx+1:])], []
 
         if self.pattern_id == 0:
             return [text_a, " The pronoun '*" + pronoun + "*' refers to", self.mask, '.'], []
@@ -420,6 +434,11 @@ class WscPVP(PVP):
         :param labeled: if ``priming=True``, whether the label should be appended to this example
         :return: A tuple, consisting of a list of input ids and a list of token type ids
         """
+        if self.args.wsc_negative:
+            sample = super().encode(example, priming=priming, labeled=labeled)
+            if self.split == 'train':
+                sample['label'] = 0
+            return sample
 
         if not priming:
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
@@ -443,7 +462,7 @@ class WscPVP(PVP):
                                             max_length=self.max_seq_length)
         tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
         tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
-        data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
+        data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer, args=self.args,
                                     add_cls=True, add_sep=False, add_piece=True)
         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
         if example.label is not None:

@@ -37,7 +37,6 @@ def accuracy_metric(predictions, labels, examples):
         count += prediction == label
     return count * 100.0 / len(predictions)
 
-
 def f1_metric(predictions, labels, examples):
     return f1_score(labels, predictions)
 
@@ -170,5 +169,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
             # Add output predictions.
             predictions.extend(predicted)
             labels.extend(labels_.tolist())
+    if args.task.lower() == 'wsc':
+        predictions = [1 if pred == 0 else 0 for pred in predictions]
     model.train()
     return predictions, labels, examples

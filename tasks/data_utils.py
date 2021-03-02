@@ -103,8 +103,8 @@ def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_s
     return num_tokens
 
 
-def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tokenizer, add_cls=True, add_sep=False,
-                         add_piece=False, add_eos=True):
+def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tokenizer, args=None, add_cls=True,
+                         add_sep=False, add_piece=False, add_eos=True):
     mask_id = tokenizer.get_command('MASK').Id
     eos_id = tokenizer.get_command('eos').Id
     cls_id = tokenizer.get_command('ENC').Id
@@ -153,7 +153,7 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     # Piece
     if add_piece or answer_ids is not None:
         sop_id = tokenizer.get_command('sop').Id
-        mask_position = ids.index(mask_id)
+        mask_position = ids.index(mask_id) if not args.sentinel_token else args.max_position_embeddings
         ids.append(sop_id)
         types.append(end_type)
         paddings.append(1)
@@ -165,7 +165,10 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
             types.extend([end_type] * (len_answer - 1))
             paddings.extend([1] * (len_answer - 1))
             position_ids.extend([mask_position] * (len_answer - 1))
-            block_position_ids.extend(range(2, len(answer_ids) + 1))
+            if not args.no_block_position:
+                block_position_ids.extend(range(2, len(answer_ids) + 1))
+            else:
+                block_position_ids.extend([1] * (len(answer_ids) - 1))
             target_ids.extend(answer_ids)
             loss_masks.extend([1] * len(answer_ids))
         else:

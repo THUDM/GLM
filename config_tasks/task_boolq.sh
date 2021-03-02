@@ -3,9 +3,13 @@ TASK_NAME=BoolQ
 DATA_PATH="/root/data/superglue/BoolQ"
 MAX_SEQ_LEN=256
 
-TRAIN_ARGS="--epochs 10 \
-            --batch-size 8 \
-            --lr 1e-5 \
+LR_RANGE=(1e-5)
+EPOCH_RANGE=(10)
+
+LR_SINGLE=1e-5
+EPOCH_SINGLE=10
+
+TRAIN_ARGS="--batch-size 8 \
             --lr-decay-style linear \
             --warmup 0.1 \
             --weight-decay 1.0e-1"

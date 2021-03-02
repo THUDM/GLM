@@ -332,6 +332,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
                        help='The token to pool the sequence representation', default='cls')
     group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
+    group.add_argument('--multi-token', action='store_true', help='Use multi token for cloze evaluation')
     group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge"], default="cross_entropy")
     group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--fast-decode', action='store_true', help="Fast decode for multi-token cloze")
@@ -340,6 +341,11 @@ def add_finetune_config_args(parser):
     group.add_argument('--unidirectional', action='store_true', help="Use the left to right language model")
     group.add_argument('--src-seq-length', type=int, default=None)
     group.add_argument('--tgt-seq-length', type=int, default=None)
+    group.add_argument('--adam-beta1', type=float, default=0.9)
+    group.add_argument('--adam-beta2', type=float, default=0.999)
+    group.add_argument('--adam-eps', type=float, default=1e-8)
+    group.add_argument('--optimizer', type=str, choices=['adam', 'adafactor'], default='adam')
+    group.add_argument('--wsc-negative', action='store_true')
     return parser
 
 

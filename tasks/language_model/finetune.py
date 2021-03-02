@@ -22,6 +22,7 @@ import torch
 from utils import print_rank_0
 import mpu
 from tasks.data_utils import build_data_loader
+from model import ClozeModel
 
 from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset, build_lm_dataset
 from pretrain_gpt2 import get_batch
@@ -37,37 +38,42 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
 
     def print_masked_text(batch_id):
-        if not args.no_block_position:
-            block_position_ids = position_ids[:, 1]
-            position_ids_ = position_ids[:, 0]
-        else:
-            position_ids_ = position_ids
+        block_position_ids = position_ids[:, 1]
+        position_ids_ = position_ids[:, 0]
         output_tokens = []
         sep = attention_mask[batch_id].item()
         for i, token in enumerate(tokens[batch_id, :sep].tolist()):
-            token = global_tokenizer.IdToToken(token)
-            if token == '[MASK]':
-                token = f"[{position_ids_[batch_id, i].item()}]"
-            output_tokens.append(token)
+            if global_tokenizer is not None:
+                token = global_tokenizer.IdToToken(token)
+                if token.startswith('[MASK'):
+                    token = f"[{position_ids_[batch_id, i].item()}, {token}]"
+                if token.startswith('##') and len(output_tokens) > 0 and not output_tokens[-1].endswith(']'):
+                    output_tokens[-1] += token[2:]
+                else:
+                    output_tokens.append(token)
+            else:
+                output_tokens.append(str(token))
         print(" ".join(output_tokens))
         last_index = None
-        last_position = None
         for i in range(sep, tokens.size(1)):
-            if (not args.no_block_position and block_position_ids[batch_id, i] == 1) or (args.no_block_position and (
-                    last_position is None or position_ids_[batch_id, i] != last_position + 1)):
+            if global_tokenizer.IdToToken(tokens[batch_id, i].item()).startswith("<|startofpiece"):
                 if last_index is not None:
-                    print(global_tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), ";",
-                          global_tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
-                          position_ids_[batch_id, last_index: i].tolist())
+                    print(global_tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), "|",
+                          global_tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist())),
+                    print(position_ids_[batch_id, last_index: i].tolist(),
+                          block_position_ids[batch_id, last_index:i].tolist())
                 last_index = i
-            last_position = position_ids_[batch_id, i]
         if last_index is not None:
-            print(global_tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), ";",
-                  global_tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
-                  position_ids_[batch_id, last_index:].tolist())
+            print(global_tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), "|",
+                  global_tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()))
+            print(position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
     # Forward model.
-    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    if isinstance(model, ClozeModel):
+        logits, *mems = model(tokens, position_ids, attention_mask)
+    else:
+        logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+        
     if eval_metric is None or eval_metric == 'loss':
         losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                                   labels)

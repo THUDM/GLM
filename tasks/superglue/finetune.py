@@ -17,7 +17,8 @@
 
 from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
-from tasks.superglue.dataset import GlueDataset, SINGLE_TOKEN_DATASETS, MULTI_TOKEN_DATASETS, PROCESSORS, get_output_func
+from tasks.superglue.dataset import GlueDataset, CLASSIFICATION_DATASETS, MULTI_CHOICE_DATASETS, PROCESSORS, \
+    get_output_func
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from collections import OrderedDict
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
@@ -37,12 +38,8 @@ default_metrics = {
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = GlueDataset(args.task.lower(), "train", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id,
-                                fast_decode=args.fast_decode)
-    valid_dataset = GlueDataset(args.task.lower(), "dev", args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                                for_train=True, cloze_format=args.cloze_eval, for_bert=args.pretrained_bert,
-                                pattern_id=args.pattern_id, fast_decode=args.fast_decode)
+    train_dataset = GlueDataset(args, "train", tokenizer)
+    valid_dataset = GlueDataset(args, "dev", tokenizer, for_train=True)
 
     return train_dataset, valid_dataset
 
@@ -51,13 +48,11 @@ def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
 
     def single_dataset_provider(split):
-        return GlueDataset(args.task.lower(), split, args.data_dir, tokenizer, max_seq_length=args.seq_length,
-                           cloze_format=args.cloze_eval, for_bert=args.pretrained_bert, pattern_id=args.pattern_id,
-                           fast_decode=args.fast_decode)
+        return GlueDataset(args, split, tokenizer)
 
     output_func = get_output_func(args.task.lower())
     eval_func = None
-    if args.task.lower() == 'wsc' and args.cloze_eval:
+    if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import classify_evaluate
         eval_func = classify_evaluate
     metric_dict = OrderedDict(default_metrics[args.task.lower()])
@@ -67,17 +62,18 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 def main(args):
     model_kwargs = {}
-    if args.task.lower() == 'wsc' and args.cloze_eval:
+    if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import lm_forward_step
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
         processor = PROCESSORS[args.task.lower()]()
         if args.cloze_eval:
-            pvp = PVPS[args.task.lower()](None, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id)
+            pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
+                                          pattern_id=args.pattern_id, is_multi_token=args.multi_token)
             multi_token = pvp.is_multi_token
         else:
-            multi_token = args.task.lower() in MULTI_TOKEN_DATASETS
+            multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
         if not multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
             model_kwargs["multi_token"] = False

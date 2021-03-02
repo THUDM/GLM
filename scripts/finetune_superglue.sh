@@ -1,4 +1,4 @@
-source config_tasks/model_blocklm_roberta_large.sh
+source config_tasks/model_blocklm_roberta_large.sh $2
 source $1
 
 CHECKPOINT_PATH="/root/data/finetune_checkpoints"
@@ -20,5 +20,6 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
+       --epochs ${EPOCH_SINGLE} \
+       --lr ${LR_SINGLE} \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt
-
