@@ -155,6 +155,7 @@ def add_training_args(parser):
     group.add_argument('--warmup', type=float, default=0.01,
                        help='percentage of data to warmup on (.01 = 1% of all '
                             'training iters). Default 0.01')
+    group.add_argument('--switch-linear', action='store_true', help="Switch to linear decay for cosine decay")
     # model checkpointing
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
@@ -192,6 +193,9 @@ def add_training_args(parser):
     # BlockLM training args
     group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
     group.add_argument('--bert-prob', type=float, default=0.5)
+    group.add_argument('--infill-prob', type=float, default=0.5)
+    group.add_argument('--avg-block-length', type=int, default=3)
+    group.add_argument('--task-mask', action='store_true', help="Use different mask for generation and blank filling")
     group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
     group.add_argument('--no-block-position', action='store_true',
                        help='Use (rough) absolute positions instead of block positions')
@@ -333,7 +337,9 @@ def add_finetune_config_args(parser):
                        help='The token to pool the sequence representation', default='cls')
     group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
     group.add_argument('--multi-token', action='store_true', help='Use multi token for cloze evaluation')
-    group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge"], default="cross_entropy")
+    group.add_argument('--segment-length', type=int, default=0, help="The maximum segment length for cloze evaluation")
+    group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge", "generative", "mix"],
+                       default="cross_entropy")
     group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--fast-decode', action='store_true', help="Fast decode for multi-token cloze")
     group.add_argument('--eval-valid', action='store_true', help="Whether evaluate on the valid set")

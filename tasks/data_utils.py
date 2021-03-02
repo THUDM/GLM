@@ -222,7 +222,7 @@ def build_decoder_input(enc_ids, answer_ids, max_seq_length, max_dec_seq_length,
     
 
 def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
-                 logit_mask=None):
+                 logit_mask=None, segment_ids=None):
     """Convert to numpy and return a sample consumed by the batch producer."""
 
     ids_np = np.array(ids, dtype=np.int64)
@@ -245,6 +245,9 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
     if logit_mask is not None:
         logit_mask_np = np.array(logit_mask, dtype=np.int64)
         sample['logit_mask'] = logit_mask_np
+    if segment_ids is not None:
+        segment_ids = np.array(segment_ids, dtype=np.int64)
+        sample['segment_id'] = segment_ids
     if unique_id is not None:
         sample['uid'] = unique_id
     return sample

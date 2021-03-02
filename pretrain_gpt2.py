@@ -219,7 +219,7 @@ def forward_step(data_iterator, model, args, timers, mems):
         sep = attention_mask.item()
         for i, token in enumerate(tokens[batch_id, :sep].tolist()):
             token = tokenizer.IdToToken(token)
-            if token.startswith('[MASK'):
+            if token.startswith('[MASK') or token.endswith('MASK]'):
                 token = f"[{position_ids_[batch_id, i].item()}, {token}]"
             if token.startswith('##') and len(output_tokens) > 0 and not output_tokens[-1].endswith(']'):
                 output_tokens[-1] += token[2:]
@@ -538,6 +538,8 @@ def main():
     else:
         args.iteration = 0
     torch.distributed.barrier()
+    if args.switch_linear:
+        lr_scheduler.switch_linear(args)
 
     summary_writer = None
     if torch.distributed.get_rank() == 0:

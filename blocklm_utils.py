@@ -27,7 +27,8 @@ def index_in_list(lst, val, start=None):
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
                  block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
-                 block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True, sentinel_token=False):
+                 block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True, sentinel_token=False,
+                 task_mask=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -49,6 +50,8 @@ class ConstructBlockStrategy:
         self.shuffle_blocks = shuffle_blocks
         self.sentinel_token = sentinel_token
         self.gap_length_distribution = [poisson.pmf(i, average_gap_length) for i in range(0, max_block_length)]
+        self.generation_mask = 'gMASK' if task_mask else 'MASK'
+        self.generation_mask = self.tokenizer.get_command(self.generation_mask).Id
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):
@@ -108,7 +111,7 @@ class ConstructBlockStrategy:
                     mask_index += current_count
         return mask_spans
 
-    def make_block_data(self, tokens, loss_masks, attention_mask, block_spans, rng):
+    def make_block_data(self, tokens, loss_masks, attention_mask, block_spans, rng, generation_task=False):
         position_ids = np.ones(len(tokens), dtype=np.long)
         for start, end in block_spans:
             position_ids[start + 1: end] = 0
@@ -142,9 +145,13 @@ class ConstructBlockStrategy:
         source_tokens, source_position_ids = [], []
         last = 0
         for start, end, idx in block_spans:
-            mask_token = 'MASK' if idx == 0 else f'MASK{idx}'
+            if generation_task:
+                mask_id = self.generation_mask
+            else:
+                mask_token = 'MASK' if idx == 0 else f'MASK{idx}'
+                mask_id = self.tokenizer.get_command(mask_token).Id
             source_tokens.append(tokens[last: start])
-            source_tokens.append([self.tokenizer.get_command(mask_token).Id])
+            source_tokens.append([mask_id])
             source_position_ids.append(position_ids[last: start])
             source_position_ids.append([position_ids[start]])
             last = end
@@ -169,14 +176,15 @@ class ConstructBlockStrategy:
             position_ids = [position_ids, block_position_ids]
             return tokens, targets, loss_masks, position_ids
 
-    def generate_blank_data(self, sample, masked_lengths, attention_mask, rng):
+    def generate_blank_data(self, sample, masked_lengths, attention_mask, rng, generation_task=False):
         rng.shuffle(masked_lengths)
         tokens, loss_masks = sample['text'], sample['loss_mask']
         assert tokens[0] == self.tokenizer.get_command('ENC').Id
         block_spans = self.sample_span_in_document(tokens, masked_lengths, rng)
         if len(block_spans) < len(masked_lengths):
             return None
-        data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng)
+        data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng,
+                                    generation_task=generation_task)
         return data
 
     def construct_blocks(self, samples):
@@ -229,29 +237,29 @@ class ConstructBlockStrategy:
                     tokens, loss_masks = sample['text'], sample['loss_mask']
                     source_tokens, target_tokens = tokens[:division], tokens[division:]
                     target_masks = loss_masks[division:]
-                    tokens = np.concatenate((source_tokens, [self.tokenizer.get_command('MASK').Id,
-                                                             self.tokenizer.get_command('sop').Id], target_tokens[:-1],
-                                             [self.tokenizer.get_command('pad').Id]))
-                    targets = np.concatenate((source_tokens, [self.tokenizer.get_command('MASK').Id], target_tokens,
-                                              [self.tokenizer.get_command('pad').Id]))
+                    tokens = np.concatenate((
+                        source_tokens, [self.generation_mask, self.tokenizer.get_command('sop').Id],
+                        target_tokens[:-1], [self.tokenizer.get_command('pad').Id]))
+                    targets = np.concatenate(
+                        (source_tokens, [self.generation_mask], target_tokens, [self.tokenizer.get_command('pad').Id]))
                     loss_masks = np.concatenate((np.zeros(len(source_tokens) + 1, dtype=np.long), target_masks, [0]))
                     token_batch.append(tokens)
                     target_batch.append(targets)
                     loss_mask_batch.append(loss_masks)
+                    position_ids = np.arange(len(source_tokens) + len(target_tokens) + 2, dtype=np.long)
+                    position_ids[len(source_tokens) + 1:] = len(source_tokens)
                     if self.block_position_encoding:
-                        position_ids = np.arange(len(source_tokens) + len(target_tokens) + 2, dtype=np.long)
-                        position_ids[len(source_tokens) + 1:] = len(source_tokens)
                         block_position_ids = np.concatenate(
                             (np.zeros(len(source_tokens), dtype=np.long),
                              np.arange(len(target_tokens) + 2, dtype=np.long)))
-                        position_id_batch.append([position_ids, block_position_ids])
                     else:
-                        position_ids = np.arange(len(source_tokens) + len(target_tokens) + 2, dtype=np.long)
-                        position_ids[len(source_tokens) + 1:] -= 1
-                        position_id_batch.append(position_ids)
+                        block_position_ids = np.concatenate((np.zeros(len(source_tokens) + 1, dtype=np.long),
+                                                             np.ones(len(target_tokens) + 1, dtype=np.long)))
+                    position_id_batch.append([position_ids, block_position_ids])
                 else:
                     tokens, targets, loss_masks, position_ids = self.generate_blank_data(sample, [generation_length],
-                                                                                         attention_mask, rng)
+                                                                                         attention_mask, rng,
+                                                                                         generation_task=True)
                     token_batch.append(tokens)
                     target_batch.append(targets)
                     loss_mask_batch.append(loss_masks)

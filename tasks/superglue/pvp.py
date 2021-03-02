@@ -34,7 +34,7 @@ class PVP(ABC):
     """
 
     def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42, is_multi_token=False, fast_decode: bool = False, split='train'):
+                 seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train'):
         """
         Create a new PVP.
 
@@ -54,6 +54,7 @@ class PVP(ABC):
         self.split = split
         self.max_dec_seq_length = 16
         self._is_multi_token = is_multi_token
+        self.max_segment_length = max_segment_length
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
@@ -132,7 +133,8 @@ class PVP(ABC):
             
             if not self.fast_decode:
                 ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
-                for answer in answers:
+                segment_id_list = []
+                for idx, answer in enumerate(answers):
                     this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                     answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
                     answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
@@ -140,21 +142,32 @@ class PVP(ABC):
                                                         max_length=self.max_seq_length)
                     tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                     tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
-                    data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
-                                                args=self.args, add_cls=True, add_sep=False, add_piece=True)
-                    ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-                    ids_list.append(ids)
-                    positions_list.append(position_ids)
-                    sep_list.append(sep)
-                    target_list.append(target_ids)
-                    mask_list.append(loss_masks)
+                    if self.max_segment_length > 0:
+                        num_segments = (len(answer_ids) - 1) // self.max_segment_length + 1
+                        segments = [answer_ids[index * self.max_segment_length: (index + 1) * self.max_segment_length] for
+                                    index in range(num_segments)]
+                        segment_id_list += [idx] * len(segments)
+                    else:
+                        segments = [answer_ids]
+                    for segment in segments:
+                        data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
+                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True)
+                        ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                        ids_list.append(ids)
+                        positions_list.append(position_ids)
+                        sep_list.append(sep)
+                        target_list.append(target_ids)
+                        mask_list.append(loss_masks)
+                        mask_pos = tokens_a.index(self.mask)
+                        tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
                 if example.label is not None:
                     label = self.label_list.index(example.label)
                 else:
                     label = 0
+                segment_id_list = segment_id_list if segment_id_list else None
                 sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
                                       logit_mask=mask_list, target=target_list,
-                                      unique_id=example.guid)
+                                      unique_id=example.guid, segment_ids=segment_id_list)
                 return sample
             
             else:

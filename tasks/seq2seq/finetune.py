@@ -49,8 +49,7 @@ def seq2seq_forward_step(data, model, args, timers, mems):
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = Seq2SeqDataset(args.task.lower(), args.data_dir, split='train', tokenizer=tokenizer,
-                                   max_src_length=args.src_seq_length, max_tgt_length=args.tgt_seq_length)
+    train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
     valid_dataset = None
     global global_tokenizer
     global_tokenizer = tokenizer
@@ -63,8 +62,7 @@ def metrics_func_provider(args, tokenizer, is_test):
         return None
 
     def single_dataset_provider(split):
-        return Seq2SeqDataset(args.task.lower(), args.data_dir, split, tokenizer, max_src_length=args.src_seq_length,
-                              max_tgt_length=args.tgt_seq_length)
+        return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
 
     evaluater = DecoderEvaluater(args, tokenizer)
     eval_func = evaluater.evaluate
@@ -73,11 +71,11 @@ def metrics_func_provider(args, tokenizer, is_test):
                                "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
 
     def output_func(predictions, examples, output_file):
-        with open(output_file + ".hyps", "w") as output:
+        with open(output_file + ".hyps", "w", encoding='utf-8') as output:
             for prediction in predictions:
                 output.write(prediction)
                 output.write("\n")
-        with open(output_file + ".refs", "w") as output:
+        with open(output_file + ".refs", "w", encoding='utf-8') as output:
             for example in examples:
                 output.write(example.meta["ref"])
                 output.write("\n")
@@ -89,7 +87,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() in ['cnn_dm', 'gigaword']:
+    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

@@ -18,6 +18,7 @@ import torch
 from torch.optim.lr_scheduler import _LRScheduler
 import math
 
+
 class AnnealingLR(_LRScheduler):
     """Anneals the learning rate from start to zero along a cosine curve."""
 
@@ -42,13 +43,14 @@ class AnnealingLR(_LRScheduler):
             return float(self.start_lr) * self.num_iters / self.warmup_iter
         else:
             if self.decay_style == self.DECAY_STYLES[0]:
-                return self.start_lr*((self.end_iter-(self.num_iters-self.warmup_iter))/self.end_iter)
+                decay_step_ratio = (self.num_iters - self.warmup_iter) / self.end_iter
+                return self.start_lr - self.start_lr * (1 - 1 / self.decay_ratio) * decay_step_ratio
             elif self.decay_style == self.DECAY_STYLES[1]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
                 return self.start_lr / self.decay_ratio * (
                         (math.cos(math.pi * decay_step_ratio) + 1) * (self.decay_ratio - 1) / 2 + 1)
             elif self.decay_style == self.DECAY_STYLES[2]:
-                #TODO: implement exponential decay
+                # TODO: implement exponential decay
                 return self.start_lr
             else:
                 return self.start_lr
@@ -63,12 +65,12 @@ class AnnealingLR(_LRScheduler):
 
     def state_dict(self):
         sd = {
-                # 'start_lr': self.start_lr,
-                'warmup_iter': self.warmup_iter,
-                'num_iters': self.num_iters,
-                'decay_style': self.decay_style,
-                'end_iter': self.end_iter,
-                'decay_ratio': self.decay_ratio
+            # 'start_lr': self.start_lr,
+            'warmup_iter': self.warmup_iter,
+            'num_iters': self.num_iters,
+            'decay_style': self.decay_style,
+            'end_iter': self.end_iter,
+            'decay_ratio': self.decay_ratio
         }
         return sd
 
@@ -77,7 +79,14 @@ class AnnealingLR(_LRScheduler):
         self.warmup_iter = sd['warmup_iter']
         self.num_iters = sd['num_iters']
         # self.end_iter = sd['end_iter']
-        self.decay_style = sd['decay_style']
+        # self.decay_style = sd['decay_style']
         # if 'decay_ratio' in sd:
         #     self.decay_ratio = sd['decay_ratio']
         self.step(self.num_iters)
+
+    def switch_linear(self, args):
+        current_lr = self.get_lr()
+        self.start_lr = current_lr
+        self.end_iter = args.train_iters - self.num_iters
+        self.num_iters = 0
+        self.decay_style = "linear"

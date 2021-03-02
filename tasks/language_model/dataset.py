@@ -28,6 +28,8 @@ class LMDataset(torch.utils.data.Dataset):
         self.left_weights = [0] + self.weights[:-1]
         self.unidirectional = args.unidirectional
         self.block_lm = args.block_lm
+        mask_token = "gMASK" if args.task_mask else 'MASK'
+        self.mask_id = self.tokenizer.get_command(mask_token).Id
 
     def __len__(self):
         return sum(self.num_sequences)
@@ -44,7 +46,7 @@ class LMDataset(torch.utils.data.Dataset):
             else:
                 prompt_length = self.max_seq_len - self.overalapping_eval
                 prompt, text = tokens[:prompt_length], tokens[prompt_length:]
-            prompt = prompt + [self.tokenizer.get_command('MASK').Id]
+            prompt = prompt + [self.mask_id]
             num_special_tokens = num_special_tokens_to_add(prompt, None, text, add_cls=True, add_sep=False,
                                                            add_piece=True,
                                                            add_eos=False)
@@ -79,6 +81,8 @@ class LambadaDataset(torch.utils.data.Dataset):
         self.strict = strict
         self.block_lm = args.block_lm
         self.unidirectional = args.unidirectional
+        mask_token = "gMASK" if args.task_mask else 'MASK'
+        self.mask_id = self.tokenizer.get_command(mask_token).Id
 
         self.tokens = []
         self.labels = []
@@ -109,7 +113,7 @@ class LambadaDataset(torch.utils.data.Dataset):
                 tokens, answer_tokens = tokens[:1], tokens[1:] + answer
             else:
                 answer_tokens = answer
-            tokens = tokens + [self.tokenizer.get_command('MASK').Id]
+            tokens = tokens + [self.mask_id]
             num_special_tokens = num_special_tokens_to_add(tokens, None, answer_tokens, add_cls=True, add_sep=False,
                                                            add_piece=True)
             left_shift = len(tokens) + len(answer_tokens) + num_special_tokens - self.max_seq_length
