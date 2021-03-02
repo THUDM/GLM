@@ -233,7 +233,8 @@ class DecoderEvaluater:
                         tokens = tokens.new_zeros(batch_size * args.num_beams, 0)
                         attention_mask = tokens.new_zeros([batch_size * args.num_beams])
                     else:
-                        position_ids[:, 1] = counter + 1
+                        if not args.no_block_position:
+                            position_ids[:, 1] = counter + 1
                         last_token = tokens[:, -1:]
                         next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems,
                                                          return_memory=True)
