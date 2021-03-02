@@ -19,7 +19,6 @@ import os
 import time
 import json
 import torch
-from torch_scatter import scatter_sum
 
 from utils import print_rank_0
 from tasks.data_utils import build_data_loader
@@ -156,6 +155,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                 else:
                     logits, *mems = model(*inputs)
             if "segment_id" in data:
+                from torch_scatter import scatter_sum
                 if "loss_mask" in data:
                     logits = logits * data["loss_mask"]
                 logits = scatter_sum(logits, data["segment_id"], dim=1)

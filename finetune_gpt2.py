@@ -25,7 +25,6 @@ from arguments import get_args
 
 import torch
 import torch.utils.data
-from torch_scatter import scatter_sum
 from configure_data import prepare_tokenizer
 
 from utils import print_rank_0
@@ -122,6 +121,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
             'attention_mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
     if "segment_id" in data:
+        from torch_scatter import scatter_sum
         if "loss_mask" in data:
             logits = logits * data["loss_mask"]
         logits = scatter_sum(logits, data["segment_id"], dim=1)
@@ -320,8 +320,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-        if os.path.exists(args.log_dir) and args.load is None:
-            raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
+        # if os.path.exists(args.log_dir) and args.load is None:
+        #     raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
         summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
         print_and_save_args(args, verbose=False, log_dir=args.log_dir)
 

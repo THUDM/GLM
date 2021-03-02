@@ -447,7 +447,7 @@ class WscPVP(PVP):
         :param labeled: if ``priming=True``, whether the label should be appended to this example
         :return: A tuple, consisting of a list of input ids and a list of token type ids
         """
-        if self.args.wsc_negative:
+        if self.args.loss_func in ['generative', 'mix']:
             sample = super().encode(example, priming=priming, labeled=labeled)
             if self.split == 'train':
                 sample['label'] = 0

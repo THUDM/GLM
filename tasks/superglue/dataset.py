@@ -79,11 +79,8 @@ class GlueDataset(Dataset):
         examples.sort(key=lambda x: x.num_choices)
         if args.cloze_eval:
             pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id,
-<<<<<<< HEAD
-                                  is_multi_token=args.multi_token, fast_decode=args.fast_decode, split=split)
-=======
-                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length)
->>>>>>> d37283d39a0da5607143e2cadc7a631528f19d8a
+                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length, 
+                                  fast_decode=args.fast_decode, split=split)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
