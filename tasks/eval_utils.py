@@ -19,7 +19,6 @@ import os
 import time
 import json
 import torch
-from torch_scatter import scatter_sum
 
 from utils import print_rank_0
 from tasks.data_utils import build_data_loader
@@ -36,7 +35,6 @@ def accuracy_metric(predictions, labels, examples):
     for prediction, label in zip(predictions, labels):
         count += prediction == label
     return count * 100.0 / len(predictions)
-
 
 def f1_metric(predictions, labels, examples):
     return f1_score(labels, predictions)
@@ -122,8 +120,13 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                 inputs = [tokens, types, attention_mask]
             elif args.cloze_eval:
                 tokens, labels_, position_ids = data['text'], data['label'], data['position']
-                attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
-                inputs = [tokens, position_ids, attention_mask, target_ids, logit_mask]
+                attention_mask, target_ids, logit_mask = data['attention_mask'], data.get('target'), data.get('logit_mask')
+                if not args.fast_decode:
+                    inputs = [tokens, position_ids, attention_mask, target_ids, logit_mask]
+                else:
+                    dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
+                    dec_target_ids, dec_logit_mask = data['dec_target'], data['dec_logit_mask']
+                    inputs = [tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask]
             else:
                 tokens, labels_, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
                     'attention_mask']
@@ -138,12 +141,21 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                         logits, *mems = model(*input_batch)
                     logit_list.append(logits)
                 logits = torch.cat(logit_list, dim=1)
+            elif args.cloze_eval and args.fast_decode:
+                logit_list = []
+                num_choices = inputs[3].size(1)
+                for i in range((num_choices - 1) // segment_length + 1):
+                    input_batch = inputs[:3] + [arg[:, i*segment_length: (i+1)*segment_length] for arg in inputs[3:]]
+                    logits, *mems = model(*input_batch)
+                    logit_list.append(logits)
+                logits = torch.cat(logit_list, dim=1)
             else:
                 if args.pretrained_bert:
                     logits = model(*inputs)
                 else:
                     logits, *mems = model(*inputs)
             if "segment_id" in data:
+                from torch_scatter import scatter_sum
                 if "loss_mask" in data:
                     logits = logits * data["loss_mask"]
                 logits = scatter_sum(logits, data["segment_id"], dim=1)
@@ -161,5 +173,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
             # Add output predictions.
             predictions.extend(predicted)
             labels.extend(labels_.tolist())
+    if args.task.lower() == 'wsc':
+        predictions = [1 if pred == 0 else 0 for pred in predictions]
     model.train()
     return predictions, labels, examples

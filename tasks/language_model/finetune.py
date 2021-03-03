@@ -22,6 +22,7 @@ import torch
 from utils import print_rank_0
 import mpu
 from tasks.data_utils import build_data_loader
+from model import ClozeModel
 
 from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset, build_lm_dataset
 from pretrain_gpt2 import get_batch
@@ -68,7 +69,11 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
             print(position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
     # Forward model.
-    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    if isinstance(model, ClozeModel):
+        logits, *mems = model(tokens, position_ids, attention_mask)
+    else:
+        logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+        
     if eval_metric is None or eval_metric == 'loss':
         losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                                   labels)

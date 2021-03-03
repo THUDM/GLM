@@ -188,6 +188,39 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     return ids, types, paddings, position_ids, sep, target_ids, loss_masks
 
 
+def build_decoder_input(enc_ids, answer_ids, max_seq_length, max_dec_seq_length, tokenizer):
+    mask_id = tokenizer.get_command('MASK').Id
+    eos_id = tokenizer.get_command('eos').Id
+    sop_id = tokenizer.get_command('sop').Id
+    enc_len = len(enc_ids)
+    masks = []
+    # TODO: it probably takes too much memory
+    # for i in range(max_dec_seq_length):
+    #     m = [1]*enc_len + [0]*(max_seq_length - enc_len) + [1]*(i+1) + [0]*(max_dec_seq_length-1-i)
+    #     masks.append(m)
+    mask_position = enc_ids.index(mask_id)
+    len_answer = len(answer_ids)
+    ids = [sop_id] + answer_ids[:-1]
+    types = [0] * len_answer # not used
+    paddings = [1] * len_answer
+    position_ids = [mask_position] * len_answer
+    block_position_ids = list(range(1, len_answer + 1))
+    target_ids = answer_ids
+    loss_masks = [1] * len_answer
+    # Padding.
+    padding_length = max_dec_seq_length - len(ids)
+    if padding_length > 0:
+        ids.extend([eos_id] * padding_length)
+        types.extend([0] * padding_length)
+        paddings.extend([0] * padding_length)
+        position_ids.extend([0] * padding_length)
+        block_position_ids.extend([0] * padding_length)
+        target_ids.extend([0] * padding_length)
+        loss_masks.extend([0] * padding_length)
+    position_ids = [position_ids, block_position_ids]
+    return ids, types, paddings, position_ids, masks, target_ids, loss_masks
+    
+
 def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
                  logit_mask=None, segment_ids=None):
     """Convert to numpy and return a sample consumed by the batch producer."""
@@ -219,6 +252,13 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
         sample['uid'] = unique_id
     return sample
 
+def build_decoder_sample(sample, dec_ids, dec_position, dec_masks, dec_target, dec_logit_mask):
+    sample['dec_text'] = np.array(dec_ids)
+    sample['dec_position'] = np.array(dec_position)
+    sample['dec_mask'] = np.array(dec_masks)
+    sample['dec_target'] = np.array(dec_target)
+    sample['dec_logit_mask'] = np.array(dec_logit_mask)
+    return sample
 
 def my_collate(batch):
     new_batch = [{key: value for key, value in sample.items() if key != 'uid'} for sample in batch]
@@ -241,6 +281,18 @@ def my_collate(batch):
                         sample[key] = value
                 sample['loss_mask'] = np.array([1] * choice_nums[i] + [0] * (max_choice_num - choice_nums[i]),
                                                dtype=np.float32)
+
+    if 'dec_text' in new_batch[0]:
+        choice_nums = [len(sample['dec_text']) for sample in new_batch]
+        if choice_nums.count(choice_nums[0]) != len(choice_nums):
+            max_choice_num = max(choice_nums)
+            for i, sample in enumerate(new_batch):
+                for key, value in sample.items():
+                    if key.startswith('dec_'):
+                        sample[key] = pad_choice_dim(value, max_choice_num)
+                sample['loss_mask'] = np.array([1] * choice_nums[i] + [0] * (max_choice_num - choice_nums[i]),
+                                               dtype=np.float32)
+
     new_batch = default_collate(new_batch)
     if 'uid' in batch[0]:
         uid_list = [sample['uid'] for sample in batch]

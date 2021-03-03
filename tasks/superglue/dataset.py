@@ -22,6 +22,7 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from typing import List, Dict, Callable
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from tasks.data_utils import InputExample
 from utils import print_rank_0
@@ -42,6 +43,7 @@ def get_output_func(task_name):
 
 
 class GlueDataset(Dataset):
+
     def __init__(self, args, split, tokenizer, for_train=False):
         task_name = args.task.lower()
         data_dir = args.data_dir
@@ -77,7 +79,8 @@ class GlueDataset(Dataset):
         examples.sort(key=lambda x: x.num_choices)
         if args.cloze_eval:
             pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id,
-                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length)
+                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length, 
+                                  fast_decode=args.fast_decode, split=split)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
@@ -328,6 +331,14 @@ class WscProcessor(DataProcessor):
                     'span1_index': example_json['target']['span1_index'],
                     'span2_index': example_json['target']['span2_index']
                 }
+                if 'candidates' in example_json:
+                    candidates = [cand['text'] for cand in example_json['candidates']]
+                    # candidates = list(set(candidates))
+                    filtered = []
+                    for i, cand in enumerate(candidates):
+                        if not cand in candidates[:i]:
+                            filtered.append(cand)
+                    candidates = filtered
 
                 # the indices in the dataset are wrong for some examples, so we manually fix them
                 span1_index, span1_text = meta['span1_index'], meta['span1_text']
@@ -342,9 +353,9 @@ class WscProcessor(DataProcessor):
                         if words_a_lower[span1_index + offset:span1_index + span1_len + offset] == words_span1_text:
                             span1_index += offset
 
-                if words_a_lower[span1_index:span1_index + span1_len] != words_span1_text:
-                    print_rank_0(f"Got '{words_a_lower[span1_index:span1_index + span1_len]}' but expected "
-                                 f"'{words_span1_text}' at index {span1_index} for '{words_a}'")
+                # if words_a_lower[span1_index:span1_index + span1_len] != words_span1_text:
+                #     print_rank_0(f"Got '{words_a_lower[span1_index:span1_index + span1_len]}' but expected "
+                #                  f"'{words_span1_text}' at index {span1_index} for '{words_a}'")
 
                 if words_a[span2_index] != span2_text:
                     for offset in [-1, +1]:
@@ -362,10 +373,19 @@ class WscProcessor(DataProcessor):
                 text_a = ' '.join(words_a)
                 meta['span1_index'], meta['span2_index'] = span1_index, span2_index
 
-                example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
                 if cloze_eval and set_type == 'train' and label != 'True':
                     continue
-                examples.append(example)
+                if set_type == 'train' and 'candidates' in example_json and len(candidates) > 9:
+                    for i in range(0, len(candidates), 9):
+                        meta['candidates'] = candidates[i:i+9]
+                        if len(meta['candidates']) < 9:
+                            meta['candidates'] += candidates[:9-len(meta['candidates'])]
+                        example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
+                        examples.append(example)    
+                else:
+                    meta['candidates'] = candidates
+                    example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
+                    examples.append(example)
 
         return examples
 

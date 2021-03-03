@@ -21,7 +21,7 @@ from collections import defaultdict
 from typing import Tuple, List, Union, Dict
 import numpy as np
 
-from tasks.data_utils import InputExample, num_special_tokens_to_add, build_input_from_ids, build_sample
+from tasks.data_utils import InputExample, num_special_tokens_to_add, build_input_from_ids, build_sample, build_decoder_input, build_decoder_sample
 from utils import print_rank_0
 
 FilledPattern = Tuple[List[Union[str, Tuple[str, bool]]], List[Union[str, Tuple[str, bool]]]]
@@ -34,7 +34,7 @@ class PVP(ABC):
     """
 
     def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42, is_multi_token=False, max_segment_length=0):
+                 seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train'):
         """
         Create a new PVP.
 
@@ -50,6 +50,9 @@ class PVP(ABC):
         self.pattern_id = pattern_id
         self.rng = random.Random(seed)
         self.num_truncated = 0
+        self.fast_decode = fast_decode
+        self.split = split
+        self.max_dec_seq_length = 16
         self._is_multi_token = is_multi_token
         self.max_segment_length = max_segment_length
 
@@ -94,6 +97,13 @@ class PVP(ABC):
             return PVP.lowercase_first(s[0]), s[1]
         return s[0].lower() + s[1:]
 
+    @staticmethod
+    def uppercase_first(s: Union[str, Tuple[str, bool]]):
+        """Lowercase the first character"""
+        if isinstance(s, tuple):
+            return PVP.uppercase_first(s[0]), s[1]
+        return s[0].upper() + s[1:]
+
     def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
         """
         Encode an input example using this pattern-verbalizer pair.
@@ -120,43 +130,73 @@ class PVP(ABC):
 
         if self.is_multi_token:
             answers = self.get_answers(example)
-            ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
-            segment_id_list = []
-            for idx, answer in enumerate(answers):
+            
+            if not self.fast_decode:
+                ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+                segment_id_list = []
+                for idx, answer in enumerate(answers):
+                    this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
+                    answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+                    answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
+                    self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
+                                                        max_length=self.max_seq_length)
+                    tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
+                    tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+                    if self.max_segment_length > 0:
+                        num_segments = (len(answer_ids) - 1) // self.max_segment_length + 1
+                        segments = [answer_ids[index * self.max_segment_length: (index + 1) * self.max_segment_length] for
+                                    index in range(num_segments)]
+                        segment_id_list += [idx] * len(segments)
+                    else:
+                        segments = [answer_ids]
+                    for segment in segments:
+                        data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
+                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True)
+                        ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                        ids_list.append(ids)
+                        positions_list.append(position_ids)
+                        sep_list.append(sep)
+                        target_list.append(target_ids)
+                        mask_list.append(loss_masks)
+                        mask_pos = tokens_a.index(self.mask)
+                        tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
+                if example.label is not None:
+                    label = self.label_list.index(example.label)
+                else:
+                    label = 0
+                segment_id_list = segment_id_list if segment_id_list else None
+                sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                                      logit_mask=mask_list, target=target_list,
+                                      unique_id=example.guid, segment_ids=segment_id_list)
+                return sample
+            
+            else:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
-                answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
-                answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
-                self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
-                                                    max_length=self.max_seq_length)
+                self.num_truncated += self.truncate(this_parts_a, this_parts_b, None, max_length=self.max_seq_length)
                 tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                 tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
-                if self.max_segment_length > 0:
-                    num_segments = (len(answer_ids) - 1) // self.max_segment_length + 1
-                    segments = [answer_ids[index * self.max_segment_length: (index + 1) * self.max_segment_length] for
-                                index in range(num_segments)]
-                    segment_id_list += [idx] * len(segments)
-                else:
-                    segments = [answer_ids]
-                for segment in segments:
-                    data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
-                                                args=self.args, add_cls=True, add_sep=False, add_piece=True)
-                    ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-                    ids_list.append(ids)
-                    positions_list.append(position_ids)
-                    sep_list.append(sep)
-                    target_list.append(target_ids)
-                    mask_list.append(loss_masks)
-                    mask_pos = tokens_a.index(self.mask)
-                    tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
-            if example.label is not None:
-                label = self.label_list.index(example.label)
-            else:
+                data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer,
+                                                add_cls=True, add_sep=False, add_piece=False)
+                ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                 label = 0
-            segment_id_list = segment_id_list if segment_id_list else None
-            sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
-                                  logit_mask=mask_list, target=target_list,
-                                  unique_id=example.guid, segment_ids=segment_id_list)
-            return sample
+                sample = build_sample(ids, positions=position_ids, masks=sep, label=label, unique_id=example.guid)
+
+                ids_list, positions_list, mask_list, target_list, logit_mask_list = [], [], [], [], []
+                for answer in answers:
+                    answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
+                    answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
+                    answer_ids = answer_ids[:self.max_dec_seq_length]
+                    data = build_decoder_input(ids, answer_ids, self.max_seq_length, self.max_dec_seq_length, tokenizer)
+                    dec_ids, _, _, dec_position_ids, _, dec_target_ids, dec_loss_masks = data
+                    ids_list.append(dec_ids)
+                    positions_list.append(dec_position_ids)
+                    mask_list.append(sep)
+                    target_list.append(dec_target_ids)
+                    logit_mask_list.append(dec_loss_masks)
+
+                sample = build_decoder_sample(sample, ids_list, positions_list, mask_list, target_list, logit_mask_list)
+                return sample
+
         else:
             self.num_truncated += self.truncate(parts_a, parts_b, [], max_length=self.max_seq_length)
 
@@ -337,7 +377,7 @@ class CopaPVP(PVP):
         ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
 
         for choice in [choice1, choice2]:
-            parts = [premise, self.mask, choice]
+            parts = ['"', choice1[1:], '" or "', choice2[1:], '"?', premise, self.mask, choice]
             parts = [x if isinstance(x, tuple) else (x, False) for x in parts]
             parts = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else [x], s) for x, s in parts if
                      x]
@@ -368,7 +408,14 @@ class WscPVP(PVP):
 
     def get_answers(self, example: InputExample):
         target = " " + example.meta['span1_text']
-        return [target]
+        answers = [target]
+        if 'candidates' in example.meta:
+            candidates = copy.deepcopy(example.meta['candidates'])
+            # if len(candidates) > 10:
+            #     random.shuffle(candidates)
+            #     candidates = candidates[:10]
+            answers += [" " + cand for cand in candidates]
+        return answers
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         pronoun = example.meta['span2_text']
@@ -378,6 +425,8 @@ class WscPVP(PVP):
         words_a[pronoun_idx] = '*' + words_a[pronoun_idx] + '*'
         text_a = ' '.join(words_a)
         text_a = self.shortenable(text_a)
+
+        # return [' '.join(words_a[:pronoun_idx]), self.mask, ' '.join(words_a[pronoun_idx+1:])], []
 
         if self.pattern_id == 0:
             return [text_a, " The pronoun '*" + pronoun + "*' refers to", self.mask, '.'], []
@@ -398,6 +447,11 @@ class WscPVP(PVP):
         :param labeled: if ``priming=True``, whether the label should be appended to this example
         :return: A tuple, consisting of a list of input ids and a list of token type ids
         """
+        if self.args.loss_func in ['generative', 'mix']:
+            sample = super().encode(example, priming=priming, labeled=labeled)
+            if self.split == 'train':
+                sample['label'] = 0
+            return sample
 
         if not priming:
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
@@ -521,6 +575,8 @@ class BoolQPVP(PVP):
         passage = example.text_a
         question = example.text_b
 
+        # if self.pattern_id == 0:
+        #     return [self.shortenable(passage), self.shortenable(" " + self.uppercase_first(question)), '? ', self.mask, '.'], []
         if self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', self.mask,
                     '.'], []
