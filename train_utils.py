@@ -283,7 +283,8 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
         timers('forward').stop()
 
         # print_rank_0("loss is {}".format(lm_loss))
-        lm_loss /= args.gradient_accumulation_steps
+        if not args.deepspeed:
+            lm_loss /= args.gradient_accumulation_steps
 
         # Calculate gradients, reduce across processes, and clip.
         timers('backward').start()
@@ -316,4 +317,6 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
         timers('optimizer').stop()
         if complete:
             break
+    if args.deepspeed:
+        lm_loss_total = lm_loss_total / count
     return lm_loss_total, skipped_iter, mems
