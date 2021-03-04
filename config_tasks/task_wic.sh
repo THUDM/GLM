@@ -3,14 +3,13 @@ TASK_NAME=wic
 DATA_PATH="/root/data/superglue/WiC"
 MAX_SEQ_LEN=256
 
-LR_RANGE=(1e-5)
+LR_RANGE=(5e-6 1e-5 2e-5)
 EPOCH_RANGE=(20)
 
 LR_SINGLE=1e-5
 EPOCH_SINGLE=20
 
-TRAIN_ARGS="--batch-size 8 \
-            --lr-decay-style linear \
+TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \
             --weight-decay 1.0e-1"
 

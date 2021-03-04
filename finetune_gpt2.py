@@ -115,7 +115,12 @@ def finetune_forward_step(batch, model, args, timers, mems):
             print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
 
-        logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+        if not args.fast_decode:
+            logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+        else:
+            dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
+            dec_target_ids, dec_logit_mask = data['dec_target'], data['dec_logit_mask']
+            logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask)
     else:
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
             'attention_mask']
@@ -139,7 +144,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
         loss = hinge_loss.sum(dim=1).mean() - 1.0
     elif args.loss_func == "generative" or args.loss_func == "mix":
         batch_size = logits.size(0)
-        loss = - logits[range(batch_size), labels].sum() / logit_mask.sum()
+        loss = - logits[range(batch_size), labels].mean()
         if args.loss_func == "mix":
             loss_func = torch.nn.CrossEntropyLoss()
             loss = loss + loss_func(logits.contiguous().float(), labels)
@@ -199,7 +204,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     # For each remaining epoch
     timers('interval time').start()
     for epoch in range(start_epoch, args.epochs):
-        print_rank_0('working on epoch {} ...'.format(epoch + 1))
+        print_rank_0('working on epoch {} ...'.format(epoch))
 
         # Set the data loader epoch to shuffle the index iterator.
         train_dataloader.sampler.set_epoch(args.seed + epoch)
@@ -237,8 +242,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                                            summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
-        if args.save and (epoch + 1) % args.save_epoch == 0:
-            save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
+        # if args.save and (epoch + 1) % args.save_epoch == 0:
+        #     save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None and (epoch + 1) % args.eval_epoch == 0:
@@ -320,8 +325,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     summary_writer = None
     if torch.distributed.get_rank() == 0:
         args.log_dir = get_log_dir(base=args.summary_dir, name=args.experiment_name)
-        # if os.path.exists(args.log_dir) and args.load is None:
-        #     raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
+        if os.path.exists(os.path.join(args.log_dir, "test_results.json")) and args.load is None and not args.overwrite:
+            raise ValueError("Output directory ({}) already exists and is not empty.".format(args.log_dir))
         summary_writer = get_sample_writer(log_dir=args.log_dir, iteration=args.iteration)
         print_and_save_args(args, verbose=False, log_dir=args.log_dir)
 
@@ -350,7 +355,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
     if score_dict is not None and torch.distributed.get_rank() == 0:
         score_dict.update({"type": "test"})
-        with open(os.path.join(args.log_dir, "results.json"), "a") as output:
+        with open(os.path.join(args.log_dir, "test_results.json"), "w") as output:
             output.write(json.dumps(score_dict) + "\n")
 
     print_rank_0('done :-)')

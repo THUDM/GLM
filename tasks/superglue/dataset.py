@@ -18,6 +18,7 @@ import csv
 import json
 import os
 import random
+import copy
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import List, Dict, Callable
@@ -377,11 +378,12 @@ class WscProcessor(DataProcessor):
                     continue
                 if set_type == 'train' and 'candidates' in example_json and len(candidates) > 9:
                     for i in range(0, len(candidates), 9):
-                        meta['candidates'] = candidates[i:i+9]
-                        if len(meta['candidates']) < 9:
-                            meta['candidates'] += candidates[:9-len(meta['candidates'])]
-                        example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
-                        examples.append(example)    
+                        _meta = copy.deepcopy(meta)
+                        _meta['candidates'] = candidates[i:i+9]
+                        if len(_meta['candidates']) < 9:
+                            _meta['candidates'] += candidates[:9-len(_meta['candidates'])]
+                        example = InputExample(guid=guid, text_a=text_a, label=label, meta=_meta, idx=idx)
+                        examples.append(example)
                 else:
                     meta['candidates'] = candidates
                     example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
