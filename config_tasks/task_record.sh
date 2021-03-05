@@ -13,8 +13,7 @@ EPOCH_SINGLE=5
 TRAIN_ARGS="--batch-size 8 \
             --lr-decay-style linear \
             --warmup 0.06 \
-            --weight-decay 1.0e-1 \
-            --fast-decode"
+            --weight-decay 1.0e-1"
 
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 100 \
