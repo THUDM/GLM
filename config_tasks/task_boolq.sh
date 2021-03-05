@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-boolq
 TASK_NAME=BoolQ
-DATA_PATH="/root/data/superglue/BoolQ"
+DATA_PATH="${DATA_ROOT}/BoolQ"
 MAX_SEQ_LEN=256
 
 LR_RANGE=(1e-5)

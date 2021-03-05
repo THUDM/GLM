@@ -34,6 +34,7 @@ from collections import defaultdict
 TRAIN_SET = "train"
 DEV_SET = "dev"
 TEST_SET = "test"
+TRUE_DEV_SET = "true_dev"
 UNLABELED_SET = "unlabeled"
 
 SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
@@ -136,6 +137,10 @@ class DataProcessor(ABC):
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the unlabeled set."""
         pass
+
+    def get_true_dev_examples(self, data_dir) -> List[InputExample]:
+        """Get a collection of `InputExample`s for the true dev set."""
+        return self._create_examples(os.path.join(data_dir, "true_dev.jsonl"), "true_dev")
 
     @abstractmethod
     def get_labels(self) -> List[str]:

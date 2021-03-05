@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
 TASK_NAME=multirc
-DATA_PATH="/root/data/superglue/MultiRC"
+DATA_PATH="${DATA_ROOT}/MultiRC"
 MAX_SEQ_LEN=512
 
 LR_RANGE=(1e-5)

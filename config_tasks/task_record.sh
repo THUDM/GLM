@@ -1,7 +1,7 @@
 source config/model_blocklm_generation.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-record
 TASK_NAME=ReCoRD
-DATA_PATH="/root/data/superglue/ReCoRD"
+DATA_PATH="${DATA_ROOT}/ReCoRD"
 MAX_SEQ_LEN=512
 
 LR_RANGE=(1e-5)

@@ -1,3 +1,4 @@
+DATA_ROOT=/root/data/superglue
 source config_tasks/model_blocklm_roberta_large.sh $2
 source $1
 

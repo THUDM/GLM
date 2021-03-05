@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-WSC
 TASK_NAME=wsc
-DATA_PATH="/root/data/superglue/WSC-negative"
+DATA_PATH="${DATA_ROOT}/WSC-negative"
 MAX_SEQ_LEN=128
 
 LR_RANGE=(1e-5)
