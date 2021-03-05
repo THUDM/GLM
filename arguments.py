@@ -352,6 +352,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--adam-eps', type=float, default=1e-8)
     group.add_argument('--optimizer', type=str, choices=['adam', 'adafactor'], default='adam')
     group.add_argument('--wsc-negative', action='store_true')
+    group.add_argument('--overwrite', action='store_true')
     return parser
 
 

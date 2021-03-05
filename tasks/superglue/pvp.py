@@ -410,7 +410,7 @@ class WscPVP(PVP):
         target = " " + example.meta['span1_text']
         answers = [target]
         if 'candidates' in example.meta:
-            candidates = copy.deepcopy(example.meta['candidates'])
+            candidates = example.meta['candidates']
             # if len(candidates) > 10:
             #     random.shuffle(candidates)
             #     candidates = candidates[:10]
