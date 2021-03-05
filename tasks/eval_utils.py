@@ -85,7 +85,11 @@ def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=F
             output_str = ' > |epoch: {}| metrics for {}: total {}'.format(epoch, name, total_count)
             for key, value in single_dict.items():
                 output_str += " {} = {:.4f} %".format(key, value)
+                if summary_writer is not None and epoch >= 0 and not is_test and len(dataloaders) > 1:
+                    summary_writer.add_scalar(f'Train/valid_{name}_{key}', value, epoch)
             output_str += ' elapsed time (sec): {:.3f}'.format(elapsed_time)
+            if len(dataloaders) > 1:
+                print_rank_0(output_str)
             for key in score_dict:
                 score_dict[key] += single_dict[key] * total_count
             total += total_count
