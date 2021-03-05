@@ -58,6 +58,8 @@ class GlueDataset(Dataset):
             examples = processor.get_dev_examples(data_dir, for_train=for_train)
         elif split == TEST_SET:
             examples = processor.get_test_examples(data_dir)
+        elif split == TRUE_DEV_SET:
+            examples = processor.get_true_dev_examples(data_dir)
         elif split == TRAIN_SET:
             if task_name == "wsc":
                 examples = processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
