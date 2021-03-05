@@ -37,7 +37,7 @@ TEST_SET = "test"
 TRUE_DEV_SET = "true_dev"
 UNLABELED_SET = "unlabeled"
 
-SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
+SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, TRUE_DEV_SET, UNLABELED_SET]
 
 
 def get_output_func(task_name):
