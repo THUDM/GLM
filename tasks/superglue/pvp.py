@@ -158,8 +158,12 @@ class PVP(ABC):
                         sep_list.append(sep)
                         target_list.append(target_ids)
                         mask_list.append(loss_masks)
-                        mask_pos = tokens_a.index(self.mask)
-                        tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
+                        if self.mask in tokens_a:
+                            mask_pos = tokens_a.index(self.mask)
+                            tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
+                        else:
+                            mask_pos = tokens_b.index(self.mask)
+                            tokens_b = tokens_b[:mask_pos] + segment + tokens_b[mask_pos:]
                 if example.label is not None:
                     label = self.label_list.index(example.label)
                 else:
