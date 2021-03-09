@@ -201,6 +201,7 @@ def add_training_args(parser):
                        help='Use (rough) absolute positions instead of block positions')
     group.add_argument('--sentinel-token', action='store_true',
                        help="Use sentinel (mask) tokens to replace 2d position encoding")
+    group.add_argument('--block-mask-prob', type=float, default=0.0)
     return parser
 
 

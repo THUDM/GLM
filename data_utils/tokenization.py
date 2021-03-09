@@ -716,7 +716,7 @@ class BertWordPieceTokenizer(Tokenizer):
     """
 
     def __init__(self, tokenizer_model_type=None, cache_dir=None, add_block_symbols=False, add_sentinel_token=0,
-                 add_task_mask=False, **kwargs):
+                 add_task_mask=False, add_decoder_mask=False, **kwargs):
         # default to bert-large-uncased tokenizer
         if tokenizer_model_type not in PRETRAINED_VOCAB_ARCHIVE_MAP:
             tokenizer_model_type = 'bert-large-uncased'
@@ -754,6 +754,12 @@ class BertWordPieceTokenizer(Tokenizer):
             if add_task_mask:
                 self._command_tokens.extend([
                     CommandToken('gMASK', '[gMASK]', self.num_tokens)
+                ])
+                self.num_tokens += 1
+                self.num_command_tokens += 1
+            if add_decoder_mask:
+                self._command_tokens.extend([
+                    CommandToken('dBLOCK', '[dBLOCK]', self.num_tokens)
                 ])
                 self.num_tokens += 1
                 self.num_command_tokens += 1
