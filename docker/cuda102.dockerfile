@@ -199,16 +199,19 @@ RUN echo 'root:baai2020keg' | chpasswd
 #USER deepspeed
 
 ##############################################################################
+# Client Liveness & Uncomment Port 22 for SSH Daemon
+##############################################################################
+# Keep SSH client alive froGm server side
+RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
+RUN mkdir -p /var/run/sshd && cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
+    sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
+##############################################################################
 ## SSH daemon port inside container cannot conflict with host OS port
 ###############################################################################
-# Client Liveness & Uncomment Port 22 for SSH Daemon
-RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
-RUN cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
-    sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
 ARG SSH_PORT=2222
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
-    echo "PasswordAuthentication no" >> ${STAGE_DIR}/sshd_config && \
-    sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
+    sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
 EXPOSE ${SSH_PORT}
 
 # Set SSH KEY
