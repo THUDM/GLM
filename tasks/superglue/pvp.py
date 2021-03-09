@@ -121,21 +121,36 @@ class PVP(ABC):
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
 
         tokenizer = self.tokenizer
-        parts_a, parts_b = self.get_parts(example)
+        raw_parts_a, raw_parts_b = self.get_parts(example)
 
-        parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_a if x]
+        raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
 
-        if parts_b:
-            parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_b if
-                       x]
+        def encode_input(raw_parts):
+            parts, flags = [], []
+            for x, s in raw_parts:
+                if isinstance(x, str):
+                    x = tokenizer.EncodeAsIds(x)
+                    flag = [0] * len(x)
+                elif isinstance(x, int):
+                    flag = [1] * x
+                    x = [0] * x
+                else:
+                    flag = [0] * len(x)
+                parts.append((x, s))
+                flags.append((flag, x))
+            return parts, flags
+
+        parts_a, flags_a = encode_input(raw_parts_a)
+        parts_b, flags_b = None, None
+        if raw_parts_b:
+            raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
+            parts_b, flags_b = encode_input(raw_parts_b)
 
         if self.is_multi_token:
             answers = self.get_answers(example)
 
             if not self.fast_decode:
-                ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+                ids_list, positions_list, sep_list, mask_list, target_list, prompt_list = [], [], [], [], [], []
                 segment_id_list = []
                 for idx, answer in enumerate(answers):
                     this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
@@ -143,8 +158,12 @@ class PVP(ABC):
                     answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
                     self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
                                                         max_length=self.max_seq_length)
+                    self.truncate(this_flags_a, this_flags_b, answer_ids, max_length=self.max_seq_length)
                     tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                     tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+                    this_flags_a, this_flags_b = copy.deepcopy(flags_a), copy.deepcopy(flags_b)
+                    flag_tokens_a = [flag for part, _ in this_flags_a for flag in part]
+                    flag_tokens_b = [flag for part, _ in this_flags_b for flag in part]
                     if self.max_segment_length > 0:
                         num_segments = (len(answer_ids) - 1) // self.max_segment_length + 1
                         segments = [answer_ids[index * self.max_segment_length: (index + 1) * self.max_segment_length]
@@ -162,12 +181,20 @@ class PVP(ABC):
                         sep_list.append(sep)
                         target_list.append(target_ids)
                         mask_list.append(loss_masks)
+                        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, segment, self.max_seq_length,
+                                                         self.tokenizer, args=self.args, add_cls=True, add_sep=False,
+                                                         add_piece=True)
+                        prompt_flags = flag_data[0]
+                        prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
+                        prompt_list.append(prompt_pos)
                         if self.mask in tokens_a:
                             mask_pos = tokens_a.index(self.mask)
                             tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
+                            flag_tokens_a = flag_tokens_a[:mask_pos] + segment + flag_tokens_a[mask_pos:]
                         else:
                             mask_pos = tokens_b.index(self.mask)
                             tokens_b = tokens_b[:mask_pos] + segment + tokens_b[mask_pos:]
+                            flag_tokens_b = flag_tokens_b[:mask_pos] + segment + flag_tokens_b[mask_pos:]
                 if example.label is not None:
                     label = self.label_list.index(example.label)
                 else:
@@ -175,9 +202,8 @@ class PVP(ABC):
                 segment_id_list = segment_id_list if segment_id_list else None
                 sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
                                       logit_mask=mask_list, target=target_list,
-                                      unique_id=example.guid, segment_ids=segment_id_list)
+                                      unique_id=example.guid, segment_ids=segment_id_list, prompt_ids=prompt_list)
                 return sample
-
             else:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                 self.num_truncated += self.truncate(this_parts_a, this_parts_b, None, max_length=self.max_seq_length)
@@ -210,7 +236,9 @@ class PVP(ABC):
 
             tokens_a = [token_id for part, _ in parts_a for token_id in part]
             tokens_b = [token_id for part, _ in parts_b for token_id in part] if parts_b else None
-
+            self.truncate(flags_a, flags_b, [], max_length=self.max_seq_length)
+            flag_tokens_a = [flag for part, _ in flags_a for flag in part]
+            flag_tokens_b = [flag for part, _ in flags_b for flag in part]
             if priming:
                 input_ids = tokens_a
                 if tokens_b:
@@ -231,8 +259,13 @@ class PVP(ABC):
                 label = self.label_list.index(example.label)
             else:
                 label = 0
+            flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, None, self.max_seq_length,
+                                             self.tokenizer, args=self.args, add_cls=True, add_sep=False,
+                                             add_piece=True)
+            prompt_flags = flag_data[0]
+            prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
             sample = build_sample(ids=ids, positions=position_ids, target=target_ids, masks=sep, logit_mask=loss_masks,
-                                  label=label, unique_id=example.guid)
+                                  label=label, unique_id=example.guid, prompt_ids=prompt_pos)
             return sample
 
     @staticmethod
@@ -342,7 +375,11 @@ class CopaPVP(PVP):
 
         question = example.meta['question']
         assert question in ['cause', 'effect']
-
+        if self.continuous_prompt:
+            if question == 'cause':
+                return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
+            else:
+                return ['"', choice1, '" or "', choice2, '"?', premise, ', so', [self.mask], '.'], []
         if question == 'cause':
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
