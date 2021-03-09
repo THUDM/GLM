@@ -502,24 +502,36 @@ class WscPVP(PVP):
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
 
         tokenizer = self.tokenizer
-        parts_a, parts_b = self.get_parts(example)
+        raw_parts_a, raw_parts_b = self.get_parts(example)
 
-        parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_a if x]
+        raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
 
-        if parts_b:
-            parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_b if
-                       x]
+        def encode_input(raw_parts):
+            parts, flags = [], []
+            for x, s in raw_parts:
+                if isinstance(x, str):
+                    x = tokenizer.EncodeAsIds(x)
+                    flag = [0] * len(x)
+                elif isinstance(x, int):
+                    flag = [1] * x
+                    x = [0] * x
+                else:
+                    flag = [0] * len(x)
+                parts.append((x, s))
+                flags.append((flag, x))
+            return parts, flags
 
+        parts_a, flags_a = encode_input(raw_parts_a)
+        parts_b, flags_b = None, None
+        if raw_parts_b:
+            raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
+            parts_b, flags_b = encode_input(raw_parts_b)
         answer = self.get_answers(example)[0]
-        this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
         answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
         answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
-        self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
-                                            max_length=self.max_seq_length)
-        tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
-        tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+        self.num_truncated += self.truncate(parts_a, parts_b, answer_ids, max_length=self.max_seq_length)
+        tokens_a = [token_id for part, _ in parts_a for token_id in part]
+        tokens_b = [token_id for part, _ in parts_b for token_id in part] if parts_b else None
         data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer, args=self.args,
                                     add_cls=True, add_sep=False, add_piece=True)
         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
@@ -527,9 +539,18 @@ class WscPVP(PVP):
             label = self.label_list.index(example.label)
         else:
             label = 0
+        self.truncate(flags_a, flags_b, answer_ids, max_length=self.max_seq_length)
+        flag_tokens_a = [flag for part, _ in flags_a for flag in part]
+        flag_tokens_b = [flag for part, _ in flags_b for flag in part]
+        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, answer_ids, self.max_seq_length,
+                                         self.tokenizer, args=self.args, add_cls=True, add_sep=False,
+                                         add_piece=True)
+        prompt_flags = flag_data[0]
+        prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
         return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
                 'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
-                "position_id": np.array(position_ids, dtype=np.int64), 'label': label, 'uid': example.guid}
+                "position_id": np.array(position_ids, dtype=np.int64),
+                'propmt_pos': np.array(prompt_pos, dtype=np.int64), 'label': label, 'uid': example.guid}
 
     def verbalize(self, label) -> List[str]:
         return []
