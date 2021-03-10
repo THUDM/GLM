@@ -65,6 +65,8 @@ def process_batch(batch, args):
             new_batch['loss_mask'] = new_batch['loss_mask'].half()
     if "segment_id" in batch:
         new_batch["segment_id"] = batch["segment_id"].long().cuda().contiguous()
+    if "prompt_pos" in batch:
+        new_batch["prompt_pos"] = batch["prompt_pos"].long().cuda().contiguous()
     return new_batch
     # if args.fp16:
     #     attention_mask = attention_mask.half()
@@ -114,13 +116,19 @@ def finetune_forward_step(batch, model, args, timers, mems):
             print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
             print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
-
         if not args.fast_decode:
-            logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+            if args.continuous_prompt:
+                prompt_pos = data["prompt_pos"]
+                logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask,
+                                      prompt_pos=prompt_pos)
+            else:
+                logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
         else:
-            dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
+            dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data[
+                'dec_mask']
             dec_target_ids, dec_logit_mask = data['dec_target'], data['dec_logit_mask']
-            logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask)
+            logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids,
+                                  dec_attention_mask, dec_target_ids, dec_logit_mask)
     else:
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
             'attention_mask']

@@ -67,6 +67,10 @@ class PVP(ABC):
         return self._is_multi_token
 
     @property
+    def spell_length(self):
+        return 0
+
+    @property
     def mask(self) -> str:
         """Return the underlying LM's mask token"""
         return self.tokenizer.get_command('MASK').Id
@@ -124,6 +128,7 @@ class PVP(ABC):
         raw_parts_a, raw_parts_b = self.get_parts(example)
 
         raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
+        prompt_id = tokenizer.num_tokens
 
         def encode_input(raw_parts):
             parts, flags = [], []
@@ -133,7 +138,7 @@ class PVP(ABC):
                     flag = [0] * len(x)
                 elif isinstance(x, int):
                     flag = [1] * x
-                    x = [0] * x
+                    x = [prompt_id] * x
                 else:
                     flag = [0] * len(x)
                 parts.append((x, s))
@@ -158,12 +163,8 @@ class PVP(ABC):
                     answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
                     self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
                                                         max_length=self.max_seq_length)
-                    self.truncate(this_flags_a, this_flags_b, answer_ids, max_length=self.max_seq_length)
                     tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                     tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
-                    this_flags_a, this_flags_b = copy.deepcopy(flags_a), copy.deepcopy(flags_b)
-                    flag_tokens_a = [flag for part, _ in this_flags_a for flag in part]
-                    flag_tokens_b = [flag for part, _ in this_flags_b for flag in part]
                     if self.max_segment_length > 0:
                         num_segments = (len(answer_ids) - 1) // self.max_segment_length + 1
                         segments = [answer_ids[index * self.max_segment_length: (index + 1) * self.max_segment_length]
@@ -176,25 +177,20 @@ class PVP(ABC):
                         data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
                                                     args=self.args, add_cls=True, add_sep=False, add_piece=True)
                         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                        prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
+                        ids = [idx if idx != prompt_id else 0 for idx in ids]
+                        prompt_list.append(prompt_pos)
                         ids_list.append(ids)
                         positions_list.append(position_ids)
                         sep_list.append(sep)
                         target_list.append(target_ids)
                         mask_list.append(loss_masks)
-                        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, segment, self.max_seq_length,
-                                                         self.tokenizer, args=self.args, add_cls=True, add_sep=False,
-                                                         add_piece=True)
-                        prompt_flags = flag_data[0]
-                        prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
-                        prompt_list.append(prompt_pos)
                         if self.mask in tokens_a:
                             mask_pos = tokens_a.index(self.mask)
                             tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
-                            flag_tokens_a = flag_tokens_a[:mask_pos] + segment + flag_tokens_a[mask_pos:]
                         else:
                             mask_pos = tokens_b.index(self.mask)
                             tokens_b = tokens_b[:mask_pos] + segment + tokens_b[mask_pos:]
-                            flag_tokens_b = flag_tokens_b[:mask_pos] + segment + flag_tokens_b[mask_pos:]
                 if example.label is not None:
                     label = self.label_list.index(example.label)
                 else:
@@ -236,9 +232,6 @@ class PVP(ABC):
 
             tokens_a = [token_id for part, _ in parts_a for token_id in part]
             tokens_b = [token_id for part, _ in parts_b for token_id in part] if parts_b else None
-            self.truncate(flags_a, flags_b, [], max_length=self.max_seq_length)
-            flag_tokens_a = [flag for part, _ in flags_a for flag in part]
-            flag_tokens_b = [flag for part, _ in flags_b for flag in part]
             if priming:
                 input_ids = tokens_a
                 if tokens_b:
@@ -254,16 +247,13 @@ class PVP(ABC):
             data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer, args=self.args,
                                         add_cls=True, add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
+            ids = [token if token != prompt_id else 0 for token in ids]
             target_ids = self.get_verbalizer_ids()
             if example.label is not None:
                 label = self.label_list.index(example.label)
             else:
                 label = 0
-            flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, None, self.max_seq_length,
-                                             self.tokenizer, args=self.args, add_cls=True, add_sep=False,
-                                             add_piece=True)
-            prompt_flags = flag_data[0]
-            prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
             sample = build_sample(ids=ids, positions=position_ids, target=target_ids, masks=sep, logit_mask=loss_masks,
                                   label=label, unique_id=example.guid, prompt_ids=prompt_pos)
             return sample
@@ -362,6 +352,10 @@ class CopaPVP(PVP):
     def is_multi_token(self):
         return True
 
+    @property
+    def spell_length(self):
+        return 2
+
     def get_answers(self, example: InputExample):
         choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -377,9 +371,9 @@ class CopaPVP(PVP):
         assert question in ['cause', 'effect']
         if self.continuous_prompt:
             if question == 'cause':
-                return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
+                return ['"', choice1, '"', 1, '"', choice2, '"', 1, premise, ' because', [self.mask], '.'], []
             else:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ', so', [self.mask], '.'], []
+                return ['"', choice1, '"', 1, '"', choice2, '"', 1, premise, ', so', [self.mask], '.'], []
         if question == 'cause':
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
@@ -542,7 +536,7 @@ class WscPVP(PVP):
         self.truncate(flags_a, flags_b, answer_ids, max_length=self.max_seq_length)
         flag_tokens_a = [flag for part, _ in flags_a for flag in part]
         flag_tokens_b = [flag for part, _ in flags_b for flag in part]
-        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, answer_ids, self.max_seq_length,
+        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, [0] * len(answer_ids), self.max_seq_length,
                                          self.tokenizer, args=self.args, add_cls=True, add_sep=False,
                                          add_piece=True)
         prompt_flags = flag_data[0]
@@ -587,8 +581,10 @@ class RtePVP(PVP):
         # switch text_a and text_b to get the correct order
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
-
-        if self.pattern_id == 0:
+        if self.continuous_prompt:
+            return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, '"', self.shortenable(text_a),
+                                                               '"']
+        elif self.pattern_id == 0:
             return ['"', self.shortenable(text_b), '" ?'], [[self.mask], ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:
             return [self.shortenable(text_b), '?'], [[self.mask], ',', self.shortenable(" " + text_a)]

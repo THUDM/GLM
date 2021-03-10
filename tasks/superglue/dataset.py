@@ -83,8 +83,8 @@ class GlueDataset(Dataset):
         examples.sort(key=lambda x: x.num_choices)
         if args.cloze_eval:
             pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id,
-                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length, 
-                                  fast_decode=args.fast_decode, split=split)
+                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length,
+                                  fast_decode=args.fast_decode, split=split, continuous_prompt=args.continuous_prompt)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
@@ -386,9 +386,9 @@ class WscProcessor(DataProcessor):
                 if set_type == 'train' and 'candidates' in example_json and len(candidates) > 9:
                     for i in range(0, len(candidates), 9):
                         _meta = copy.deepcopy(meta)
-                        _meta['candidates'] = candidates[i:i+9]
+                        _meta['candidates'] = candidates[i:i + 9]
                         if len(_meta['candidates']) < 9:
-                            _meta['candidates'] += candidates[:9-len(_meta['candidates'])]
+                            _meta['candidates'] += candidates[:9 - len(_meta['candidates'])]
                         example = InputExample(guid=guid, text_a=text_a, label=label, meta=_meta, idx=idx)
                         examples.append(example)
                 else:
