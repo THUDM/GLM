@@ -19,11 +19,12 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --checkpoint-activations \
        --batch-size 8 \
        --eval-batch-size 16 \
-       --save-epoch 20 \
+       --save-epoch 100 \
        --overwrite \
+       --continuous-prompt \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
-       --epochs ${EPOCH_SINGLE} \
+       --epochs 50 \
        --lr ${LR_SINGLE} \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt

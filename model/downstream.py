@@ -120,9 +120,9 @@ class VerbalizerModel(torch.nn.Module):
         super().__init__()
         self.model = language_model
 
-    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
+    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask, prompt_pos=None):
         assert len(input_ids.shape) == 2
-        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask, prompt_pos=prompt_pos)
         batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)
         output = outputs[batch_ids, attention_mask]
         batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)

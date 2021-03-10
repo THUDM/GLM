@@ -371,9 +371,9 @@ class CopaPVP(PVP):
         assert question in ['cause', 'effect']
         if self.continuous_prompt:
             if question == 'cause':
-                return ['"', choice1, '"', 1, '"', choice2, '"', 1, premise, ' because', [self.mask], '.'], []
+                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, ' because', [self.mask], '.'], []
             else:
-                return ['"', choice1, '"', 1, '"', choice2, '"', 1, premise, ', so', [self.mask], '.'], []
+                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, ', so', [self.mask], '.'], []
         if question == 'cause':
             if self.pattern_id == 0:
                 return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
@@ -577,13 +577,16 @@ class RtePVP(PVP):
         "entailment": [" Yes"]
     }
 
+    @property
+    def spell_length(self):
+        return 2
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         # switch text_a and text_b to get the correct order
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
         if self.continuous_prompt:
-            return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, '"', self.shortenable(text_a),
-                                                               '"']
+            return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a), '"']
         elif self.pattern_id == 0:
             return ['"', self.shortenable(text_b), '" ?'], [[self.mask], ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:
