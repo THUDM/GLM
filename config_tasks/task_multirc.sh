@@ -7,7 +7,7 @@ LR_RANGE=(1e-5)
 EPOCH_RANGE=(10)
 
 LR_SINGLE=1e-5
-EPOCH_SINGLE=12
+EPOCH_SINGLE=15
 
 TRAIN_ARGS="--batch-size 16 \
             --lr-decay-style linear \

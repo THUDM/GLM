@@ -655,12 +655,24 @@ class BoolQPVP(PVP):
         "true": [" true"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         passage = example.text_a
         question = example.text_b
 
-        # if self.pattern_id == 0:
-        #     return [self.shortenable(passage), self.shortenable(" " + self.uppercase_first(question)), '? ', self.mask, '.'], []
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [1, self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:',
+                        [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [1, self.shortenable(passage), 1, ' Question:', self.shortenable(" " + question), '? Answer:',
+                        [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, self.shortenable(passage), 1, ' Question:', self.shortenable(" " + question), '? Answer:', 1,
+                        [self.mask], '.'], []
         if self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', [self.mask],
                     '.'], []

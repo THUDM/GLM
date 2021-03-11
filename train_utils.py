@@ -38,6 +38,8 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
             output_predict = False
         if model_type is not None:
             paralle_output = False
+        if spell_length is not None:
+            print_rank_0(f"Continuous spell length {spell_length}")
         model = GPT2Model(num_layers=args.num_layers,
                           vocab_size=args.vocab_size,
                           hidden_size=args.hidden_size,
