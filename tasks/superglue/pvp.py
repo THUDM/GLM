@@ -445,6 +445,10 @@ class WscPVP(PVP):
     def is_multi_token(self):
         return True
 
+    @property
+    def spell_length(self):
+        return 1
+
     def get_answers(self, example: InputExample):
         target = " " + example.meta['span1_text']
         answers = [target]
@@ -465,8 +469,8 @@ class WscPVP(PVP):
         text_a = ' '.join(words_a)
         text_a = self.shortenable(text_a)
 
-        # return [' '.join(words_a[:pronoun_idx]), self.mask, ' '.join(words_a[pronoun_idx+1:])], []
-
+        if self.continuous_prompt:
+            return [1, text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
         if self.pattern_id == 0:
             return [text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
         elif self.pattern_id == 1:
@@ -579,14 +583,17 @@ class RtePVP(PVP):
 
     @property
     def spell_length(self):
-        return 2
+        return 3
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         # switch text_a and text_b to get the correct order
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
+        # if self.continuous_prompt:
+        #     return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a), '"']
         if self.continuous_prompt:
-            return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a), '"']
+            return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, ' "', self.shortenable(text_a),
+                                                               '"']
         elif self.pattern_id == 0:
             return ['"', self.shortenable(text_b), '" ?'], [[self.mask], ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:

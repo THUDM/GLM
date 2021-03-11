@@ -11,7 +11,7 @@ DATESTR=$(date +"%m-%d-%H-%M")
 mkdir logs
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --finetune \
-       --experiment-name ${EXPERIMENT_NAME} \
+       --experiment-name ${EXPERIMENT_NAME}_1token \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
