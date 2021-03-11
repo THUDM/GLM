@@ -9,22 +9,26 @@ DISTRIBUTED_ARGS="--nproc_per_node 2 --nnodes 1 --node_rank 0 --master_addr loca
 DATESTR=$(date +"%m-%d-%H-%M")
 
 mkdir logs
-python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
-       --finetune \
-       --experiment-name ${EXPERIMENT_NAME}_3token \
-       --task ${TASK_NAME} \
-       --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
-       --seq-length ${MAX_SEQ_LEN} \
-       --checkpoint-activations \
-       --batch-size 8 \
-       --eval-batch-size 16 \
-       --save-epoch 100 \
-       --continuous-prompt \
-       --pattern-id 3 \
-       $MODEL_ARGS \
-       $TRAIN_ARGS \
-       $COMMON_ARGS \
-       --epochs 50 \
-       --lr ${LR_SINGLE} \
-       2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt
+for seed in 1234 5678 8942
+do
+  python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
+         --finetune \
+         --experiment-name ${EXPERIMENT_NAME}/${seed} \
+         --task ${TASK_NAME} \
+         --data-dir ${DATA_PATH} \
+         --save ${CHECKPOINT_PATH} \
+         --seq-length ${MAX_SEQ_LEN} \
+         --checkpoint-activations \
+         --batch-size 8 \
+         --eval-batch-size 16 \
+         --save-epoch 100 \
+         --continuous-prompt \
+         --pattern-id 3 \
+         $MODEL_ARGS \
+         $TRAIN_ARGS \
+         $COMMON_ARGS \
+         --seed ${seed} \
+         --epochs ${EPOCH_SINGLE} \
+         --lr ${LR_SINGLE} \
+         2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt
+done
