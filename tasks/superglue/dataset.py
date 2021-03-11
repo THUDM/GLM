@@ -392,6 +392,8 @@ class WscProcessor(DataProcessor):
                         example = InputExample(guid=guid, text_a=text_a, label=label, meta=_meta, idx=idx)
                         examples.append(example)
                 else:
+                    if 'candidates' in example_json:
+                        meta['candidates'] = candidates
                     example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
                     examples.append(example)
 
