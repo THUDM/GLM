@@ -2,6 +2,7 @@ import torch
 import torch.utils.data
 import mpu
 import random
+import copy
 import numpy as np
 from scipy.stats import poisson
 
@@ -27,8 +28,8 @@ def index_in_list(lst, val, start=None):
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
                  block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
-                 block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True, sentinel_token=False,
-                 task_mask=False):
+                 block_mask_prob=0.0, block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True,
+                 sentinel_token=False, task_mask=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -45,6 +46,7 @@ class ConstructBlockStrategy:
         self.block_ratio = block_ratio
         self.total_mask = int(block_ratio * args.seq_length)
         self.block_length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
+        self.block_mask_prob = block_mask_prob
         self.block_position_encoding = block_position_encoding
         self.encoder_decoder = encoder_decoder
         self.shuffle_blocks = shuffle_blocks
@@ -128,7 +130,12 @@ class ConstructBlockStrategy:
         for start, end, idx in block_spans:
             sop_token = 'sop' if idx == 0 else f"sop{idx}"
             target_tokens.append([self.tokenizer.get_command(sop_token).Id])
-            target_tokens.append(tokens[start: end])
+            span_tokens = copy.deepcopy(tokens[start: end])
+            if self.block_mask_prob > 0.0 and not generation_task:
+                for sub_idx in range(len(span_tokens)):
+                    if random.random() < self.block_mask_prob:
+                        span_tokens[sub_idx] = self.tokenizer.get_command('dBLOCK').Id
+            target_tokens.append(span_tokens)
             targets.append(tokens[start: end])
             targets.append([self.tokenizer.get_command('eop').Id])
             if not self.sentinel_token:

@@ -57,7 +57,8 @@ def prepare_tokenizer(args):
         add_sentinel_token = args.max_position_embeddings
     tokenizer = make_tokenizer(args.tokenizer_type, None, args.tokenizer_path, args.vocab_size,
                                args.tokenizer_model_type, add_block_symbols=args.block_lm, cache_dir=args.cache_dir,
-                               add_sentinel_token=add_sentinel_token, add_task_mask=args.task_mask)
+                               add_sentinel_token=add_sentinel_token, add_task_mask=args.task_mask,
+                               add_decoder_mask=args.block_mask_prob > 0.0)
     if mpu.get_model_parallel_rank() == 0:
         num_tokens = tokenizer.num_tokens
         eod_token = tokenizer.get_command('eos').Id
@@ -116,6 +117,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
     if use_block:
         strategy = ConstructBlockStrategy(args, tokenizer, args.max_position_embeddings, bert_prob=args.bert_prob,
                                           infill_prob=args.infill_prob, average_block_length=args.avg_block_length,
+                                          block_mask_prob=args.block_mask_prob,
                                           shuffle_blocks=not args.no_shuffle_block,
                                           block_position_encoding=not args.no_block_position,
                                           sentinel_token=args.sentinel_token,
