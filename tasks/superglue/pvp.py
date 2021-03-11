@@ -447,7 +447,7 @@ class WscPVP(PVP):
 
     @property
     def spell_length(self):
-        return 1
+        return self.pattern_id
 
     def get_answers(self, example: InputExample):
         target = " " + example.meta['span1_text']
@@ -470,7 +470,14 @@ class WscPVP(PVP):
         text_a = self.shortenable(text_a)
 
         if self.continuous_prompt:
-            return [1, text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
+            if self.pattern_id == 1:
+                return [1, text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [1, text_a, 1, " pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, text_a, 1, " pronoun '*" + pronoun + "*'", 1, " to", [self.mask], '.'], []
+            else:
+                raise NotImplementedError(self.pattern_id)
         if self.pattern_id == 0:
             return [text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
         elif self.pattern_id == 1:
@@ -583,17 +590,22 @@ class RtePVP(PVP):
 
     @property
     def spell_length(self):
-        return 3
+        return self.pattern_id
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         # switch text_a and text_b to get the correct order
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
-        # if self.continuous_prompt:
-        #     return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a), '"']
         if self.continuous_prompt:
-            return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, ' "', self.shortenable(text_a),
-                                                               '"']
+            if self.pattern_id == 2:
+                return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a),
+                                                                   '"']
+            elif self.pattern_id == 3:
+                return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, ' "',
+                                                                   self.shortenable(text_a),
+                                                                   '"']
+            else:
+                raise NotImplementedError(self.pattern_id)
         elif self.pattern_id == 0:
             return ['"', self.shortenable(text_b), '" ?'], [[self.mask], ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:

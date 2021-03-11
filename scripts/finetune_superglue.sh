@@ -11,7 +11,7 @@ DATESTR=$(date +"%m-%d-%H-%M")
 mkdir logs
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --finetune \
-       --experiment-name ${EXPERIMENT_NAME}_1token \
+       --experiment-name ${EXPERIMENT_NAME}_3token \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
@@ -20,8 +20,8 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --batch-size 8 \
        --eval-batch-size 16 \
        --save-epoch 100 \
-       --overwrite \
        --continuous-prompt \
+       --pattern-id 3 \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
