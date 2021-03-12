@@ -1,4 +1,5 @@
 export CLASSPATH=/Users/zhengxiao/Documents/Codes/Library/stanford-corenlp-full-2016-10-31/stanford-corenlp-3.7.0.jar
-cat test.jsonl.refs | java edu.stanford.nlp.process.PTBTokenizer -ioFileList -preserveLines > test.hypo.target
-cat test.jsonl.hyps | java edu.stanford.nlp.process.PTBTokenizer -ioFileList -preserveLines > test.hypo.tokenized
-files2rouge test.hypo.tokenized test.hypo.target
+mkdir tmp
+cat $1 | java edu.stanford.nlp.process.PTBTokenizer -ioFileList -preserveLines > tmp/test.hypo.tokenized
+cat $2 | java edu.stanford.nlp.process.PTBTokenizer -ioFileList -preserveLines > tmp/test.hypo.target
+files2rouge tmp/test.hypo.tokenized tmp/test.hypo.target

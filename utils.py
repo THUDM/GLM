@@ -281,10 +281,9 @@ def get_checkpoint_iteration(args):
             tracker_filename))
         if os.path.isdir(args.load):
             path = os.path.normpath(args.load)
-            load_dir, iteration = os.path.split(path)
-            if iteration.isdigit():
-                print_rank_0('Try to directly load the checkpoint from the directory')
-                return load_dir, int(iteration), False, True
+            load_dir, tag = os.path.split(path)
+            print_rank_0('Try to directly load the checkpoint from the directory')
+            return load_dir, tag, False, True
         print_rank_0('    will not load any checkpoints and will start from '
                      'random')
         return args.load, 0, False, False
@@ -310,14 +309,14 @@ def get_checkpoint_iteration(args):
 def load_checkpoint(model, optimizer, lr_scheduler, args):
     """Load a model checkpoint."""
 
-    load_dir, iteration, release, success = get_checkpoint_iteration(args)
+    load_dir, tag, release, success = get_checkpoint_iteration(args)
 
     if not success:
         return 0
 
     if args.deepspeed:
 
-        checkpoint_name, sd = model.load_checkpoint(load_dir, iteration, load_optimizer_states=not args.no_load_optim,
+        checkpoint_name, sd = model.load_checkpoint(load_dir, tag, load_optimizer_states=not args.no_load_optim,
                                                     load_lr_scheduler_states=not args.no_load_optim)
         if "client_lr_scheduler" in sd:
             lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
@@ -325,12 +324,12 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
         if checkpoint_name is None:
             if mpu.get_data_parallel_rank() == 0:
                 print("Unable to load checkpoint.")
-            return iteration
+            return tag
 
     else:
 
         # Checkpoint.
-        checkpoint_name = get_checkpoint_name(load_dir, iteration, release)
+        checkpoint_name = get_checkpoint_name(load_dir, tag, release)
 
         if mpu.get_data_parallel_rank() == 0:
             print('global rank {} is loading checkpoint {}'.format(

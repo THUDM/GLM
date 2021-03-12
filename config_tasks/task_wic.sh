@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-wic
 TASK_NAME=wic
-DATA_PATH="/root/data/superglue/WiC"
+DATA_PATH="${DATA_ROOT}/WiC"
 MAX_SEQ_LEN=256
 
 LR_RANGE=(5e-6 1e-5 2e-5)

@@ -34,9 +34,10 @@ from collections import defaultdict
 TRAIN_SET = "train"
 DEV_SET = "dev"
 TEST_SET = "test"
+TRUE_DEV_SET = "true_dev"
 UNLABELED_SET = "unlabeled"
 
-SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
+SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, TRUE_DEV_SET, UNLABELED_SET]
 
 
 def get_output_func(task_name, args):
@@ -57,6 +58,8 @@ class GlueDataset(Dataset):
             examples = processor.get_dev_examples(data_dir, for_train=for_train)
         elif split == TEST_SET:
             examples = processor.get_test_examples(data_dir)
+        elif split == TRUE_DEV_SET:
+            examples = processor.get_true_dev_examples(data_dir)
         elif split == TRAIN_SET:
             if task_name == "wsc":
                 examples = processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
@@ -137,6 +140,10 @@ class DataProcessor(ABC):
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the unlabeled set."""
         pass
+
+    def get_true_dev_examples(self, data_dir) -> List[InputExample]:
+        """Get a collection of `InputExample`s for the true dev set."""
+        return self._create_examples(os.path.join(data_dir, "true_dev.jsonl"), "true_dev")
 
     @abstractmethod
     def get_labels(self) -> List[str]:
@@ -392,7 +399,8 @@ class WscProcessor(DataProcessor):
                         example = InputExample(guid=guid, text_a=text_a, label=label, meta=_meta, idx=idx)
                         examples.append(example)
                 else:
-                    meta['candidates'] = candidates
+                    if 'candidates' in example_json:
+                        meta['candidates'] = candidates
                     example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
                     examples.append(example)
 

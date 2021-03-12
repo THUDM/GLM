@@ -1,7 +1,12 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
 TASK_NAME=multirc
+<<<<<<< HEAD
 DATA_PATH="/root/data/superglue/MultiRC"
 MAX_SEQ_LEN=430
+=======
+DATA_PATH="${DATA_ROOT}/MultiRC"
+MAX_SEQ_LEN=512
+>>>>>>> 1ea37c97dc7def6d6e65e774549d5c5b9265f295
 
 LR_RANGE=(1e-5)
 EPOCH_RANGE=(10)

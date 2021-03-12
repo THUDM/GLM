@@ -201,6 +201,7 @@ def add_training_args(parser):
                        help='Use (rough) absolute positions instead of block positions')
     group.add_argument('--sentinel-token', action='store_true',
                        help="Use sentinel (mask) tokens to replace 2d position encoding")
+    group.add_argument('--block-mask-prob', type=float, default=0.0)
     return parser
 
 
@@ -421,7 +422,7 @@ def get_args():
         if "gradient_accumulation_steps" in deepspeed_config:
             args.gradient_accumulation_steps = deepspeed_config["gradient_accumulation_steps"]
         else:
-            args.gradient_accumulation_steps = None
+            args.gradient_accumulation_steps = 1
         if "optimizer" in deepspeed_config:
             optimizer_params_config = deepspeed_config["optimizer"].get("params", {})
             args.lr = optimizer_params_config.get("lr", args.lr)

@@ -118,7 +118,10 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             loss_mask = [0] * len(source_tokens) + loss_mask
             target_ids = [0] * len(source_tokens) + target_tokens
             position_ids += [mask_pos] * len(target_tokens)
-            block_position_ids += list(range(1, len(target_tokens) + 1))
+            if self.args.no_block_position:
+                block_position_ids += [1] * len(target_tokens)
+            else:
+                block_position_ids += list(range(1, len(target_tokens) + 1))
             position_ids = [position_ids, block_position_ids]
             sample = {'text': np.array(tokens, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
                       'attention_mask': np.array(sep, dtype=np.int64),

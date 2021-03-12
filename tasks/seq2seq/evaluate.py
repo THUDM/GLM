@@ -181,7 +181,7 @@ class DecoderEvaluater:
         self.tokenizer = tokenizer
         self.start_token = tokenizer.get_command('sop').Id
         self.end_token = tokenizer.get_command('eop').Id
-        self.mask_token = tokenizer.get_command('MASK').Id
+        self.mask_token = tokenizer.get_command('gMASK').Id if args.task_mask else tokenizer.get_command('MASK').Id
         self.pad_token = tokenizer.get_command('pad').Id
         self.processors = LogitsProcessorList()
         if args.min_tgt_length > 0:
@@ -233,7 +233,8 @@ class DecoderEvaluater:
                         tokens = tokens.new_zeros(batch_size * args.num_beams, 0)
                         attention_mask = tokens.new_zeros([batch_size * args.num_beams])
                     else:
-                        position_ids[:, 1] = counter + 1
+                        if not args.no_block_position:
+                            position_ids[:, 1] = counter + 1
                         last_token = tokens[:, -1:]
                         next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems,
                                                          return_memory=True)
