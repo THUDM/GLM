@@ -129,7 +129,7 @@ class GPT2Model(torch.nn.Module):
 
         batch_ids = torch.arange(hidden.size(0), dtype=torch.long, device=hidden.device)
         batch_ids = batch_ids.unsqueeze(1).expand_as(block_position_ids)
-        mask_hidden = hidden[batch_ids, block_position_ids]  # batch * len * hidden
+        mask_hidden = hidden[batch_ids, position_ids]  # batch * len * hidden
         output = torch.cat([mask_hidden, block_position_embeddings], dim=2)
         output = self.na_layer(output)
 
