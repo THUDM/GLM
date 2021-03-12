@@ -35,8 +35,6 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
         output_predict, paralle_output = True, True
         if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
             output_predict = False
-        if args.finetune_try:
-            output_predict = True
         if model_type is not None:
             paralle_output = False
         model = GPT2Model(num_layers=args.num_layers,
@@ -53,6 +51,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                           parallel_output=paralle_output,
                           relative_encoding=args.transformer_xl,
                           block_position_encoding=args.block_lm,
+                          nonautoregressive=args.nonautoregressive,
                           output_predict=output_predict)
         if model_type is not None:
             if model_type == 'multiple_choice':
@@ -323,3 +322,4 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
     if args.deepspeed:
         lm_loss_total = lm_loss_total / count
     return lm_loss_total, skipped_iter, mems
+    

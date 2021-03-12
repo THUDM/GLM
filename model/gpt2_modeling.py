@@ -16,6 +16,7 @@
 """GPT-2 model."""
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 import mpu
@@ -56,18 +57,29 @@ class GPT2Model(torch.nn.Module):
                  parallel_output=True,
                  relative_encoding=False,
                  block_position_encoding=False,
+                 nonautoregressive=False,
                  output_predict=True
                  ):
         super(GPT2Model, self).__init__()
 
         self.parallel_output = parallel_output
         self.output_predict = output_predict
+        self.nonautoregressive = nonautoregressive
 
         init_method = init_method_normal(std=0.02)
 
         # Word embeddings (parallel).
         self.word_embeddings = mpu.VocabParallelEmbedding(
             vocab_size, hidden_size, init_method=init_method)
+
+        if nonautoregressive:
+            self.na_layer = nn.Sequential(
+                nn.Linear(hidden_size*2, hidden_size),
+                nn.GELU(),
+                nn.LayerNorm(hidden_size),
+                nn.Linear(hidden_size, hidden_size),
+                nn.GELU(),
+                nn.LayerNorm(hidden_size))
 
         # Transformer
         self.transformer = mpu.GPT2ParallelTransformer(num_layers,
@@ -92,6 +104,12 @@ class GPT2Model(torch.nn.Module):
         transformer_output = self.transformer(embeddings, position_ids, attention_mask, mems,
                                               return_memory=return_memory, detach_memory=detach_memory)
         logits, hidden_layers = transformer_output
+        outputs = hidden_layers
+
+        if self.nonautoregressive:
+            na_logits = self.compute_nonautoregressive(logits, position_ids, attention_mask)
+            outputs = (na_logits, *hidden_layers)
+
         if self.output_predict:
             # Parallel logits.
             logits_parallel = mpu.copy_to_model_parallel_region(
@@ -99,11 +117,24 @@ class GPT2Model(torch.nn.Module):
             logits_parallel = F.linear(logits_parallel, self.word_embeddings.weight)
 
             if self.parallel_output:
-                return (logits_parallel, *hidden_layers)
+                return (logits_parallel, *outputs)
 
-            return (mpu.gather_from_model_parallel_region(logits_parallel), *hidden_layers)
+            return (mpu.gather_from_model_parallel_region(logits_parallel), *outputs)
         else:
-            return (logits, *hidden_layers)
+            return (logits, *outputs)
+
+    def compute_nonautoregressive(self, hidden, position_ids, attention_mask):
+        position_ids, block_position_ids = position_ids[:, 0], position_ids[:, 1]  # batch * len
+        block_position_embeddings = self.transformer.block_position_embeddings(block_position_ids)  # batch * len * hidden
+
+        batch_ids = torch.arange(hidden.size(0), dtype=torch.long, device=hidden.device)
+        batch_ids = batch_ids.unsqueeze(1).expand_as(block_position_ids)
+        mask_hidden = hidden[batch_ids, block_position_ids]  # batch * len * hidden
+        output = torch.cat([mask_hidden, block_position_embeddings], dim=2)
+        output = self.na_layer(output)
+
+        logits = F.linear(output, self.word_embeddings.weight)
+        return logits
 
 
 class EncoderDecoder(torch.nn.Module):

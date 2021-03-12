@@ -30,6 +30,7 @@ gpt_options=" \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
+       --nonautoregressive \
 "
 gpt_options="${gpt_options}
                --deepspeed \

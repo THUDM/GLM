@@ -117,8 +117,6 @@ def finetune_forward_step(batch, model, args, timers, mems):
             # print([tokenizer.IdToToken(token) for token in target_ids[batch_id][target_positions].tolist()])
             # print(position_ids[batch_id][:, target_positions])
 
-        # print_masked_text(0)
-        # print_masked_text(1)
         if not args.multi_token:
             logits, lm_logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
             # batch_size = logits.size(0)
@@ -161,8 +159,6 @@ def finetune_forward_step(batch, model, args, timers, mems):
             loss = loss + loss_func(logits.contiguous().float(), labels)
     else:
         raise NotImplementedError
-
-    # loss = loss + lm_loss
 
     # Reduce loss for logging.
 
