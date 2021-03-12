@@ -35,8 +35,6 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
         output_predict, paralle_output = True, True
         if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
             output_predict = False
-        if args.finetune_try:
-            output_predict = True
         if model_type is not None:
             paralle_output = False
         model = GPT2Model(num_layers=args.num_layers,
