@@ -35,6 +35,8 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
         output_predict, paralle_output = True, True
         if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
             output_predict = False
+        if args.finetune_try:
+            output_predict = True
         if model_type is not None:
             paralle_output = False
         model = GPT2Model(num_layers=args.num_layers,
@@ -61,7 +63,8 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                         else:
                             model = ClozeModel(model, length_penalty=args.length_penalty)
                     else:
-                        model = VerbalizerModel(model)
+                        model = VerbalizerModel(model, hidden_size=args.hidden_size, vocab_size=args.vocab_size,
+                                                num_class=num_labels)
                 else:
                     model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
                                          num_class=num_labels)

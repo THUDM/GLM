@@ -113,18 +113,27 @@ class FastClozeModel(torch.nn.Module):
 
 
 class VerbalizerModel(torch.nn.Module):
-    def __init__(self, language_model):
+    def __init__(self, language_model, hidden_size=None, vocab_size=None, num_class=None):
         super().__init__()
         self.model = language_model
+        # self.dense = torch.nn.Linear(hidden_size, hidden_size)
+        # self.layer_norm = torch.nn.LayerNorm(hidden_size)
+        # self.final = torch.nn.Linear(hidden_size, num_class)
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
         assert len(input_ids.shape) == 2
         outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+        # Original
         batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)
-        output = outputs[batch_ids, attention_mask]
+        target_output = outputs[batch_ids, attention_mask]
         batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
-        output = output[batch_ids, target_ids]
-        return (output, *mems)
+        output = target_output[batch_ids, target_ids]
+
+        # output = self.layer_norm(self.dense(output))
+        # output = self.final(output)
+        lm_logits = target_output
+
+        return (output, lm_logits, *mems)
 
 
 class PoolingModel(torch.nn.Module):

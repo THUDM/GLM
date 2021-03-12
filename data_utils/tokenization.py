@@ -952,6 +952,8 @@ class GPT2BPETokenizer(Tokenizer):
             return Id.token
         if type_token:
             return self.type_id_map[Id].token
+        if Id in self.command_id_map:
+            return self.command_id_map[Id].token
         return self.text_tokenizer.decoder[Id]
 
     def TokenToId(self, token, type_token=False):

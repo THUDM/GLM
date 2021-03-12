@@ -490,6 +490,28 @@ class WscPVP(PVP):
         return []
 
 
+class Wsc1PVP(PVP):
+    VERBALIZER = {
+        "False": [" No"],
+        "True": [" Yes"]
+    }
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        pronoun = example.meta['span2_text']
+        pronoun_idx = example.meta['span2_index']
+
+        words_a = example.text_a.split()
+        words_a[pronoun_idx] = '*' + words_a[pronoun_idx] + '*'
+        text_a = ' '.join(words_a)
+        text_a = self.shortenable(text_a)
+        text_b = ' ' + example.text_b
+
+        return [text_a, " The pronoun '*" + pronoun + "*' refers to", text_b, '?', self.mask, '.'], []
+
+    def verbalize(self, label) -> List[str]:
+        return Wsc1PVP.VERBALIZER[label]
+
+
 class RecordPVP(PVP):
     @property
     def is_multi_token(self):
@@ -844,6 +866,7 @@ PVPS = {
     'wic': WicPVP,
     'cb': CbPVP,
     'wsc': WscPVP,
+    'wsc1': Wsc1PVP,
     'boolq': BoolQPVP,
     'copa': CopaPVP,
     'multirc': MultiRcPVP,

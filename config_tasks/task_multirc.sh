@@ -1,7 +1,7 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
 TASK_NAME=multirc
 DATA_PATH="/root/data/superglue/MultiRC"
-MAX_SEQ_LEN=512
+MAX_SEQ_LEN=430
 
 LR_RANGE=(1e-5)
 EPOCH_RANGE=(10)
@@ -9,8 +9,7 @@ EPOCH_RANGE=(10)
 LR_SINGLE=1e-5
 EPOCH_SINGLE=12
 
-TRAIN_ARGS="--batch-size 16 \
-            --lr-decay-style linear \
+TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \
             --weight-decay 1.0e-1"
 

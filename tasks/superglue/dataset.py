@@ -39,8 +39,8 @@ UNLABELED_SET = "unlabeled"
 SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, UNLABELED_SET]
 
 
-def get_output_func(task_name):
-    return PROCESSORS[task_name]().output_prediction
+def get_output_func(task_name, args):
+    return PROCESSORS[task_name](args).output_prediction
 
 
 class GlueDataset(Dataset):
@@ -48,7 +48,7 @@ class GlueDataset(Dataset):
     def __init__(self, args, split, tokenizer, for_train=False):
         task_name = args.task.lower()
         data_dir = args.data_dir
-        processor = PROCESSORS[task_name]()
+        processor = PROCESSORS[task_name](args)
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
         )
@@ -107,7 +107,8 @@ class DataProcessor(ABC):
     task
     """
 
-    def __init__(self):
+    def __init__(self, args):
+        self.args = args
         self.num_truncated = 0
 
     def output_prediction(self, predictions, examples, output_file):
@@ -171,11 +172,7 @@ class DataProcessor(ABC):
 
 class RteProcessor(DataProcessor):
     """Processor for the RTE data set."""
-
-    def __init__(self):
-        super().__init__()
-        self.mnli_processor = MnliProcessor()
-
+    
     def get_train_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
 
@@ -315,8 +312,7 @@ class WscProcessor(DataProcessor):
         text_b = target
         return text_a, text_b
 
-    @staticmethod
-    def _create_examples(path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
+    def _create_examples(self, path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
         examples = []
 
         with open(path, encoding='utf8') as f:
@@ -373,6 +369,17 @@ class WscProcessor(DataProcessor):
 
                 text_a = ' '.join(words_a)
                 meta['span1_index'], meta['span2_index'] = span1_index, span2_index
+
+                if self.args.task == 'wsc1':
+                    example = InputExample(guid=guid, text_a=text_a, text_b=span1_text, 
+                                           label=label, meta=meta, idx=idx)
+                    examples.append(example)
+                    if set_type == 'train' and label == 'True':
+                        for cand in candidates:
+                            example = InputExample(guid=guid, text_a=text_a, text_b=cand, 
+                                                   label='False', meta=meta, idx=idx)
+                            examples.append(example)
+                    continue
 
                 if cloze_eval and set_type == 'train' and label != 'True':
                     continue
@@ -970,6 +977,7 @@ PROCESSORS = {
     "rte": RteProcessor,
     "cb": CbProcessor,
     "wsc": WscProcessor,
+    "wsc1": WscProcessor,
     "boolq": BoolQProcessor,
     "copa": CopaProcessor,
     "multirc": MultiRcProcessor,

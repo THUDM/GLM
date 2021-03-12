@@ -3,7 +3,7 @@ import json
 
 from tasks.data_utils import build_data_loader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
-from model import GPT2Model
+from model import GPT2Model, VerbalizerModel
 from arguments import get_args
 
 # coding=utf-8
@@ -111,11 +111,21 @@ def finetune_forward_step(batch, model, args, timers, mems):
                 if logit_mask[batch_id][i]:
                     target_positions.append(i)
             print(target_positions)
-            print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
-            print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
-            print(position_ids[batch_id][:, target_positions])
+            print([tokenizer.IdToToken(token) for token in tokens[batch_id][target_positions].tolist()])
+            print([tokenizer.IdToToken(token) for token in target_ids[batch_id].tolist()])
+            print(labels[batch_id].item())
+            # print([tokenizer.IdToToken(token) for token in target_ids[batch_id][target_positions].tolist()])
+            # print(position_ids[batch_id][:, target_positions])
 
-        if not args.fast_decode:
+        # print_masked_text(0)
+        # print_masked_text(1)
+        if not args.multi_token:
+            logits, lm_logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+            # batch_size = logits.size(0)
+            # lm_labels = target_ids[range(batch_size), labels]
+            # loss_func = torch.nn.CrossEntropyLoss()
+            # lm_loss = loss_func(lm_logits, lm_labels)
+        elif not args.fast_decode:
             logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
         else:
             dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
@@ -125,6 +135,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
             'attention_mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
+
     if "segment_id" in data:
         from torch_scatter import scatter_sum
         if "loss_mask" in data:
@@ -150,6 +161,8 @@ def finetune_forward_step(batch, model, args, timers, mems):
             loss = loss + loss_func(logits.contiguous().float(), labels)
     else:
         raise NotImplementedError
+
+    # loss = loss + lm_loss
 
     # Reduce loss for logging.
 

@@ -30,7 +30,8 @@ default_metrics = {
     "rte": [("accuracy", accuracy_metric)],
     "boolq": [("accuracy", accuracy_metric)],
     "wic": [("accuracy", accuracy_metric)],
-    'wsc': [("accuracy", accuracy_metric)],
+    "wsc": [("accuracy", accuracy_metric)],
+    "wsc1": [("accuracy", accuracy_metric)],
     "cb": [("accuracy", accuracy_metric), ("f1-macro", f1_macro_metric)],
     "multirc": [("f1a", f1_metric), ("em", multirc_em), ("acc", accuracy_metric)]
 }
@@ -50,7 +51,7 @@ def metrics_func_provider(args, tokenizer, is_test):
     def single_dataset_provider(split):
         return GlueDataset(args, split, tokenizer)
 
-    output_func = get_output_func(args.task.lower())
+    output_func = get_output_func(args.task.lower(), args)
     eval_func = None
     if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import classify_evaluate
@@ -67,17 +68,13 @@ def main(args):
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
-        processor = PROCESSORS[args.task.lower()]()
-        if args.cloze_eval:
-            pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
-                                          pattern_id=args.pattern_id, is_multi_token=args.multi_token)
-            multi_token = pvp.is_multi_token
-        else:
-            multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
+        processor = PROCESSORS[args.task.lower()](args)
+        multi_token = args.task.lower() in ['copa', 'wsc', 'record']
+        args.multi_token = multi_token
         if not multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
             model_kwargs["multi_token"] = False
-            model_kwargs["num_labels"] = len(PROCESSORS[args.task.lower()]().get_labels())
+            model_kwargs["num_labels"] = len(processor.get_labels())
         else:
             model_kwargs["model_type"] = "multiple_choice"
             model_kwargs["multi_token"] = True
