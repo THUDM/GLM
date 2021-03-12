@@ -696,11 +696,26 @@ class MultiRcPVP(PVP):
         1: [" Yes"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         passage = self.remove_final_punc(self.shortenable(example.text_a.rstrip()))
         question = self.remove_final_punc(example.text_b.rstrip())
         answer = example.meta['answer']
-
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [passage, '.', 1, ' Question:', " " + question, '? Is it', " " + answer, '?', [self.mask],
+                        '.'], []
+            elif self.pattern_id == 2:
+                return [passage, '.', 1, ' Question:', " " + question, '?', 1, " " + answer, '?', [self.mask],
+                        '.'], []
+            elif self.pattern_id == 3:
+                return [passage, '.', 1, ' Question:', " " + question, '?', 1, " " + answer, '?', 1, [self.mask],
+                        '.'], []
+            else:
+                raise NotImplementedError(self.pattern_id)
         if self.pattern_id == 0:
             return [passage, '. Question:', " " + question, '? Is it', " " + answer, '?', [self.mask], '.'], []
         if self.pattern_id == 1:

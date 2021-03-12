@@ -13,7 +13,7 @@ for seed in 1234 5678 8942
 do
   python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
          --finetune \
-         --experiment-name ${EXPERIMENT_NAME}/${seed} \
+         --experiment-name ${EXPERIMENT_NAME}_3token/${seed} \
          --task ${TASK_NAME} \
          --data-dir ${DATA_PATH} \
          --save ${CHECKPOINT_PATH} \
