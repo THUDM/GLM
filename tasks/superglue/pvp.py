@@ -728,8 +728,8 @@ class MultiRcPVP(PVP):
             return [passage, " " + question, '- [', [self.mask], ']', answer], []
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 3:
-            return [' False'] if label == "0" else [' True']
+        if not self.continuous_prompt and self.pattern_id == 3:
+            return [' False'] if label == 0 else [' True']
         return MultiRcPVP.VERBALIZER[label]
 
 
