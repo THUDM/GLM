@@ -1,4 +1,4 @@
-EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
+EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC_bsz64
 TASK_NAME=multirc
 DATA_PATH="${DATA_ROOT}/MultiRC"
 MAX_SEQ_LEN=448
@@ -15,6 +15,6 @@ TRAIN_ARGS="--batch-size 16 \
             --weight-decay 1.0e-1"
 
 COMMON_ARGS="--save-interval 10000 \
-             --log-interval 5 \
+             --log-interval 50 \
              --eval-interval 1000 \
              --eval-iters 100"
