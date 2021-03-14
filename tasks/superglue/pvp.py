@@ -743,11 +743,25 @@ class WicPVP(PVP):
         "true": ["b"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         text_a = example.text_a
         text_b = example.text_b
         word = example.meta['word']
 
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1, ' Similar sense of "' + word + '"?',
+                        [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1, ' Similar sense of "' + word + '"?',
+                        1, [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1,
+                        ' Similar sense of "' + word + '"?', 1, [self.mask], '.'], []
         if self.pattern_id == 0:
             return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), ' Similar sense of "' + word + '"?',
                     [self.mask], '.'], []
