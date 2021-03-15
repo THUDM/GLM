@@ -29,7 +29,7 @@ class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
                  block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
                  block_mask_prob=0.0, block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True,
-                 sentinel_token=False, task_mask=False):
+                 sentinel_token=False, task_mask=False, random_position=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -54,6 +54,7 @@ class ConstructBlockStrategy:
         self.gap_length_distribution = [poisson.pmf(i, average_gap_length) for i in range(0, max_block_length)]
         self.generation_mask = 'gMASK' if task_mask else 'MASK'
         self.generation_mask = self.tokenizer.get_command(self.generation_mask).Id
+        self.random_position = random_position
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):
@@ -118,6 +119,10 @@ class ConstructBlockStrategy:
         for start, end in block_spans:
             position_ids[start + 1: end] = 0
         position_ids = np.cumsum(position_ids) - 1
+        if position_ids[-1] < self.max_seq_length - 1:
+            position_bias = self.max_seq_length - position_ids[-1]
+            position_bias = rng.randrange(0, position_bias)
+            position_ids = position_ids + position_bias
         if self.encoder_decoder or not self.shuffle_blocks:
             block_spans.sort(key=lambda x: x[0])
         else:
