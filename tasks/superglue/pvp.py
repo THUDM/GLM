@@ -67,6 +67,10 @@ class PVP(ABC):
         return self._is_multi_token
 
     @property
+    def spell_length(self):
+        return 0
+
+    @property
     def mask(self) -> str:
         """Return the underlying LM's mask token"""
         return self.tokenizer.get_command('MASK').Id
@@ -121,21 +125,37 @@ class PVP(ABC):
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
 
         tokenizer = self.tokenizer
-        parts_a, parts_b = self.get_parts(example)
+        raw_parts_a, raw_parts_b = self.get_parts(example)
 
-        parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_a if x]
+        raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
+        prompt_id = tokenizer.num_tokens
 
-        if parts_b:
-            parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_b if
-                       x]
+        def encode_input(raw_parts):
+            parts, flags = [], []
+            for x, s in raw_parts:
+                if isinstance(x, str):
+                    x = tokenizer.EncodeAsIds(x)
+                    flag = [0] * len(x)
+                elif isinstance(x, int):
+                    flag = [1] * x
+                    x = [prompt_id] * x
+                else:
+                    flag = [0] * len(x)
+                parts.append((x, s))
+                flags.append((flag, x))
+            return parts, flags
+
+        parts_a, flags_a = encode_input(raw_parts_a)
+        parts_b, flags_b = None, None
+        if raw_parts_b:
+            raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
+            parts_b, flags_b = encode_input(raw_parts_b)
 
         if self.is_multi_token:
             answers = self.get_answers(example)
 
             if not self.fast_decode:
-                ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+                ids_list, positions_list, sep_list, mask_list, target_list, prompt_list = [], [], [], [], [], []
                 segment_id_list = []
                 for idx, answer in enumerate(answers):
                     this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
@@ -157,6 +177,9 @@ class PVP(ABC):
                         data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
                                                     args=self.args, add_cls=True, add_sep=False, add_piece=True)
                         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                        prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
+                        ids = [idx if idx != prompt_id else 0 for idx in ids]
+                        prompt_list.append(prompt_pos)
                         ids_list.append(ids)
                         positions_list.append(position_ids)
                         sep_list.append(sep)
@@ -175,9 +198,8 @@ class PVP(ABC):
                 segment_id_list = segment_id_list if segment_id_list else None
                 sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
                                       logit_mask=mask_list, target=target_list,
-                                      unique_id=example.guid, segment_ids=segment_id_list)
+                                      unique_id=example.guid, segment_ids=segment_id_list, prompt_ids=prompt_list)
                 return sample
-
             else:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                 self.num_truncated += self.truncate(this_parts_a, this_parts_b, None, max_length=self.max_seq_length)
@@ -210,7 +232,6 @@ class PVP(ABC):
 
             tokens_a = [token_id for part, _ in parts_a for token_id in part]
             tokens_b = [token_id for part, _ in parts_b for token_id in part] if parts_b else None
-
             if priming:
                 input_ids = tokens_a
                 if tokens_b:
@@ -226,13 +247,15 @@ class PVP(ABC):
             data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer, args=self.args,
                                         add_cls=True, add_sep=False, add_piece=True)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
+            ids = [token if token != prompt_id else 0 for token in ids]
             target_ids = self.get_verbalizer_ids()
             if example.label is not None:
                 label = self.label_list.index(example.label)
             else:
                 label = 0
             sample = build_sample(ids=ids, positions=position_ids, target=target_ids, masks=sep, logit_mask=loss_masks,
-                                  label=label, unique_id=example.guid)
+                                  label=label, unique_id=example.guid, prompt_ids=prompt_pos)
             return sample
 
     @staticmethod
@@ -329,6 +352,10 @@ class CopaPVP(PVP):
     def is_multi_token(self):
         return True
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_answers(self, example: InputExample):
         choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -342,17 +369,19 @@ class CopaPVP(PVP):
 
         question = example.meta['question']
         assert question in ['cause', 'effect']
-
         if question == 'cause':
-            if self.pattern_id == 0:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
-            elif self.pattern_id == 1:
-                return [choice1, ' or', " " + choice2, '?', premise, ' because', [self.mask], '.'], []
+            joiner = ' because'
         else:
-            if self.pattern_id == 0:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ', so', [self.mask], '.'], []
-            elif self.pattern_id == 1:
-                return [choice1, ' or', " " + choice2, '?', premise, ', so', [self.mask], '.'], []
+            joiner = ', so'
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [1, '"', choice1, '" or "', choice2, '"', premise, joiner, [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, joiner, [self.mask], '.'], []
+        if self.pattern_id == 0:
+            return ['"', choice1, '" or "', choice2, '"?', premise, joiner, [self.mask], '.'], []
+        elif self.pattern_id == 1:
+            return [choice1, ' or', " " + choice2, '?', premise, joiner, [self.mask], '.'], []
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -366,7 +395,7 @@ class CopaPVP(PVP):
         :param labeled: if ``priming=True``, whether the label should be appended to this example
         :return: A tuple, consisting of a list of input ids and a list of token type ids
         """
-        if self.pattern_id < 2:
+        if self.continuous_prompt or self.pattern_id < 2:
             return super().encode(example, priming=priming, labeled=labeled)
         if not priming:
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
@@ -414,6 +443,10 @@ class WscPVP(PVP):
     def is_multi_token(self):
         return True
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_answers(self, example: InputExample):
         target = " " + example.meta['span1_text']
         answers = [target]
@@ -434,8 +467,15 @@ class WscPVP(PVP):
         text_a = ' '.join(words_a)
         text_a = self.shortenable(text_a)
 
-        # return [' '.join(words_a[:pronoun_idx]), self.mask, ' '.join(words_a[pronoun_idx+1:])], []
-
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [1, text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [1, text_a, 1, " pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, text_a, 1, " pronoun '*" + pronoun + "*'", 1, " to", [self.mask], '.'], []
+            else:
+                raise NotImplementedError(self.pattern_id)
         if self.pattern_id == 0:
             return [text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
         elif self.pattern_id == 1:
@@ -465,24 +505,36 @@ class WscPVP(PVP):
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
 
         tokenizer = self.tokenizer
-        parts_a, parts_b = self.get_parts(example)
+        raw_parts_a, raw_parts_b = self.get_parts(example)
 
-        parts_a = [x if isinstance(x, tuple) else (x, False) for x in parts_a]
-        parts_a = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_a if x]
+        raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
 
-        if parts_b:
-            parts_b = [x if isinstance(x, tuple) else (x, False) for x in parts_b]
-            parts_b = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts_b if
-                       x]
+        def encode_input(raw_parts):
+            parts, flags = [], []
+            for x, s in raw_parts:
+                if isinstance(x, str):
+                    x = tokenizer.EncodeAsIds(x)
+                    flag = [0] * len(x)
+                elif isinstance(x, int):
+                    flag = [1] * x
+                    x = [0] * x
+                else:
+                    flag = [0] * len(x)
+                parts.append((x, s))
+                flags.append((flag, x))
+            return parts, flags
 
+        parts_a, flags_a = encode_input(raw_parts_a)
+        parts_b, flags_b = None, None
+        if raw_parts_b:
+            raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
+            parts_b, flags_b = encode_input(raw_parts_b)
         answer = self.get_answers(example)[0]
-        this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
         answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
         answer_ids = answer_ids + [tokenizer.get_command('eop').Id]
-        self.num_truncated += self.truncate(this_parts_a, this_parts_b, answer_ids,
-                                            max_length=self.max_seq_length)
-        tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
-        tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
+        self.num_truncated += self.truncate(parts_a, parts_b, answer_ids, max_length=self.max_seq_length)
+        tokens_a = [token_id for part, _ in parts_a for token_id in part]
+        tokens_b = [token_id for part, _ in parts_b for token_id in part] if parts_b else None
         data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer, args=self.args,
                                     add_cls=True, add_sep=False, add_piece=True)
         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
@@ -490,9 +542,18 @@ class WscPVP(PVP):
             label = self.label_list.index(example.label)
         else:
             label = 0
+        self.truncate(flags_a, flags_b, answer_ids, max_length=self.max_seq_length)
+        flag_tokens_a = [flag for part, _ in flags_a for flag in part]
+        flag_tokens_b = [flag for part, _ in flags_b for flag in part]
+        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, [0] * len(answer_ids), self.max_seq_length,
+                                         self.tokenizer, args=self.args, add_cls=True, add_sep=False,
+                                         add_piece=True)
+        prompt_flags = flag_data[0]
+        prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
         return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
                 'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
-                "position_id": np.array(position_ids, dtype=np.int64), 'label': label, 'uid': example.guid}
+                "position_id": np.array(position_ids, dtype=np.int64),
+                'propmt_pos': np.array(prompt_pos, dtype=np.int64), 'label': label, 'uid': example.guid}
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -547,12 +608,25 @@ class RtePVP(PVP):
         "entailment": [" Yes"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         # switch text_a and text_b to get the correct order
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
-
-        if self.pattern_id == 0:
+        if self.continuous_prompt:
+            if self.pattern_id == 2:
+                return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a),
+                                                                   '"']
+            elif self.pattern_id == 3:
+                return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, ' "',
+                                                                   self.shortenable(text_a),
+                                                                   '"']
+            else:
+                raise NotImplementedError(self.pattern_id)
+        elif self.pattern_id == 0:
             return ['"', self.shortenable(text_b), '" ?'], [[self.mask], ', "', self.shortenable(text_a), '"']
         elif self.pattern_id == 1:
             return [self.shortenable(text_b), '?'], [[self.mask], ',', self.shortenable(" " + text_a)]
@@ -585,7 +659,7 @@ class CbPVP(RtePVP):
         return super().get_parts(example)
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 4:
+        if not self.continuous_prompt and self.pattern_id == 4:
             return [' true'] if label == 'entailment' else [' false'] if label == 'contradiction' else [' neither']
         return CbPVP.VERBALIZER[label]
 
@@ -601,12 +675,24 @@ class BoolQPVP(PVP):
         "true": [" true"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         passage = example.text_a
         question = example.text_b
 
-        # if self.pattern_id == 0:
-        #     return [self.shortenable(passage), self.shortenable(" " + self.uppercase_first(question)), '? ', self.mask, '.'], []
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [1, self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:',
+                        [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [1, self.shortenable(passage), 1, ' Question:', self.shortenable(" " + question), '? Answer:',
+                        [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, self.shortenable(passage), 1, ' Question:', self.shortenable(" " + question), '? Answer:', 1,
+                        [self.mask], '.'], []
         if self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', [self.mask],
                     '.'], []
@@ -618,7 +704,7 @@ class BoolQPVP(PVP):
                     self.shortenable(" " + passage)], []
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 0 or self.pattern_id == 2 or self.pattern_id == 4:
+        if self.continuous_prompt or self.pattern_id == 0 or self.pattern_id == 2 or self.pattern_id == 4:
             return BoolQPVP.VERBALIZER_A[label]
         else:
             return BoolQPVP.VERBALIZER_B[label]
@@ -630,11 +716,26 @@ class MultiRcPVP(PVP):
         1: [" Yes"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         passage = self.remove_final_punc(self.shortenable(example.text_a.rstrip()))
         question = self.remove_final_punc(example.text_b.rstrip())
         answer = example.meta['answer']
-
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [passage, '.', 1, ' Question:', " " + question, '? Is it', " " + answer, '?', [self.mask],
+                        '.'], []
+            elif self.pattern_id == 2:
+                return [passage, '.', 1, ' Question:', " " + question, '?', 1, " " + answer, '?', [self.mask],
+                        '.'], []
+            elif self.pattern_id == 3:
+                return [passage, '.', 1, ' Question:', " " + question, '?', 1, " " + answer, '?', 1, [self.mask],
+                        '.'], []
+            else:
+                raise NotImplementedError(self.pattern_id)
         if self.pattern_id == 0:
             return [passage, '. Question:', " " + question, '? Is it', " " + answer, '?', [self.mask], '.'], []
         if self.pattern_id == 1:
@@ -647,8 +748,8 @@ class MultiRcPVP(PVP):
             return [passage, " " + question, '- [', [self.mask], ']', answer], []
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 3:
-            return [' False'] if label == "0" else [' True']
+        if not self.continuous_prompt and self.pattern_id == 3:
+            return [' False'] if label == 0 else [' True']
         return MultiRcPVP.VERBALIZER[label]
 
 
@@ -662,11 +763,25 @@ class WicPVP(PVP):
         "true": ["b"]
     }
 
+    @property
+    def spell_length(self):
+        return self.pattern_id
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         text_a = example.text_a
         text_b = example.text_b
         word = example.meta['word']
 
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1, ' Similar sense of "' + word + '"?',
+                        [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1, ' Similar sense of "' + word + '"?',
+                        1, [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1,
+                        ' Similar sense of "' + word + '"?', 1, [self.mask], '.'], []
         if self.pattern_id == 0:
             return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), ' Similar sense of "' + word + '"?',
                     [self.mask], '.'], []
@@ -678,7 +793,7 @@ class WicPVP(PVP):
                     '"'], []
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 2:
+        if not self.continuous_prompt and self.pattern_id == 2:
             return WicPVP.VERBALIZER_B[label]
         return WicPVP.VERBALIZER_A[label]
 

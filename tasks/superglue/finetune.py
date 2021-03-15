@@ -63,13 +63,20 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 def main(args):
     model_kwargs = {}
+    processor = PROCESSORS[args.task.lower()](args)
+    pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
+                                  pattern_id=args.pattern_id, is_multi_token=args.multi_token)
+    if args.continuous_prompt:
+        model_kwargs["spell_length"] = pvp.spell_length
     if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import lm_forward_step
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
-        processor = PROCESSORS[args.task.lower()](args)
-        multi_token = args.task.lower() in ['copa', 'wsc', 'record']
+        if args.cloze_eval:
+            multi_token = pvp.is_multi_token
+        else:
+            multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
         args.multi_token = multi_token
         if not multi_token:
             model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"

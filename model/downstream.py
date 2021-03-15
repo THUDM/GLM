@@ -21,13 +21,13 @@ from .gpt2_modeling import GPT2Model
 
 
 class ClozeModel(torch.nn.Module):
-    def __init__(self, language_model, take_softmax=True, length_penalty=0.0):
+    def __init__(self, language_model: GPT2Model, take_softmax=True, length_penalty=0.0):
         super(ClozeModel, self).__init__()
         self.model = language_model
         self.take_softmax = take_softmax
         self.length_penalty = length_penalty
 
-    def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None):
+    def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
         if target_ids == None:
             outputs, *mems = self.model(input_ids, position_ids, attention_mask)
             return (outputs, *mems)
@@ -39,7 +39,9 @@ class ClozeModel(torch.nn.Module):
             position_ids = position_ids.reshape(-1, *position_ids.size()[2:])
             target_ids = target_ids.reshape(-1, target_ids.size(-1))
             logit_mask = logit_mask.reshape(-1, logit_mask.size(-1))
-        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
+            if prompt_pos is not None:
+                prompt_pos = prompt_pos.reshape(-1, prompt_pos.size(-1))
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask, prompt_pos=prompt_pos)
         if self.take_softmax:
             outputs = torch.nn.functional.log_softmax(outputs, dim=-1)
         batch_ids = torch.arange(target_ids.size(0), dtype=torch.long, device=target_ids.device)
@@ -62,7 +64,7 @@ class FastClozeModel(torch.nn.Module):
         self.take_softmax = take_softmax
         self.length_penalty = length_penalty
 
-    def forward(self, input_ids, position_ids, attention_mask, 
+    def forward(self, input_ids, position_ids, attention_mask,
                 dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask):
         # encoder
         outputs, *mems = self.model(input_ids, position_ids, attention_mask, return_memory=True, detach_memory=False)
@@ -71,7 +73,8 @@ class FastClozeModel(torch.nn.Module):
 
         enc_mems = []
         for hidden in mems:
-            hidden = hidden.unsqueeze(1).expand(-1,num_choices,-1,-1).reshape(batch_size*num_choices, *hidden.size()[1:])
+            hidden = hidden.unsqueeze(1).expand(-1, num_choices, -1, -1).reshape(batch_size * num_choices,
+                                                                                 *hidden.size()[1:])
             enc_mems.append(hidden)
 
         def build_dec_mask_matrix(seq_length, sep, memory_length=0):
@@ -80,10 +83,10 @@ class FastClozeModel(torch.nn.Module):
 
             # sep = dec_attention_mask
             ids = torch.arange(memory_length, device=sep.device, dtype=sep.dtype).view(1, -1)
-            mask = ids < sep.view(-1, 1) # batch * mem
+            mask = ids < sep.view(-1, 1)  # batch * mem
             mask = mask.unsqueeze(1).float().expand(-1, seq_length, -1)
 
-            m = m.expand(batch_size*num_choices, -1, -1)
+            m = m.expand(batch_size * num_choices, -1, -1)
             m = torch.cat((mask, m), dim=2)
             m = m.unsqueeze(1)
             return m
@@ -120,10 +123,9 @@ class VerbalizerModel(torch.nn.Module):
         # self.layer_norm = torch.nn.LayerNorm(hidden_size)
         # self.final = torch.nn.Linear(hidden_size, num_class)
 
-    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask):
+    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask, prompt_pos=None):
         assert len(input_ids.shape) == 2
-        outputs, *mems = self.model(input_ids, position_ids, attention_mask)
-        # Original
+        outputs, *mems = self.model(input_ids, position_ids, attention_mask, prompt_pos=prompt_pos)
         batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)
         target_output = outputs[batch_ids, attention_mask]
         batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)

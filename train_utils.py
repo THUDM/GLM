@@ -6,13 +6,14 @@ from torch import distributed as dist
 import mpu
 from fp16 import FP16_Module, FP16_Optimizer
 from learning_rates import AnnealingLR
-from model import VerbalizerModel, ClozeModel, FastClozeModel, PoolingModel, GPT2Model, PyTorchDistributedDataParallel as TorchDDP, \
+from model import VerbalizerModel, ClozeModel, FastClozeModel, PoolingModel, GPT2Model, \
+    PyTorchDistributedDataParallel as TorchDDP, \
     DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
 from model.modeling import BertForMultipleChoice, BertForSequenceClassification
 from utils import print_rank_0
 
 
-def get_model(args, model_type=None, multi_token=True, num_labels=None):
+def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
     """Build the model."""
     print_rank_0('building GPT2 model ...')
     if args.pretrained_bert:
@@ -37,6 +38,8 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
             output_predict = False
         if model_type is not None:
             paralle_output = False
+        if spell_length is not None:
+            print_rank_0(f"Continuous spell length {spell_length}")
         model = GPT2Model(num_layers=args.num_layers,
                           vocab_size=args.vocab_size,
                           hidden_size=args.hidden_size,
@@ -51,8 +54,9 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                           parallel_output=paralle_output,
                           relative_encoding=args.transformer_xl,
                           block_position_encoding=args.block_lm,
-                          nonautoregressive=args.nonautoregressive,
-                          output_predict=output_predict)
+                          output_predict=output_predict,
+                          spell_length=spell_length,
+                          nonautoregressive=args.nonautoregressive)
         if model_type is not None:
             if model_type == 'multiple_choice':
                 if args.cloze_eval:
@@ -185,10 +189,11 @@ def get_learning_rate_scheduler(optimizer, args):
     return lr_scheduler
 
 
-def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_labels=None):
+def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
     """Setup model and optimizer."""
 
-    model = get_model(args, model_type=model_type, multi_token=multi_token, num_labels=num_labels)
+    model = get_model(args, model_type=model_type, multi_token=multi_token, num_labels=num_labels,
+                      spell_length=spell_length)
     param_groups = get_optimizer_param_groups(model)
 
     if args.train_data is not None or args.data_dir is not None:
@@ -322,4 +327,3 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
     if args.deepspeed:
         lm_loss_total = lm_loss_total / count
     return lm_loss_total, skipped_iter, mems
-    

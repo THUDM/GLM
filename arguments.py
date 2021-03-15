@@ -339,6 +339,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--load-pretrained', type=str, help="Load pretrained model", default=None)
     group.add_argument('--pool-token', type=str, choices=['start', 'pad', 'cls'],
                        help='The token to pool the sequence representation', default='cls')
+    group.add_argument('--continuous-prompt', action='store_true', help="Use continuous prompt for PET")
     group.add_argument('--cloze-eval', action='store_true', help='Evaluation dataset with cloze task')
     group.add_argument('--multi-token', action='store_true', help='Use multi token for cloze evaluation')
     group.add_argument('--segment-length', type=int, default=0, help="The maximum segment length for cloze evaluation")

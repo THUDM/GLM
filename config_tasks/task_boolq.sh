@@ -7,7 +7,7 @@ LR_RANGE=(1e-5)
 EPOCH_RANGE=(10)
 
 LR_SINGLE=1e-5
-EPOCH_SINGLE=10
+EPOCH_SINGLE=20
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \

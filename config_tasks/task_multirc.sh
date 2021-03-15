@@ -1,20 +1,16 @@
-EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC
+EXPERIMENT_NAME=${MODEL_TYPE}-MultiRC_bsz64
 TASK_NAME=multirc
-<<<<<<< HEAD
-DATA_PATH="/root/data/superglue/MultiRC"
-MAX_SEQ_LEN=430
-=======
 DATA_PATH="${DATA_ROOT}/MultiRC"
-MAX_SEQ_LEN=512
->>>>>>> 1ea37c97dc7def6d6e65e774549d5c5b9265f295
+MAX_SEQ_LEN=448
 
 LR_RANGE=(1e-5)
 EPOCH_RANGE=(10)
 
 LR_SINGLE=1e-5
-EPOCH_SINGLE=12
+EPOCH_SINGLE=15
 
-TRAIN_ARGS="--lr-decay-style linear \
+TRAIN_ARGS="--batch-size 16 \
+            --lr-decay-style linear \
             --warmup 0.1 \
             --weight-decay 1.0e-1"
 

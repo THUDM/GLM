@@ -65,6 +65,8 @@ def process_batch(batch, args):
             new_batch['loss_mask'] = new_batch['loss_mask'].half()
     if "segment_id" in batch:
         new_batch["segment_id"] = batch["segment_id"].long().cuda().contiguous()
+    if "prompt_pos" in batch:
+        new_batch["prompt_pos"] = batch["prompt_pos"].long().cuda().contiguous()
     return new_batch
     # if args.fp16:
     #     attention_mask = attention_mask.half()
@@ -111,24 +113,26 @@ def finetune_forward_step(batch, model, args, timers, mems):
                 if logit_mask[batch_id][i]:
                     target_positions.append(i)
             print(target_positions)
-            print([tokenizer.IdToToken(token) for token in tokens[batch_id][target_positions].tolist()])
-            print([tokenizer.IdToToken(token) for token in target_ids[batch_id].tolist()])
-            print(labels[batch_id].item())
-            # print([tokenizer.IdToToken(token) for token in target_ids[batch_id][target_positions].tolist()])
-            # print(position_ids[batch_id][:, target_positions])
-
-        if not args.multi_token:
-            logits, lm_logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
-            # batch_size = logits.size(0)
-            # lm_labels = target_ids[range(batch_size), labels]
-            # loss_func = torch.nn.CrossEntropyLoss()
-            # lm_loss = loss_func(lm_logits, lm_labels)
-        elif not args.fast_decode:
-            logits, *mems = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+            print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
+            print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
+            print(position_ids[batch_id][:, target_positions])
+        if not args.fast_decode:
+            if args.continuous_prompt:
+                prompt_pos = data["prompt_pos"]
+                result = model(tokens, position_ids, attention_mask, target_ids, logit_mask,
+                                      prompt_pos=prompt_pos)
+            else:
+                result = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+            if not args.multi_token:
+                logits, lm_logits, *mems = result
+            else:
+                logits, *mems = result
         else:
-            dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data['dec_mask']
+            dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data[
+                'dec_mask']
             dec_target_ids, dec_logit_mask = data['dec_target'], data['dec_logit_mask']
-            logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids, dec_attention_mask, dec_target_ids, dec_logit_mask)
+            logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids,
+                                  dec_attention_mask, dec_target_ids, dec_logit_mask)
     else:
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
             'attention_mask']
