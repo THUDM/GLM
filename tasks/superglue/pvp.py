@@ -354,7 +354,7 @@ class CopaPVP(PVP):
 
     @property
     def spell_length(self):
-        return 2
+        return self.pattern_id
 
     def get_answers(self, example: InputExample):
         choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
@@ -369,21 +369,19 @@ class CopaPVP(PVP):
 
         question = example.meta['question']
         assert question in ['cause', 'effect']
-        if self.continuous_prompt:
-            if question == 'cause':
-                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, ' because', [self.mask], '.'], []
-            else:
-                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, ', so', [self.mask], '.'], []
         if question == 'cause':
-            if self.pattern_id == 0:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ' because', [self.mask], '.'], []
-            elif self.pattern_id == 1:
-                return [choice1, ' or', " " + choice2, '?', premise, ' because', [self.mask], '.'], []
+            joiner = ' because'
         else:
-            if self.pattern_id == 0:
-                return ['"', choice1, '" or "', choice2, '"?', premise, ', so', [self.mask], '.'], []
-            elif self.pattern_id == 1:
-                return [choice1, ' or', " " + choice2, '?', premise, ', so', [self.mask], '.'], []
+            joiner = ', so'
+        if self.continuous_prompt:
+            if self.pattern_id == 1:
+                return [1, '"', choice1, '" or "', choice2, '"', premise, joiner, [self.mask], '.'], []
+            elif self.pattern_id == 2:
+                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, joiner, [self.mask], '.'], []
+        if self.pattern_id == 0:
+            return ['"', choice1, '" or "', choice2, '"?', premise, joiner, [self.mask], '.'], []
+        elif self.pattern_id == 1:
+            return [choice1, ' or', " " + choice2, '?', premise, joiner, [self.mask], '.'], []
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -397,7 +395,7 @@ class CopaPVP(PVP):
         :param labeled: if ``priming=True``, whether the label should be appended to this example
         :return: A tuple, consisting of a list of input ids and a list of token type ids
         """
-        if self.pattern_id < 2:
+        if self.continuous_prompt or self.pattern_id < 2:
             return super().encode(example, priming=priming, labeled=labeled)
         if not priming:
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
