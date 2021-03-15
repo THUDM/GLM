@@ -239,7 +239,7 @@ def forward_step(data_iterator, model, args, timers, mems):
             print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), "|",
                   tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
                   position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
-    breakpoint()
+
     if tokens.size(1) <= args.seq_length + 2:
         mode = 'gpt'
     else:

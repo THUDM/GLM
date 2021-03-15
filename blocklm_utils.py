@@ -119,7 +119,7 @@ class ConstructBlockStrategy:
         for start, end in block_spans:
             position_ids[start + 1: end] = 0
         position_ids = np.cumsum(position_ids) - 1
-        if position_ids[-1] < self.max_seq_length - 1:
+        if self.random_position and position_ids[-1] < self.max_seq_length - 1:
             position_bias = self.max_seq_length - position_ids[-1]
             position_bias = rng.randrange(0, position_bias)
             position_ids = position_ids + position_bias
