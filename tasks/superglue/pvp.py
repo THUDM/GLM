@@ -639,7 +639,7 @@ class CbPVP(RtePVP):
         return super().get_parts(example)
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 4:
+        if not self.continuous_prompt and self.pattern_id == 4:
             return [' true'] if label == 'entailment' else [' false'] if label == 'contradiction' else [' neither']
         return CbPVP.VERBALIZER[label]
 
@@ -684,7 +684,7 @@ class BoolQPVP(PVP):
                     self.shortenable(" " + passage)], []
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 0 or self.pattern_id == 2 or self.pattern_id == 4:
+        if self.continuous_prompt or self.pattern_id == 0 or self.pattern_id == 2 or self.pattern_id == 4:
             return BoolQPVP.VERBALIZER_A[label]
         else:
             return BoolQPVP.VERBALIZER_B[label]
@@ -773,7 +773,7 @@ class WicPVP(PVP):
                     '"'], []
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 2:
+        if not self.continuous_prompt and self.pattern_id == 2:
             return WicPVP.VERBALIZER_B[label]
         return WicPVP.VERBALIZER_A[label]
 
