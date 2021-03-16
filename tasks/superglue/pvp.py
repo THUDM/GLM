@@ -474,6 +474,8 @@ class WscPVP(PVP):
                 return [1, text_a, 1, " pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
             elif self.pattern_id == 3:
                 return [1, text_a, 1, " pronoun '*" + pronoun + "*'", 1, " to", [self.mask], '.'], []
+            elif self.pattern_id == 9:
+                return [3, text_a, 3, " pronoun '*" + pronoun + "*'", 3, " to", [self.mask], '.'], []
             else:
                 raise NotImplementedError(self.pattern_id)
         if self.pattern_id == 0:
@@ -627,6 +629,10 @@ class RtePVP(PVP):
                 return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, ' "',
                                                                    self.shortenable(text_a),
                                                                    '"']
+            elif self.pattern_id == 9:
+                return [3, '"', self.shortenable(text_b), '" ?'], [3, [self.mask], ',', 3, ' "',
+                                                                   self.shortenable(text_a),
+                                                                   '"']
             else:
                 raise NotImplementedError(self.pattern_id)
         elif self.pattern_id == 0:
@@ -695,6 +701,9 @@ class BoolQPVP(PVP):
                         [self.mask], '.'], []
             elif self.pattern_id == 3:
                 return [1, self.shortenable(passage), 1, ' Question:', self.shortenable(" " + question), '? Answer:', 1,
+                        [self.mask], '.'], []
+            elif self.pattern_id == 9:
+                return [3, self.shortenable(passage), 3, ' Question:', self.shortenable(" " + question), '? Answer:', 3,
                         [self.mask], '.'], []
         if self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', [self.mask],
