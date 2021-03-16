@@ -617,7 +617,10 @@ class RtePVP(PVP):
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
         if self.continuous_prompt:
-            if self.pattern_id == 2:
+            if self.pattern_id == 1:
+                return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', ' "', self.shortenable(text_a),
+                                                                   '"']
+            elif self.pattern_id == 2:
                 return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', 1, ' "', self.shortenable(text_a),
                                                                    '"']
             elif self.pattern_id == 3:
