@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.0-devel-ubuntu18.04
+FROM nvcr.io/nvidia/pytorch:20.09-py3
 
 ##############################################################################
 # Temporary Installation Directory
@@ -29,22 +29,22 @@ RUN apt-get update && \
 ##############################################################################
 # Installation Latest Git
 ##############################################################################
-RUN add-apt-repository ppa:git-core/ppa -y && \
-    apt-get update && \
-    apt-get install -y git && \
-    git --version
+#RUN add-apt-repository ppa:git-core/ppa -y && \
+#    apt-get update && \
+#    apt-get install -y git && \
+#    git --version
 
 ##############################################################################
 # Mellanox OFED
 ##############################################################################
-ENV MLNX_OFED_VERSION=5.1-2.5.8.0
-RUN apt-get install -y libnuma-dev
-RUN cd ${STAGE_DIR} && \
-    wget -q -O - http://www.mellanox.com/downloads/ofed/MLNX_OFED-${MLNX_OFED_VERSION}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64.tgz | tar xzf - && \
-    cd MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64 && \
-    ./mlnxofedinstall --user-space-only --without-fw-update --umad-dev-rw --all -q && \
-    cd ${STAGE_DIR} && \
-    rm -rf ${STAGE_DIR}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64*
+#ENV MLNX_OFED_VERSION=5.1-2.5.8.0
+#RUN apt-get install -y libnuma-dev
+#RUN cd ${STAGE_DIR} && \
+#    wget -q -O - http://www.mellanox.com/downloads/ofed/MLNX_OFED-${MLNX_OFED_VERSION}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64.tgz | tar xzf - && \
+#    cd MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64 && \
+#    ./mlnxofedinstall --user-space-only --without-fw-update --umad-dev-rw --all -q && \
+#    cd ${STAGE_DIR} && \
+#    rm -rf ${STAGE_DIR}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64*
 
 ##############################################################################
 # nv_peer_mem
@@ -66,39 +66,39 @@ RUN mkdir -p ${STAGE_DIR} && \
 ##############################################################################
 # OPENMPI
 ##############################################################################
-ENV OPENMPI_BASEVERSION=4.0
-ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.5
-RUN cd ${STAGE_DIR} && \
-    wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf - && \
-    cd openmpi-${OPENMPI_VERSION} && \
-    ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
-    make -j"$(nproc)" install && \
-    ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
-    # Sanity check:
-    test -f /usr/local/mpi/bin/mpic++ && \
-    cd ${STAGE_DIR} && \
-    rm -r ${STAGE_DIR}/openmpi-${OPENMPI_VERSION}
-ENV PATH=/usr/local/mpi/bin:${PATH} \
-    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
-# Create a wrapper for OpenMPI to allow running as root by default
-RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
-    echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
-    chmod a+x /usr/local/mpi/bin/mpirun
+#ENV OPENMPI_BASEVERSION=4.0
+#ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.5
+#RUN cd ${STAGE_DIR} && \
+#    wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf - && \
+#    cd openmpi-${OPENMPI_VERSION} && \
+#    ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
+#    make -j"$(nproc)" install && \
+#    ln -s /usr/local/openmpi-${OPENMPI_VERSION} /usr/local/mpi && \
+#    # Sanity check:
+#    test -f /usr/local/mpi/bin/mpic++ && \
+#    cd ${STAGE_DIR} && \
+#    rm -r ${STAGE_DIR}/openmpi-${OPENMPI_VERSION}
+#ENV PATH=/usr/local/mpi/bin:${PATH} \
+#    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/mpi/lib:/usr/local/mpi/lib64:${LD_LIBRARY_PATH}
+## Create a wrapper for OpenMPI to allow running as root by default
+#RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
+#    echo '#!/bin/bash' > /usr/local/mpi/bin/mpirun && \
+#    echo 'mpirun.real --allow-run-as-root --prefix /usr/local/mpi "$@"' >> /usr/local/mpi/bin/mpirun && \
+#    chmod a+x /usr/local/mpi/bin/mpirun
 
 ##############################################################################
 # Python
 ##############################################################################
-ARG PYTHON_VERSION=3.8
-RUN curl -o ~/miniconda.sh https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
-     chmod +x ~/miniconda.sh && \
-     ~/miniconda.sh -b -p /opt/conda && \
-     rm ~/miniconda.sh && \
-     /opt/conda/bin/conda install -y python=$PYTHON_VERSION numpy pyyaml scipy ipython mkl mkl-include ninja cython typing && \
-     /opt/conda/bin/conda install -y -c pytorch magma-cuda110 && \
-     /opt/conda/bin/conda clean -ya
+#ARG PYTHON_VERSION=3.8
+#RUN curl -o ~/miniconda.sh https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+#     chmod +x ~/miniconda.sh && \
+#     ~/miniconda.sh -b -p /opt/conda && \
+#     rm ~/miniconda.sh && \
+#     /opt/conda/bin/conda install -y python=$PYTHON_VERSION numpy pyyaml scipy ipython mkl mkl-include ninja cython typing && \
+#     /opt/conda/bin/conda install -y -c pytorch magma-cuda110 && \
+#     /opt/conda/bin/conda clean -ya
 
-ENV PATH /opt/conda/bin:$PATH
+#ENV PATH /opt/conda/bin:$PATH
 RUN pip install --upgrade pip setuptools
 RUN wget https://tuna.moe/oh-my-tuna/oh-my-tuna.py && python oh-my-tuna.py
 
@@ -137,17 +137,17 @@ RUN pip install psutil \
 # PyTorch
 ##############################################################################
 #RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
-ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
-COPY pytorch /opt/pytorch
-RUN cd /opt/pytorch && git checkout 33cf7fd && \
-    git submodule sync && git submodule update --init --recursive
-ENV NCCL_LIBRARY=/usr/lib/x86_64-linux-gnu
-ENV NCCL_INCLUDE_DIR=/usr/include
-RUN cd /opt/pytorch && TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
-    CMAKE_PREFIX_PATH="$(dirname $(which conda))/../" USE_SYSTEM_NCCL=1 \
-    pip install -v . && rm -rf /opt/pytorch
-COPY vision /opt/vision
-RUN cd /opt/vision && git checkout v0.8.0 && pip install -v .
+#ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
+#COPY pytorch /opt/pytorch
+#RUN cd /opt/pytorch && git checkout 33cf7fd && \
+#    git submodule sync && git submodule update --init --recursive
+#ENV NCCL_LIBRARY=/usr/lib/x86_64-linux-gnu
+#ENV NCCL_INCLUDE_DIR=/usr/include
+#RUN cd /opt/pytorch && TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
+#    CMAKE_PREFIX_PATH="$(dirname $(which conda))/../" USE_SYSTEM_NCCL=1 \
+#    pip install -v . && rm -rf /opt/pytorch
+#COPY vision /opt/vision
+#RUN cd /opt/vision && git checkout v0.8.0 && pip install -v .
 #RUN conda install pytorch torchvision torchaudio cudatoolkit=11.0 -c pytorch
 
 ENV TENSORBOARDX_VERSION=1.8
@@ -156,9 +156,9 @@ RUN pip install tensorboardX==${TENSORBOARDX_VERSION}
 ##############################################################################
 # apex
 ##############################################################################
-RUN git clone https://github.com/NVIDIA/apex ${STAGE_DIR}/apex
-RUN cd ${STAGE_DIR}/apex && pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./ \
-    && rm -rf ${STAGE_DIR}/apex
+#RUN git clone https://github.com/NVIDIA/apex ${STAGE_DIR}/apex
+#RUN cd ${STAGE_DIR}/apex && pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./ \
+#    && rm -rf ${STAGE_DIR}/apex
 
 ##############################################################################
 # PyYAML build issue
