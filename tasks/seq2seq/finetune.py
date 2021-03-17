@@ -68,7 +68,7 @@ def metrics_func_provider(args, tokenizer, is_test):
     eval_func = evaluater.evaluate
     if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original':
         dataset = 'cnn_dm'
-    elif args.tast.lower() == 'gigaword':
+    elif args.task.lower() == 'gigaword':
         dataset = 'gigaword'
     else:
         raise NotImplementedError(args.task)
