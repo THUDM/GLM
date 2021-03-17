@@ -2,7 +2,7 @@ EXPERIMENT_NAME=${MODEL_TYPE}-ggw
 TASK_NAME=gigaword
 DATA_PATH="/root/data/gigaword/org_data"
 
-TRAIN_ARGS="--epochs 0 \
+TRAIN_ARGS="--epochs 10 \
             --batch-size 16 \
             --lr 3e-5 \
             --lr-decay-style linear \
@@ -22,5 +22,4 @@ TASK_ARGS="--src-seq-length 192 \
            --no-repeat-ngram-size 3 \
            --num-beams 5 \
            --select-topk \
-           --eval-batch-size 4 \
-           --load /root/data/checkpoints/generation-large-ggw_608_epoch"
+           --eval-batch-size 4"
