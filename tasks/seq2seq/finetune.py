@@ -66,9 +66,15 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     evaluater = DecoderEvaluater(args, tokenizer)
     eval_func = evaluater.evaluate
-    metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1"),
-                               "rouge-2": functools.partial(rouge_metric, metric="rouge-2"),
-                               "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
+    if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original':
+        dataset = 'cnn_dm'
+    elif args.tast.lower() == 'gigaword':
+        dataset = 'gigaword'
+    else:
+        raise NotImplementedError(args.task)
+    metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
+                               "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
+                               "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
 
     def output_func(predictions, examples, output_file):
         with open(output_file + ".hyps", "w", encoding='utf-8') as output:

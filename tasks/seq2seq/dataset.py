@@ -9,9 +9,21 @@ import random
 
 
 def gigaword_detokenize(string, is_target=False):
-    # string = string.replace("UNK", "[UNK]")
-    # string = string.replace("<unk>", "[UNK]")
-    string = string.replace("UNK", "<unk>")
+    _tok_dict = {"(": "-lrb-", ")": "-rrb-",
+                 "[": "-lsb-", "]": "-rsb-",
+                 "{": "-lcb-", "}": "-rcb-",
+                 '&': '&amp;', '<': '&lt;', '>': '&gt;'}
+    string = string.replace('UNK', '[UNK]')
+    string = string.replace('<unk>', '[UNK]')
+    for key, value in _tok_dict.items():
+        string = string.replace(value, key)
+    string = string.replace("''", "\"")
+    string = string.replace("``", "\"")
+    string = string.replace("`", "'")
+    string = string.replace(" n't", "n't")
+    string = string.replace(" 's", "'s")
+    string = string.replace(" 'd", "'d")
+    string = string.replace(" 'll", "'ll")
     return string
 
 

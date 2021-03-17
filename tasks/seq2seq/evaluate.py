@@ -17,7 +17,23 @@ def _is_digit(w):
     return True
 
 
-def fix_tokenization(text):
+gigaword_tok_dict = {"(": "-lrb-", ")": "-rrb-",
+                     "[": "-lsb-", "]": "-rsb-",
+                     "{": "-lcb-", "}": "-rcb-",
+                     "[UNK]": "UNK", '&': '&amp;', '<': '&lt;', '>': '&gt;'}
+
+cnndm_tok_dict = {"(": "-LRB-", ")": "-RRB-",
+                  "[": "-LSB-", "]": "-RSB-",
+                  "{": "-LCB-", "}": "-RCB-"}
+
+
+def fix_tokenization(text, dataset):
+    if dataset == 'cnn_dm':
+        tok_dict = cnndm_tok_dict
+    elif dataset == 'gigaword':
+        tok_dict = gigaword_tok_dict
+    else:
+        raise NotImplementedError(dataset)
     input_tokens = text.split()
     output_tokens = []
     has_left_quote = False
@@ -28,7 +44,10 @@ def fix_tokenization(text):
     while i < len(input_tokens):
         tok = input_tokens[i]
         flag_prev_dash = False
-        if tok == "\"":
+        if tok in tok_dict.keys():
+            output_tokens.append(tok_dict[tok])
+            i += 1
+        elif tok == "\"":
             if has_left_quote:
                 output_tokens.append("''")
             else:
@@ -137,20 +156,20 @@ def remove_duplicate(l_list, duplicate_rate):
     return r_list
 
 
-def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7):
+def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7, dataset='cnn_dm'):
     metric_dict = {"rouge-1": "rouge1", "rouge-2": "rouge2", "rouge-l": "rougeLsum"}
     refs = [example.meta["ref"] for example in examples]
     ref_list = []
     for ref in refs:
         ref = ref.strip().split('[SEP]')
-        ref = [fix_tokenization(sentence) for sentence in ref]
+        ref = [fix_tokenization(sentence, dataset=dataset) for sentence in ref]
         ref = "\n".join(ref)
         ref_list.append(ref)
     pred_list = []
     for prediction in predictions:
         buf = []
         for sentence in prediction.strip().split("[SEP]"):
-            sentence = fix_tokenization(sentence)
+            sentence = fix_tokenization(sentence, dataset=dataset)
             if any(get_f1(sentence, s) > 1.0 for s in buf):
                 continue
             s_len = len(sentence.split())
