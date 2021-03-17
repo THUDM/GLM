@@ -9,8 +9,8 @@ RUN mkdir -p ${STAGE_DIR}
 ##############################################################################
 # Installation/Basic Utilities
 ##############################################################################
-RUN  sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
-RUN  sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN  sed -i s@/archive.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/sources.list
+RUN  sed -i s@/security.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/sources.list
 RUN rm /etc/apt/sources.list.d/nvidia-ml.list && rm /etc/apt/sources.list.d/cuda.list && apt-get clean
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -35,18 +35,9 @@ RUN add-apt-repository ppa:git-core/ppa -y && \
     git --version
 
 ##############################################################################
-# Client Liveness & Uncomment Port 22 for SSH Daemon
-##############################################################################
-# Keep SSH client alive froGm server side
-RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
-RUN cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
-    sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
-
-##############################################################################
 # Mellanox OFED
 ##############################################################################
-ENV MLNX_OFED_VERSION=5.1-0.6.6.0
-#ENV MLNX_OFED_VERSION=4.6-1.0.1.1
+ENV MLNX_OFED_VERSION=5.1-2.5.8.0
 RUN apt-get install -y libnuma-dev
 RUN cd ${STAGE_DIR} && \
     wget -q -O - http://www.mellanox.com/downloads/ofed/MLNX_OFED-${MLNX_OFED_VERSION}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64.tgz | tar xzf - && \
@@ -77,9 +68,8 @@ RUN mkdir -p ${STAGE_DIR} && \
 ##############################################################################
 ENV OPENMPI_BASEVERSION=4.0
 ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.5
-#ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.1
 RUN cd ${STAGE_DIR} && \
-    wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar xzf - && \
+    wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf - && \
     cd openmpi-${OPENMPI_VERSION} && \
     ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
     make -j"$(nproc)" install && \
@@ -100,7 +90,7 @@ RUN mv /usr/local/mpi/bin/mpirun /usr/local/mpi/bin/mpirun.real && \
 # Python
 ##############################################################################
 ARG PYTHON_VERSION=3.8
-RUN curl -o ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+RUN curl -o ~/miniconda.sh https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
      chmod +x ~/miniconda.sh && \
      ~/miniconda.sh -b -p /opt/conda && \
      rm ~/miniconda.sh && \
@@ -139,6 +129,7 @@ RUN pip install psutil \
                 nvidia-ml-py3 \
                 mpi4py \
                 nltk \
+                rouge \
                 filelock \
                 cupy-cuda101
 
@@ -146,7 +137,7 @@ RUN pip install psutil \
 # PyTorch
 ##############################################################################
 #RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
-ENV TORCH_CUDA_ARCH_LIST="3.5 5.2 6.0 6.1 7.0+PTX 8.0"
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
 COPY pytorch /opt/pytorch
 RUN cd /opt/pytorch && git checkout 33cf7fd && \
     git submodule sync && git submodule update --init --recursive
@@ -165,9 +156,9 @@ RUN pip install tensorboardX==${TENSORBOARDX_VERSION}
 ##############################################################################
 # apex
 ##############################################################################
-#RUN git clone https://github.com/NVIDIA/apex ${STAGE_DIR}/apex
-#RUN cd ${STAGE_DIR}/apex && pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./ \
-#    && rm -rf ${STAGE_DIR}/apex
+RUN git clone https://github.com/NVIDIA/apex ${STAGE_DIR}/apex
+RUN cd ${STAGE_DIR}/apex && pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./ \
+    && rm -rf ${STAGE_DIR}/apex
 
 ##############################################################################
 # PyYAML build issue
@@ -179,6 +170,7 @@ RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
 ##############################################################################
 # DeepSpeed
 ##############################################################################
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
 #RUN git clone https://github.com/microsoft/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
 COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
 RUN cd ${STAGE_DIR}/DeepSpeed && \
@@ -206,12 +198,19 @@ RUN echo 'root:baai2020keg' | chpasswd
 #USER deepspeed
 
 ##############################################################################
+# Client Liveness & Uncomment Port 22 for SSH Daemon
+##############################################################################
+# Keep SSH client alive froGm server side
+RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
+RUN mkdir -p /var/run/sshd && cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
+    sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
+##############################################################################
 ## SSH daemon port inside container cannot conflict with host OS port
 ###############################################################################
 ARG SSH_PORT=22
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
-    echo "PasswordAuthentication no" >> ${STAGE_DIR}/sshd_config && \
-    sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
+    sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
 EXPOSE ${SSH_PORT}
 
 # Set SSH KEY
