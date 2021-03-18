@@ -11,7 +11,6 @@ RUN mkdir -p ${STAGE_DIR}
 ##############################################################################
 RUN  sed -i s@/archive.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/sources.list
 RUN  sed -i s@/security.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/sources.list
-RUN rm /etc/apt/sources.list.d/nvidia-ml.list && rm /etc/apt/sources.list.d/cuda.list && apt-get clean
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         software-properties-common build-essential autotools-dev \
@@ -49,19 +48,19 @@ RUN apt-get update && \
 ##############################################################################
 # nv_peer_mem
 ##############################################################################
-ENV NV_PEER_MEM_VERSION=1.1
-ENV NV_PEER_MEM_TAG=1.1-0
-RUN mkdir -p ${STAGE_DIR} && \
-    git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory && \
-    cd ${STAGE_DIR}/nv_peer_memory && \
-    ./build_module.sh && \
-    cd ${STAGE_DIR} && \
-    tar xzf ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_VERSION}.orig.tar.gz && \
-    cd ${STAGE_DIR}/nvidia-peer-memory-${NV_PEER_MEM_VERSION} && \
-    apt-get update && \
-    apt-get install -y dkms && \
-    dpkg-buildpackage -us -uc && \
-    dpkg -i ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_TAG}_all.deb
+#ENV NV_PEER_MEM_VERSION=1.1
+#ENV NV_PEER_MEM_TAG=1.1-0
+#RUN mkdir -p ${STAGE_DIR} && \
+#    git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory && \
+#    cd ${STAGE_DIR}/nv_peer_memory && \
+#    ./build_module.sh && \
+#    cd ${STAGE_DIR} && \
+#    tar xzf ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_VERSION}.orig.tar.gz && \
+#    cd ${STAGE_DIR}/nvidia-peer-memory-${NV_PEER_MEM_VERSION} && \
+#    apt-get update && \
+#    apt-get install -y dkms && \
+#    dpkg-buildpackage -us -uc && \
+#    dpkg -i ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_TAG}_all.deb
 
 ##############################################################################
 # OPENMPI
@@ -130,8 +129,7 @@ RUN pip install psutil \
                 mpi4py \
                 nltk \
                 rouge \
-                filelock \
-                cupy-cuda101
+                filelock
 
 ##############################################################################
 # PyTorch
@@ -180,9 +178,9 @@ RUN rm -rf ${STAGE_DIR}/DeepSpeed
 RUN python -c "import deepspeed; print(deepspeed.__version__)"
 
 ## Install Jupyter Notebook
-RUN pip install jupyter notebook && python -m ipykernel install --user --name base --display-name "Python3.7"
+RUN pip install jupyter notebook && python -m ipykernel install --user --name base --display-name "Python3.6"
 COPY prepare.sh /root/.jupyter/prepare.sh
-RUN chmod +x /root/.jupyter/prepare.sh && mkdir /dataset /workspace /logs /model
+RUN chmod +x /root/.jupyter/prepare.sh && mkdir /dataset /logs /model
 EXPOSE 8888
 
 ##############################################################################
