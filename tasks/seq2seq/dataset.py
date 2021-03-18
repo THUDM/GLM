@@ -17,13 +17,13 @@ def gigaword_detokenize(string, is_target=False):
     string = string.replace('<unk>', '[UNK]')
     for key, value in _tok_dict.items():
         string = string.replace(value, key)
-    string = string.replace("''", "\"")
-    string = string.replace("``", "\"")
-    string = string.replace("`", "'")
-    string = string.replace(" n't", "n't")
-    string = string.replace(" 's", "'s")
-    string = string.replace(" 'd", "'d")
-    string = string.replace(" 'll", "'ll")
+    # string = string.replace("''", "\"")
+    # string = string.replace("``", "\"")
+    # string = string.replace("`", "'")
+    # string = string.replace(" n't", "n't")
+    # string = string.replace(" 's", "'s")
+    # string = string.replace(" 'd", "'d")
+    # string = string.replace(" 'll", "'ll")
     return string
 
 

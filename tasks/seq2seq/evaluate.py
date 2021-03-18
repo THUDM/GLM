@@ -28,12 +28,9 @@ cnndm_tok_dict = {"(": "-LRB-", ")": "-RRB-",
 
 
 def fix_tokenization(text, dataset):
-    if dataset == 'cnn_dm':
-        tok_dict = cnndm_tok_dict
-    elif dataset == 'gigaword':
-        tok_dict = gigaword_tok_dict
-    else:
-        raise NotImplementedError(dataset)
+    if dataset == 'gigaword':
+        text = text.replace('[UNK]', 'UNK')
+        return text
     input_tokens = text.split()
     output_tokens = []
     has_left_quote = False
@@ -44,10 +41,7 @@ def fix_tokenization(text, dataset):
     while i < len(input_tokens):
         tok = input_tokens[i]
         flag_prev_dash = False
-        if tok in tok_dict.keys():
-            output_tokens.append(tok_dict[tok])
-            i += 1
-        elif tok == "\"":
+        if tok == "\"":
             if has_left_quote:
                 output_tokens.append("''")
             else:
@@ -180,6 +174,11 @@ def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate
             buf = remove_duplicate(buf, duplicate_rate)
         line = "\n".join(buf)
         pred_list.append(line)
+    if torch.distributed.get_rank() == 0:
+        import json
+        with open("./results.json", "w") as output:
+            for ref, pred in zip(ref_list, pred_list):
+                output.write(json.dumps({"ref": ref, "pred": pred}) + "\n")
     scorer = rouge_scorer.RougeScorer([metric_dict[metric]], use_stemmer=True)
     scores = [scorer.score(pred, ref) for pred, ref in zip(pred_list, ref_list)]
     scores = [score[metric_dict[metric]].fmeasure for score in scores]
