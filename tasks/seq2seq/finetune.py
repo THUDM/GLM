@@ -58,9 +58,6 @@ def train_valid_datasets_provider(args, tokenizer):
 
 def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
-    if not is_test:
-        return None
-
     def single_dataset_provider(split):
         return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
 
