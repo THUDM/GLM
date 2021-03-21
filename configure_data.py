@@ -122,7 +122,8 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
                                           block_position_encoding=not args.no_block_position,
                                           sentinel_token=args.sentinel_token,
                                           encoder_decoder=args.encoder_decoder,
-                                          task_mask=args.task_mask, random_position=args.random_position)
+                                          task_mask=args.task_mask, random_position=args.random_position,
+                                          masked_lm=args.masked_lm)
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,
                                               num_workers=args.num_workers,

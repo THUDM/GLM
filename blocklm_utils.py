@@ -29,7 +29,7 @@ class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
                  block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
                  block_mask_prob=0.0, block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True,
-                 sentinel_token=False, task_mask=False, random_position=False):
+                 sentinel_token=False, task_mask=False, random_position=False, masked_lm=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -55,6 +55,7 @@ class ConstructBlockStrategy:
         self.generation_mask = 'gMASK' if task_mask else 'MASK'
         self.generation_mask = self.tokenizer.get_command(self.generation_mask).Id
         self.random_position = random_position
+        self.masked_lm = masked_lm
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):
@@ -113,6 +114,18 @@ class ConstructBlockStrategy:
                     mask_spans += spans
                     mask_index += current_count
         return mask_spans
+
+    def make_masked_data(self, tokens, loss_masks, attention_mask, block_spans, rng, generation_task=False):
+        position_ids = np.arange(len(tokens), dtype=np.long)
+        targets = copy.deepcopy(tokens)
+        mask_id = self.tokenizer.get_command('MASK').Id
+        mlm_masks = np.zeros(len(tokens), dtype=np.long)
+        for start, end in block_spans:
+            for idx in range(start, end):
+                tokens[idx] = mask_id
+            mlm_masks[start: end] = 1
+        loss_masks = loss_masks * mlm_masks
+        return tokens, targets, loss_masks, position_ids
 
     def make_block_data(self, tokens, loss_masks, attention_mask, block_spans, rng, generation_task=False):
         position_ids = np.ones(len(tokens), dtype=np.long)
@@ -195,8 +208,12 @@ class ConstructBlockStrategy:
         block_spans = self.sample_span_in_document(tokens, masked_lengths, rng)
         if len(block_spans) < len(masked_lengths):
             return None
-        data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng,
-                                    generation_task=generation_task)
+        if self.masked_lm:
+            data = self.make_masked_data(tokens, loss_masks, attention_mask, block_spans, rng,
+                                         generation_task=generation_task)
+        else:
+            data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng,
+                                        generation_task=generation_task)
         return data
 
     def construct_blocks(self, samples):
@@ -217,7 +234,10 @@ class ConstructBlockStrategy:
                                 weights=self.block_length_distribution)[0]
                 masked_lengths.append(block_length)
                 masked_count += block_length
-            attention_mask = self.args.seq_length - masked_count + len(masked_lengths)
+            if self.masked_lm:
+                attention_mask = self.args.seq_length
+            else:
+                attention_mask = self.args.seq_length - masked_count + len(masked_lengths)
             for sample in samples:
                 data = self.generate_blank_data(sample, masked_lengths, attention_mask, rng)
                 if data is not None:
