@@ -222,7 +222,7 @@ class ConstructBlockStrategy:
             position_ids = np.concatenate(source_position_ids + target_position_ids)
             block_position_ids = np.concatenate(
                 [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
-            position_ids = [position_ids, block_position_ids]
+            position_ids = np.stack([position_ids, block_position_ids], axis=0)
             if attention_mask is not None:
                 return tokens, targets, loss_masks, position_ids
             else:
@@ -285,8 +285,11 @@ class ConstructBlockStrategy:
                 sentence_spans = []
                 last_index = 1 if tokens[0] == self.tokenizer.get_command('ENC').Id else 0
                 for i in range(len(tokens)):
-                    if self.contains_sentence_end(tokens[i]) or tokens[i] == self.tokenizer.get_command('eos').Id:
-                        sentence_spans.append((last_index, i + 1))
+                    if self.contains_sentence_end(tokens[i]):
+                        if last_index < i + 1:
+                            sentence_spans.append((last_index, i + 1))
+                        last_index = i + 1
+                    elif tokens[i] == self.tokenizer.get_command('eos').Id:
                         last_index = i + 1
                 if last_index < len(tokens):
                     sentence_spans.append((last_index, len(tokens)))
@@ -314,8 +317,9 @@ class ConstructBlockStrategy:
                                 target_batch]
                 loss_mask_batch = [np.concatenate((loss_masks, np.zeros(max_length - len(loss_masks), dtype=np.long)))
                                    for loss_masks in loss_mask_batch]
-                position_id_batch = [np.concatenate((position_ids, np.zeros((max_length - len(position_ids), 2)))) for
-                                     position_ids in position_id_batch]
+                position_id_batch = [
+                    np.concatenate((position_ids, np.zeros((2, max_length - position_ids.shape[1]), dtype=np.long)),
+                                   axis=1) for position_ids in position_id_batch]
         else:
             # start_indices = [index_in_list(sample['loss_mask'], 1) for sample in samples]
             # end_indices = [rindex(sample['loss_mask'], 1) for sample in samples]

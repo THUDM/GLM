@@ -216,7 +216,7 @@ def forward_step(data_iterator, model, args, timers, mems):
         block_position_ids = position_ids[:, 1]
         position_ids_ = position_ids[:, 0]
         output_tokens = []
-        sep = attention_mask.item()
+        sep = attention_mask.item() if torch.numel(attention_mask) == 1 else attention_mask[batch_id].item()
         for i, token in enumerate(tokens[batch_id, :sep].tolist()):
             token = tokenizer.IdToToken(token)
             if token.startswith('[MASK') or token.endswith('MASK]'):
