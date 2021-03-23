@@ -184,7 +184,8 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
         block_position_ids.extend([0] * padding_length)
         target_ids.extend([0] * padding_length)
         loss_masks.extend([0] * padding_length)
-    position_ids = [position_ids, block_position_ids]
+    if not args.masked_lm:
+        position_ids = [position_ids, block_position_ids]
     return ids, types, paddings, position_ids, sep, target_ids, loss_masks
 
 
