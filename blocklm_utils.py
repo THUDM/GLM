@@ -26,10 +26,11 @@ def index_in_list(lst, val, start=None):
 
 
 class ConstructBlockStrategy:
-    def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, infill_prob=0.5, min_gpt_ratio=0.5,
-                 block_ratio=0.15, average_block_length=3, max_block_length=40, average_gap_length=3,
-                 block_mask_prob=0.0, block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True,
-                 sentinel_token=False, task_mask=False, random_position=False, masked_lm=False):
+    def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, gap_sentence_prob=0.0, infill_prob=0.5,
+                 min_gpt_ratio=0.5, bert_ratio=0.15, gap_sentence_ratio=0.15, average_block_length=3,
+                 max_block_length=40, average_gap_length=3, block_mask_prob=0.0, block_position_encoding=True,
+                 encoder_decoder=False, shuffle_blocks=True, sentinel_token=False, task_mask=False,
+                 random_position=False, masked_lm=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -40,11 +41,15 @@ class ConstructBlockStrategy:
         # self.world_size = 1
         assert 0.0 <= bert_prob <= 1.0
         self.bert_prob = bert_prob
-        self.gpt_prob = 1 - bert_prob
+        self.gap_sentence_prob = gap_sentence_prob
+        self.gpt_prob = 1 - bert_prob - gap_sentence_prob
+        assert self.gpt_prob >= 0.0
         self.infill_prob = infill_prob
         self.min_generation_length = int(min_gpt_ratio * args.seq_length)
-        self.block_ratio = block_ratio
-        self.total_mask = int(block_ratio * args.seq_length)
+        self.bert_ratio = bert_ratio
+        self.bert_total_mask = int(self.bert_ratio * args.seq_length)
+        self.gap_sentence_ratio = gap_sentence_ratio
+        self.gap_sent_total_mask = int(self.gap_sentence_ratio * args.seq_length)
         self.block_length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
         self.block_mask_prob = block_mask_prob
         self.block_position_encoding = block_position_encoding
@@ -54,8 +59,24 @@ class ConstructBlockStrategy:
         self.gap_length_distribution = [poisson.pmf(i, average_gap_length) for i in range(0, max_block_length)]
         self.generation_mask = 'gMASK' if task_mask else 'MASK'
         self.generation_mask = self.tokenizer.get_command(self.generation_mask).Id
+        self.gap_sentence_mask = 'sMASK' if task_mask else 'MASK'
+        self.gap_sentence_mask = self.tokenizer.get_command(self.gap_sentence_mask).Id
         self.random_position = random_position
         self.masked_lm = masked_lm
+
+    def contains_sentence_end(self, tok):
+        tok = self.tokenizer.IdToToken(tok)
+        if '.' in tok:
+            return True
+        if '?' in tok:
+            return True
+        if '!' in tok:
+            return True
+        if ';' in tok:
+            return True
+        if ':' in tok:
+            return True
+        return False
 
     @staticmethod
     def sample_spans(span_lengths, total_length, rng, offset=0):
@@ -102,7 +123,7 @@ class ConstructBlockStrategy:
                 if mask_index + current_count < len(masked_lengths) - 1:
                     print(length, masked_lengths[mask_index:], masked_lengths[:mask_index], indices)
             else:
-                current_masked_total = int(length * self.block_ratio)
+                current_masked_total = int(length * self.bert_ratio)
                 current_masked_length, current_count = 0, 0
                 while mask_index + current_count < len(masked_lengths) and masked_lengths[
                     mask_index + current_count] + current_masked_length <= current_masked_total:
@@ -115,7 +136,7 @@ class ConstructBlockStrategy:
                     mask_index += current_count
         return mask_spans
 
-    def make_masked_data(self, tokens, loss_masks, attention_mask, block_spans, rng, generation_task=False):
+    def make_masked_data(self, tokens, loss_masks, attention_mask, block_spans, rng, task='bert'):
         position_ids = np.arange(len(tokens), dtype=np.long)
         targets = copy.deepcopy(tokens)
         mask_id = self.tokenizer.get_command('MASK').Id
@@ -127,7 +148,7 @@ class ConstructBlockStrategy:
         loss_masks = loss_masks * mlm_masks
         return tokens, targets, loss_masks, position_ids
 
-    def make_block_data(self, tokens, loss_masks, attention_mask, block_spans, rng, generation_task=False):
+    def make_block_data(self, tokens, loss_masks, attention_mask, block_spans, rng, task='bert'):
         position_ids = np.ones(len(tokens), dtype=np.long)
         for start, end in block_spans:
             position_ids[start + 1: end] = 0
@@ -149,7 +170,7 @@ class ConstructBlockStrategy:
             sop_token = 'sop' if idx == 0 else f"sop{idx}"
             target_tokens.append([self.tokenizer.get_command(sop_token).Id])
             span_tokens = copy.deepcopy(tokens[start: end])
-            if self.block_mask_prob > 0.0 and not generation_task:
+            if self.block_mask_prob > 0.0 and task == 'bert':
                 for sub_idx in range(len(span_tokens)):
                     if random.random() < self.block_mask_prob:
                         span_tokens[sub_idx] = self.tokenizer.get_command('dBLOCK').Id
@@ -170,8 +191,10 @@ class ConstructBlockStrategy:
         source_tokens, source_position_ids = [], []
         last = 0
         for start, end, idx in block_spans:
-            if generation_task:
+            if task == 'generation':
                 mask_id = self.generation_mask
+            elif task == 'gap_sentence':
+                mask_id = self.gap_sentence_mask
             else:
                 mask_token = 'MASK' if idx == 0 else f'MASK{idx}'
                 mask_id = self.tokenizer.get_command(mask_token).Id
@@ -184,7 +207,8 @@ class ConstructBlockStrategy:
             source_tokens.append(tokens[last:])
             source_position_ids.append(position_ids[last:])
         source_length = sum(map(len, source_tokens))
-        assert source_length == attention_mask
+        if attention_mask is not None:
+            assert source_length == attention_mask
         assert self.args.eod_token not in np.concatenate(target_tokens).tolist()
         if self.encoder_decoder:
             target_tokens = target_tokens + [self.tokenizer.get_command('eop').Id]
@@ -199,9 +223,12 @@ class ConstructBlockStrategy:
             block_position_ids = np.concatenate(
                 [np.zeros(source_length, dtype=np.long)] + target_block_position_ids)
             position_ids = [position_ids, block_position_ids]
-            return tokens, targets, loss_masks, position_ids
+            if attention_mask is not None:
+                return tokens, targets, loss_masks, position_ids
+            else:
+                return tokens, targets, loss_masks, position_ids, source_length
 
-    def generate_blank_data(self, sample, masked_lengths, attention_mask, rng, generation_task=False):
+    def generate_blank_data(self, sample, masked_lengths, attention_mask, rng, task='bert'):
         rng.shuffle(masked_lengths)
         tokens, loss_masks = sample['text'], sample['loss_mask']
         assert tokens[0] == self.tokenizer.get_command('ENC').Id
@@ -209,11 +236,9 @@ class ConstructBlockStrategy:
         if len(block_spans) < len(masked_lengths):
             return None
         if self.masked_lm:
-            data = self.make_masked_data(tokens, loss_masks, attention_mask, block_spans, rng,
-                                         generation_task=generation_task)
+            data = self.make_masked_data(tokens, loss_masks, attention_mask, block_spans, rng)
         else:
-            data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng,
-                                        generation_task=generation_task)
+            data = self.make_block_data(tokens, loss_masks, attention_mask, block_spans, rng, task=task)
         return data
 
     def construct_blocks(self, samples):
@@ -226,9 +251,10 @@ class ConstructBlockStrategy:
         self.count += 1
         token_batch, target_batch, loss_mask_batch, position_id_batch = [], [], [], []
         source_batch, target_batch = [], []
-        if rng.random() < self.bert_prob:
+        rand = rng.random()
+        if rand < self.bert_prob:
             masked_lengths, masked_count = [], 0
-            while masked_count < self.total_mask:
+            while masked_count < self.bert_total_mask:
                 block_length = \
                     rng.choices(range(1, len(self.block_length_distribution) + 1),
                                 weights=self.block_length_distribution)[0]
@@ -239,7 +265,7 @@ class ConstructBlockStrategy:
             else:
                 attention_mask = self.args.seq_length - masked_count + len(masked_lengths)
             for sample in samples:
-                data = self.generate_blank_data(sample, masked_lengths, attention_mask, rng)
+                data = self.generate_blank_data(sample, masked_lengths, attention_mask, rng, task='bert')
                 if data is not None:
                     if self.encoder_decoder:
                         source_tokens, target_tokens, loss_masks = data
@@ -252,6 +278,44 @@ class ConstructBlockStrategy:
                         target_batch.append(targets)
                         loss_mask_batch.append(loss_masks)
                         position_id_batch.append(position_ids)
+        elif rand < self.bert_prob + self.gap_sentence_prob:
+            attention_mask = []
+            for sample in samples:
+                tokens, loss_masks = sample['text'], sample['loss_mask']
+                sentence_spans = []
+                last_index = 1 if tokens[0] == self.tokenizer.get_command('ENC').Id else 0
+                for i in range(len(tokens)):
+                    if self.contains_sentence_end(tokens[i]) or tokens[i] == self.tokenizer.get_command('eos').Id:
+                        sentence_spans.append((last_index, i + 1))
+                        last_index = i + 1
+                if last_index < len(tokens):
+                    sentence_spans.append((last_index, len(tokens)))
+                rng.shuffle(sentence_spans)
+                block_spans, block_length = [], 0
+                for start, end in sentence_spans:
+                    block_spans.append((start, end))
+                    block_length += end - start
+                    if block_length >= self.gap_sent_total_mask:
+                        break
+                data = self.make_block_data(tokens, loss_masks, None, block_spans, rng, task='gap_sentence')
+                tokens, targets, loss_masks, position_ids, sep = data
+                token_batch.append(tokens)
+                target_batch.append(targets)
+                loss_mask_batch.append(loss_masks)
+                position_id_batch.append(position_ids)
+                attention_mask.append(sep)
+            seq_lengths = list(map(len, token_batch))
+            if seq_lengths.count(seq_lengths[0]) != len(seq_lengths):
+                max_length = max(seq_lengths)
+                token_batch = [np.concatenate((tokens, np.zeros(max_length - len(tokens), dtype=np.long))) for tokens in
+                               token_batch]
+                target_batch = [np.concatenate((targets, np.zeros(max_length - len(targets), dtype=np.long))) for
+                                targets in
+                                target_batch]
+                loss_mask_batch = [np.concatenate((loss_masks, np.zeros(max_length - len(loss_masks), dtype=np.long)))
+                                   for loss_masks in loss_mask_batch]
+                position_id_batch = [np.concatenate((position_ids, np.zeros((max_length - len(position_ids), 2)))) for
+                                     position_ids in position_id_batch]
         else:
             # start_indices = [index_in_list(sample['loss_mask'], 1) for sample in samples]
             # end_indices = [rindex(sample['loss_mask'], 1) for sample in samples]
@@ -291,7 +355,7 @@ class ConstructBlockStrategy:
                 else:
                     tokens, targets, loss_masks, position_ids = self.generate_blank_data(sample, [generation_length],
                                                                                          attention_mask, rng,
-                                                                                         generation_task=True)
+                                                                                         task='generation')
                     token_batch.append(tokens)
                     target_batch.append(targets)
                     loss_mask_batch.append(loss_masks)

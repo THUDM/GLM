@@ -753,10 +753,11 @@ class BertWordPieceTokenizer(Tokenizer):
             self.num_command_tokens += 2
             if add_task_mask:
                 self._command_tokens.extend([
-                    CommandToken('gMASK', '[gMASK]', self.num_tokens)
+                    CommandToken('gMASK', '[gMASK]', self.num_tokens),
+                    CommandToken('sMASK', '[sMASK]', self.num_tokens + 1)
                 ])
-                self.num_tokens += 1
-                self.num_command_tokens += 1
+                self.num_tokens += 2
+                self.num_command_tokens += 2
             if add_decoder_mask:
                 self._command_tokens.extend([
                     CommandToken('dBLOCK', '[dBLOCK]', self.num_tokens)
