@@ -4,6 +4,7 @@ import mpu
 import random
 import copy
 import numpy as np
+from utils import print_rank_0
 from scipy.stats import poisson
 
 
@@ -63,6 +64,9 @@ class ConstructBlockStrategy:
         self.gap_sentence_mask = self.tokenizer.get_command(self.gap_sentence_mask).Id
         self.random_position = random_position
         self.masked_lm = masked_lm
+        print_rank_0(f"BERT prob {self.bert_prob}, GPT prob {self.gpt_prob}, infill prob {self.infill_prob}")
+        print_rank_0(f"min generation length {self.min_generation_length}, block ratio {self.bert_ratio}")
+        print_rank_0(f"block length distribution {self.block_length_distribution}")
 
     def contains_sentence_end(self, tok):
         tok = self.tokenizer.IdToToken(tok)
@@ -253,6 +257,7 @@ class ConstructBlockStrategy:
         source_batch, target_batch = [], []
         rand = rng.random()
         if rand < self.bert_prob:
+            mode = 'bert'
             masked_lengths, masked_count = [], 0
             while masked_count < self.bert_total_mask:
                 block_length = \
@@ -279,6 +284,7 @@ class ConstructBlockStrategy:
                         loss_mask_batch.append(loss_masks)
                         position_id_batch.append(position_ids)
         elif rand < self.bert_prob + self.gap_sentence_prob:
+            mode = 'sentence'
             attention_mask = []
             for sample in samples:
                 tokens, loss_masks = sample['text'], sample['loss_mask']
@@ -327,6 +333,7 @@ class ConstructBlockStrategy:
             # if end_index < start_index + 1:
             #     end_index = start_index + 1
             # division = rng.randrange(start_index, end_index)
+            mode = 'gpt'
             generation_length = rng.randint(self.min_generation_length, len(samples[0]['text']) - 2)
             attention_mask = self.args.seq_length - generation_length + 1
             for sample in samples:
@@ -376,4 +383,5 @@ class ConstructBlockStrategy:
                     'target': torch.tensor(target_batch, dtype=torch.long),
                     'loss_mask': torch.tensor(loss_mask_batch, dtype=torch.long),
                     'position_id': torch.tensor(position_id_batch, dtype=torch.long),
-                    'attention_mask': torch.tensor(attention_mask, dtype=torch.long)}
+                    'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
+                    'mode': mode}
