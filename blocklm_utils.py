@@ -213,7 +213,9 @@ class ConstructBlockStrategy:
         source_length = sum(map(len, source_tokens))
         if attention_mask is not None:
             assert source_length == attention_mask
-        assert self.args.eod_token not in np.concatenate(target_tokens).tolist()
+        if target_tokens and self.args.eod_token in np.concatenate(target_tokens).tolist():
+            print("Found EOS in target", self.tokenizer.DecodeIds(tokens))
+            raise RuntimeError
         if self.encoder_decoder:
             target_tokens = target_tokens + [self.tokenizer.get_command('eop').Id]
             loss_masks = np.ones(len(target_tokens), dtype=np.long)
@@ -299,6 +301,8 @@ class ConstructBlockStrategy:
                         last_index = i + 1
                 if last_index < len(tokens):
                     sentence_spans.append((last_index, len(tokens)))
+                if not sentence_spans:
+                    print(self.tokenizer.DecodeIds(tokens))
                 rng.shuffle(sentence_spans)
                 block_spans, block_length = [], 0
                 for start, end in sentence_spans:
