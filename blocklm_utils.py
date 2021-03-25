@@ -27,9 +27,9 @@ def index_in_list(lst, val, start=None):
 
 
 class ConstructBlockStrategy:
-    def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, gap_sentence_prob=0.0, infill_prob=0.5,
-                 min_gpt_ratio=0.5, bert_ratio=0.15, gap_sentence_ratio=0.15, average_block_length=3,
-                 max_block_length=40, average_gap_length=3, block_mask_prob=0.0, block_position_encoding=True,
+    def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, gap_sentence_prob=0.0, gpt_infill_prob=0.5,
+                 gpt_min_ratio=0.5, bert_ratio=0.15, gap_sentence_ratio=0.15, average_block_length=3,
+                 max_block_length=40, block_mask_prob=0.0, block_position_encoding=True,
                  encoder_decoder=False, shuffle_blocks=True, sentinel_token=False, task_mask=False,
                  random_position=False, masked_lm=False):
         self.args = args
@@ -45,8 +45,8 @@ class ConstructBlockStrategy:
         self.gap_sentence_prob = gap_sentence_prob
         self.gpt_prob = 1 - bert_prob - gap_sentence_prob
         assert self.gpt_prob >= 0.0
-        self.infill_prob = infill_prob
-        self.min_generation_length = int(min_gpt_ratio * args.seq_length)
+        self.infill_prob = gpt_infill_prob
+        self.min_generation_length = int(gpt_min_ratio * args.seq_length)
         self.bert_ratio = bert_ratio
         self.bert_total_mask = int(self.bert_ratio * args.seq_length)
         self.gap_sentence_ratio = gap_sentence_ratio
@@ -57,7 +57,6 @@ class ConstructBlockStrategy:
         self.encoder_decoder = encoder_decoder
         self.shuffle_blocks = shuffle_blocks
         self.sentinel_token = sentinel_token
-        self.gap_length_distribution = [poisson.pmf(i, average_gap_length) for i in range(0, max_block_length)]
         self.generation_mask = 'gMASK' if task_mask else 'MASK'
         self.generation_mask = self.tokenizer.get_command(self.generation_mask).Id
         self.gap_sentence_mask = 'sMASK' if task_mask else 'MASK'
