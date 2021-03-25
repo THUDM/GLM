@@ -204,6 +204,7 @@ def add_training_args(parser):
     group.add_argument('--sentinel-token', action='store_true',
                        help="Use sentinel (mask) tokens to replace 2d position encoding")
     group.add_argument('--block-mask-prob', type=float, default=0.0)
+    group.add_argument('--context-mask-ratio', type=float, default=0.0)
     group.add_argument('--random-position', action='store_true',
                        help="Use random start position to cover all the position embeddings")
     group.add_argument('--nonautoregressive', action='store_true', help="whether add a nonautoregressive loss")

@@ -29,9 +29,9 @@ def index_in_list(lst, val, start=None):
 class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, gap_sentence_prob=0.0, gpt_infill_prob=0.5,
                  gpt_min_ratio=0.5, bert_ratio=0.15, gap_sentence_ratio=0.15, average_block_length=3,
-                 max_block_length=40, block_mask_prob=0.0, block_position_encoding=True,
-                 encoder_decoder=False, shuffle_blocks=True, sentinel_token=False, task_mask=False,
-                 random_position=False, masked_lm=False):
+                 max_block_length=40, block_mask_prob=0.0, context_mask_ratio=0.0, context_mask_range=3,
+                 block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True, sentinel_token=False,
+                 task_mask=False, random_position=False, masked_lm=False):
         self.args = args
         self.tokenizer = tokenizer
         self.count = 0
@@ -53,6 +53,9 @@ class ConstructBlockStrategy:
         self.gap_sent_total_mask = int(self.gap_sentence_ratio * args.seq_length)
         self.block_length_distribution = [poisson.pmf(i, average_block_length) for i in range(1, max_block_length)]
         self.block_mask_prob = block_mask_prob
+        self.context_mask_ratio = context_mask_ratio
+        self.context_total_mask = int(self.context_mask_ratio * args.seq_length)
+        self.context_mask_range = context_mask_range
         self.block_position_encoding = block_position_encoding
         self.encoder_decoder = encoder_decoder
         self.shuffle_blocks = shuffle_blocks
@@ -66,6 +69,7 @@ class ConstructBlockStrategy:
         print_rank_0(f"BERT prob {self.bert_prob}, GPT prob {self.gpt_prob}, infill prob {self.infill_prob}")
         print_rank_0(f"min generation length {self.min_generation_length}, block ratio {self.bert_ratio}")
         print_rank_0(f"block length distribution {self.block_length_distribution}")
+        print_rank_0(f"block mask prob {self.block_mask_prob}, context total mask {self.context_total_mask}")
 
     def contains_sentence_end(self, tok):
         tok = self.tokenizer.IdToToken(tok)
@@ -191,8 +195,8 @@ class ConstructBlockStrategy:
             else:
                 target_block_position_ids.append([1] * (end - start + 1))
         block_spans.sort(key=lambda x: x[0])
-        source_tokens, source_position_ids = [], []
-        last = 0
+        source_tokens, source_position_ids, local_spans = [], [], []
+        last, current_length = 0, 0
         for start, end, idx in block_spans:
             if task == 'generation':
                 mask_id = self.generation_mask
@@ -201,12 +205,15 @@ class ConstructBlockStrategy:
             else:
                 mask_token = 'MASK' if idx == 0 else f'MASK{idx}'
                 mask_id = self.tokenizer.get_command(mask_token).Id
+            local_spans.append((current_length, current_length + start - last))
             source_tokens.append(tokens[last: start])
             source_tokens.append([mask_id])
             source_position_ids.append(position_ids[last: start])
             source_position_ids.append([position_ids[start]])
+            current_length += start - last + 1
             last = end
         if last < len(tokens):
+            local_spans.append((current_length, current_length + len(tokens) - last))
             source_tokens.append(tokens[last:])
             source_position_ids.append(position_ids[last:])
         source_length = sum(map(len, source_tokens))
@@ -221,6 +228,18 @@ class ConstructBlockStrategy:
             return source_tokens, target_tokens, loss_masks
         else:
             tokens = np.concatenate(source_tokens + target_tokens)
+            if task == 'bert' and self.context_total_mask > 0:
+                mask_candidates = set()
+                for start, end in local_spans:
+                    if start != 0:
+                        local_end = min(end, start + self.context_mask_range)
+                        mask_candidates.update(range(start, local_end))
+                    if end != 0:
+                        local_start = max(start, end - self.context_mask_range)
+                        mask_candidates.update(range(local_start, end))
+                mask_pos = rng.sample(mask_candidates, self.context_total_mask)
+                for pos in mask_pos:
+                    tokens[pos] = self.tokenizer.get_command('dBLOCK').Id
             targets = np.concatenate(source_tokens + targets)
             loss_masks = np.ones(len(tokens), dtype=np.long)
             loss_masks[:source_length] = 0

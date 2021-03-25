@@ -58,7 +58,7 @@ def prepare_tokenizer(args):
     tokenizer = make_tokenizer(args.tokenizer_type, None, args.tokenizer_path, args.vocab_size,
                                args.tokenizer_model_type, add_block_symbols=args.block_lm, cache_dir=args.cache_dir,
                                add_sentinel_token=add_sentinel_token, add_task_mask=args.task_mask,
-                               add_decoder_mask=args.block_mask_prob > 0.0)
+                               add_decoder_mask=args.block_mask_prob > 0.0 or args.context_mask_ratio > 0.0)
     if mpu.get_model_parallel_rank() == 0:
         num_tokens = tokenizer.num_tokens
         eod_token = tokenizer.get_command('eos').Id
@@ -119,6 +119,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
                                           gap_sentence_prob=args.gap_sentence_prob, gpt_infill_prob=args.infill_prob,
                                           average_block_length=args.avg_block_length,
                                           block_mask_prob=args.block_mask_prob,
+                                          context_mask_ratio=args.context_mask_ratio,
                                           shuffle_blocks=not args.no_shuffle_block,
                                           block_position_encoding=not args.no_block_position,
                                           sentinel_token=args.sentinel_token,
