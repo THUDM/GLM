@@ -375,7 +375,7 @@ class CCNews(PromptReader):
 
 class BertData(PromptReader):
     is_json = False
-    PATH = '/root/data/wikibook'
+    PATH = '/dataset/fd5061f6/english_data/wikibook'
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
