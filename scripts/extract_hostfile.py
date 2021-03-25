@@ -8,7 +8,7 @@ if os.path.exists("/home/hostfile.json"):
     with open("/workspace/hostfile", "w") as output:
         for host in hosts:
             if host["role"] == "master":
-                output.write(f"root@{host['ip']} slots=1\n")
+                output.write(f"root@{host['ip']} slots=8\n")
 else:
     gpu_count = torch.cuda.device_count()
     with open("/workspace/hostfile", "w") as output:
