@@ -36,14 +36,14 @@ RUN apt-get update && \
 ##############################################################################
 # Mellanox OFED
 ##############################################################################
-#ENV MLNX_OFED_VERSION=5.1-2.5.8.0
-#RUN apt-get install -y libnuma-dev
-#RUN cd ${STAGE_DIR} && \
-#    wget -q -O - http://www.mellanox.com/downloads/ofed/MLNX_OFED-${MLNX_OFED_VERSION}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64.tgz | tar xzf - && \
-#    cd MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64 && \
-#    ./mlnxofedinstall --user-space-only --without-fw-update --umad-dev-rw --all -q && \
-#    cd ${STAGE_DIR} && \
-#    rm -rf ${STAGE_DIR}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64*
+ENV MLNX_OFED_VERSION=5.1-2.5.8.0
+RUN apt-get install -y libnuma-dev libcap2
+RUN cd ${STAGE_DIR} && \
+    wget -q -O - http://www.mellanox.com/downloads/ofed/MLNX_OFED-${MLNX_OFED_VERSION}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64.tgz | tar xzf - && \
+    cd MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64 && \
+    PATH=/usr/bin:$PATH ./mlnxofedinstall --user-space-only --without-fw-update --umad-dev-rw --all -q && \
+    cd ${STAGE_DIR} && \
+    rm -rf ${STAGE_DIR}/MLNX_OFED_LINUX-${MLNX_OFED_VERSION}-ubuntu18.04-x86_64*
 
 ##############################################################################
 # nv_peer_mem
@@ -97,7 +97,8 @@ RUN apt-get update && \
 #     /opt/conda/bin/conda install -y -c pytorch magma-cuda110 && \
 #     /opt/conda/bin/conda clean -ya
 
-#ENV PATH /opt/conda/bin:$PATH
+ENV PATH /opt/conda/bin:$PATH
+RUN echo "export PATH=/opt/conda/bin:\$PATH" >> /root/.bashrc
 RUN pip install --upgrade pip setuptools
 RUN wget https://tuna.moe/oh-my-tuna/oh-my-tuna.py && python oh-my-tuna.py
 
@@ -212,7 +213,7 @@ RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
 EXPOSE ${SSH_PORT}
 
 # Set SSH KEY
-RUN echo "StrictHostKeyChecking no \nUserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
+RUN printf "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
  ssh-keygen -t rsa -f ~/.ssh/id_rsa -N "" && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
    chmod og-wx ~/.ssh/authorized_keys
 # Set SSH config
