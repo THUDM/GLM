@@ -16,6 +16,11 @@ if os.path.exists("/home/hostfile.json"):
             output.write(f"root@{host} slots=8\n")
         for host in slave_hosts:
             output.write(f"root@{host} slots=8\n")
+    with open("/workspace/pssh_hosts", "w") as output:
+        for host in master_hosts:
+            output.write(f"root@{host}\n")
+        for host in slave_hosts:
+            output.write(f"root@{host}\n")
 else:
     gpu_count = torch.cuda.device_count()
     with open("/workspace/hostfile", "w") as output:
