@@ -100,7 +100,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         example = self.example_list[idx]
         source_text, target_text = example.text_a, example.text_b
         cls_id = self.tokenizer.get_command('ENC').Id
-        mask_token = 'gMASK' if self.args.task_mask else 'MASK'
+        mask_token = 'sMASK' if self.args.task_mask else 'MASK'
         mask_id = self.tokenizer.get_command(mask_token).Id
         pad_id = self.tokenizer.get_command('pad').Id
         sop_id = self.tokenizer.get_command('sop').Id
