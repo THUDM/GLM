@@ -5,7 +5,7 @@ import numpy as np
 from tasks.data_utils import InputExample
 from tqdm import tqdm
 from utils import print_rank_0
-import random
+from data_utils.corpora import punctuation_standardization
 
 
 def gigaword_detokenize(string, is_target=False):
@@ -74,11 +74,13 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         with open(os.path.join(data_dir, f"{filename}.source"), encoding='utf-8') as file:
             for line in file:
                 line = line.strip()
+                line = punctuation_standardization(line)
                 line = detokenizer(line) if detokenizer else line
                 source_texts.append(line)
         with open(os.path.join(data_dir, f"{filename}.target"), encoding='utf-8') as file:
             for line in file:
                 line = line.strip()
+                line = punctuation_standardization(line)
                 line = detokenizer(line, is_target=True) if detokenizer else line
                 target_texts.append(line)
         assert len(source_texts) == len(target_texts)

@@ -30,6 +30,7 @@ from utils import print_rank_0
 from tasks.superglue.pvp import PVPS
 from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add
 from collections import defaultdict
+from data_utils.corpora import punctuation_standardization
 
 TRAIN_SET = "train"
 DEV_SET = "dev"
@@ -210,8 +211,8 @@ class RteProcessor(DataProcessor):
                         idx = line_idx
                 label = example_json.get('label')
                 guid = "%s-%s" % (set_type, idx)
-                text_a = example_json[premise_name]
-                text_b = example_json[hypothesis_name]
+                text_a = punctuation_standardization(example_json[premise_name])
+                text_b = punctuation_standardization(example_json[hypothesis_name])
 
                 example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label, idx=idx)
                 examples.append(example)
@@ -278,8 +279,8 @@ class WicProcessor(DataProcessor):
                     idx = int(idx)
                 label = "true" if example_json.get('label') else "false"
                 guid = "%s-%s" % (set_type, idx)
-                text_a = example_json['sentence1']
-                text_b = example_json['sentence2']
+                text_a = punctuation_standardization(example_json['sentence1'])
+                text_b = punctuation_standardization(example_json['sentence2'])
                 meta = {'word': example_json['word']}
                 example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label, idx=idx, meta=meta)
                 examples.append(example)
@@ -328,7 +329,7 @@ class WscProcessor(DataProcessor):
                 idx = example_json['idx']
                 label = str(example_json['label']) if 'label' in example_json else None
                 guid = "%s-%s" % (set_type, idx)
-                text_a = example_json['text']
+                text_a = punctuation_standardization(example_json['text'])
                 meta = {
                     'span1_text': example_json['target']['span1_text'],
                     'span2_text': example_json['target']['span2_text'],
@@ -435,8 +436,8 @@ class BoolQProcessor(DataProcessor):
                 idx = example_json['idx']
                 label = str(example_json['label']).lower() if 'label' in example_json else None
                 guid = "%s-%s" % (set_type, idx)
-                text_a = example_json['passage']
-                text_b = example_json['question']
+                text_a = punctuation_standardization(example_json['passage'])
+                text_b = punctuation_standardization(example_json['question'])
                 example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label, idx=idx)
                 examples.append(example)
 
@@ -468,9 +469,10 @@ class CopaProcessor(DataProcessor):
             ids_list, positions_list, sep_list = [], [], []
         question = example.meta['question']
         joiner = 'because' if question == 'cause' else 'so'
-        text_a = example.text_a + " " + joiner
+        text_a = punctuation_standardization(example.text_a) + " " + joiner
         tokens_a = tokenizer.EncodeAsIds(text_a).tokenization
         for choice in [example.meta["choice1"], example.meta["choice2"]]:
+            choice = punctuation_standardization(choice)
             tokens_b = tokenizer.EncodeAsIds(choice).tokenization
             num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
                                                            add_piece=False)
@@ -561,10 +563,10 @@ class MultiRcProcessor(DataProcessor):
                 example_json = json.loads(line)
 
                 passage_idx = example_json['idx']
-                text = example_json['passage']['text']
+                text = punctuation_standardization(example_json['passage']['text'])
                 questions = example_json['passage']['questions']
                 for question_json in questions:
-                    question = question_json["question"]
+                    question = punctuation_standardization(question_json["question"])
                     question_idx = question_json['idx']
                     answers = question_json["answers"]
                     for answer_json in answers:
@@ -575,7 +577,7 @@ class MultiRcProcessor(DataProcessor):
                             'passage_idx': passage_idx,
                             'question_idx': question_idx,
                             'answer_idx': answer_idx,
-                            'answer': answer_json["text"]
+                            'answer': punctuation_standardization(answer_json["text"])
                         }
                         idx = [passage_idx, question_idx, answer_idx]
                         example = InputExample(guid=guid, text_a=text, text_b=question, label=label, meta=meta, idx=idx)
@@ -684,13 +686,13 @@ class RecordProcessor(DataProcessor):
                 example_json = json.loads(line)
 
                 idx = example_json['idx']
-                text = example_json['passage']['text']
+                text = punctuation_standardization(example_json['passage']['text'])
                 entities = set()
 
                 for entity_json in example_json['passage']['entities']:
                     start = entity_json['start']
                     end = entity_json['end']
-                    entity = text[start:end + 1]
+                    entity = punctuation_standardization(text[start:end + 1])
                     entities.add(entity)
 
                 entities = list(entities)
@@ -699,12 +701,12 @@ class RecordProcessor(DataProcessor):
                 questions = example_json['qas']
 
                 for question_json in questions:
-                    question = question_json['query']
+                    question = punctuation_standardization(question_json['query'])
                     question_idx = question_json['idx']
                     answers = set()
 
                     for answer_json in question_json.get('answers', []):
-                        answer = answer_json['text']
+                        answer = punctuation_standardization(answer_json['text'])
                         answers.add(answer)
 
                     answers = list(answers)
@@ -776,8 +778,8 @@ class MnliProcessor(DataProcessor):
             if i == 0:
                 continue
             guid = "%s-%s" % (set_type, line[0])
-            text_a = line[8]
-            text_b = line[9]
+            text_a = punctuation_standardization(line[8])
+            text_b = punctuation_standardization(line[9])
             label = line[-1]
 
             example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
@@ -832,8 +834,8 @@ class AgnewsProcessor(DataProcessor):
             for idx, row in enumerate(reader):
                 label, headline, body = row
                 guid = "%s-%s" % (set_type, idx)
-                text_a = headline.replace('\\', ' ')
-                text_b = body.replace('\\', ' ')
+                text_a = punctuation_standardization(headline.replace('\\', ' '))
+                text_b = punctuation_standardization(body.replace('\\', ' '))
 
                 example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
                 examples.append(example)
@@ -870,7 +872,9 @@ class YahooAnswersProcessor(DataProcessor):
                 guid = "%s-%s" % (set_type, idx)
                 text_a = ' '.join([question_title.replace('\\n', ' ').replace('\\', ' '),
                                    question_body.replace('\\n', ' ').replace('\\', ' ')])
+                text_a = punctuation_standardization(text_a)
                 text_b = answer.replace('\\n', ' ').replace('\\', ' ')
+                text_b = punctuation_standardization(text_b)
 
                 example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
                 examples.append(example)
@@ -906,6 +910,7 @@ class YelpPolarityProcessor(DataProcessor):
                 label, body = row
                 guid = "%s-%s" % (set_type, idx)
                 text_a = body.replace('\\n', ' ').replace('\\', ' ')
+                text_a = punctuation_standardization(text_a)
 
                 example = InputExample(guid=guid, text_a=text_a, label=label)
                 examples.append(example)
@@ -955,8 +960,8 @@ class XStanceProcessor(DataProcessor):
                 example_json = json.loads(line)
                 label = example_json['label']
                 id_ = example_json['id']
-                text_a = example_json['question']
-                text_b = example_json['comment']
+                text_a = punctuation_standardization(example_json['question'])
+                text_b = punctuation_standardization(example_json['comment'])
                 language = example_json['language']
 
                 if self.language is not None and language != self.language:
