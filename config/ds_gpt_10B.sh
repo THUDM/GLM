@@ -18,7 +18,7 @@ gpt_options=" \
        --save-interval 2000 \
        --train-iters 100000 \
        --resume-dataloader \
-       --train-data wikipedia \
+       --train-data wikibook \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
