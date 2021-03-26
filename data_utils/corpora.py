@@ -26,6 +26,13 @@ from utils import print_rank_0
 NUM_PROCESSES = 40
 
 
+def punctuation_standardization(string: str):
+    punctuation_dict = {"\u201c": "\"", "\u201d": "\"", "\u2019": "'", "\u2018": "'", "\u2013": "-"}
+    for key, value in punctuation_dict.items():
+        string = string.replace(key, value)
+    return string
+
+
 class KeyDataset(data.Dataset):
     def __init__(self, text_loader, mask_loader, **kwargs):
         self.texts = text_loader
@@ -83,6 +90,7 @@ class PromptDataset(data.Dataset):
 class DataReader:
     PATH = None
     assert_str = None
+    reserve_punct = False
 
     @classmethod
     def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
@@ -90,6 +98,7 @@ class DataReader:
 
     def __init__(self, writers, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
+        print_rank_0(f"Creating dataset from {self.PATH}")
         self.tokenizer = tokenizer
         self.tokenize = tokenize
         self.writers = writers
@@ -138,9 +147,11 @@ class DataReader:
     def get_token_count(contents):
         return sum(map(len, contents))
 
-    @staticmethod
-    def process_sample(text, tokenizer, tokenize):
+    @classmethod
+    def process_sample(cls, text, tokenizer, tokenize):
         if isinstance(text, str) and tokenize:
+            if not cls.reserve_punct:
+                text = punctuation_standardization(text)
             text = tokenizer.EncodeAsIds(text).tokenization if text else []
         return text
 
@@ -223,7 +234,7 @@ class KeyReader(DataReader):
 
 class zhihu(PromptReader):
     PATH = "/root/data/zhihu/zhihu"
-    # PATH = "data/zhihu/data.json"
+    reserve_punct = True
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
     qtitle_prefix = "问题："
     qcontent_prefix = "问题描述："
@@ -263,6 +274,7 @@ class zhihu(PromptReader):
 
 class zhidao(PromptReader):
     PATH = "/root/data/zhidao/zhidao"
+    reserve_punct = True
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
     qtitle_prefix = "问题："
     qcontent_prefix = "问题描述："
@@ -295,6 +307,7 @@ class zhidao(PromptReader):
 
 class baike(PromptReader):
     PATH = "/root/data/baike/baike"
+    reserve_punct = True
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
     @classmethod
