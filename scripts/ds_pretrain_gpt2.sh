@@ -11,7 +11,7 @@ script_dir=$(dirname $script_path)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_SOCKET_IFNAME=bond0 NCCL_IB_GID_INDEX=3 NCCL_NET_GDR_LEVEL=0"
 HOST_FILE_PATH="/root/code/config/pre_hostfile"
-#OPTIONS_NCCL=""
+#OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2"
 #HOST_FILE_PATH="/workspace/hostfile"
 
 
