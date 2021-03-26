@@ -159,6 +159,7 @@ def add_training_args(parser):
     # model checkpointing
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
+    group.add_argument('--new-save-directory', action='store_true')
     group.add_argument('--save-epoch', type=int, default=1,
                        help='number of epochs between saves')
     group.add_argument('--save-interval', type=int, default=5000,
