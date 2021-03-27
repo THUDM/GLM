@@ -15,7 +15,7 @@ gpt_options=" \
        --save /dataset/fd5061f6/english_data/checkpoints \
        --log-interval 25 \
        --eval-interval 250 \
-       --save-interval 50 \
+       --save-interval 1000 \
        --train-iters 100000 \
        --resume-dataloader \
        --train-data wikibook \
