@@ -557,8 +557,10 @@ def main():
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
 
     if args.load is not None:
-        with FileLock("./checkpoint_lock", timeout=-1):
-            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+        for i in range(8):
+            if i == args.local_rank:
+                args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+            torch.distributed.barrier()
     else:
         args.iteration = 0
     torch.distributed.barrier()
