@@ -176,7 +176,8 @@ class PVP(ABC):
                         segments = [answer_ids]
                     for segment in segments:
                         data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
-                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True)
+                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True,
+                                                    mask_id=self.mask_id)
                         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                         prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
                         ids = [idx if idx != prompt_id else 0 for idx in ids]
