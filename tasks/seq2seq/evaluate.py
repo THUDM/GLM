@@ -199,7 +199,7 @@ class DecoderEvaluater:
         self.tokenizer = tokenizer
         self.start_token = tokenizer.get_command('sop').Id
         self.end_token = tokenizer.get_command('eop').Id
-        self.mask_token = tokenizer.get_command('gMASK').Id if args.task_mask else tokenizer.get_command('MASK').Id
+        self.mask_token = tokenizer.get_command('sMASK').Id if args.task_mask else tokenizer.get_command('MASK').Id
         self.pad_token = tokenizer.get_command('pad').Id
         self.processors = LogitsProcessorList()
         if args.min_tgt_length > 0:

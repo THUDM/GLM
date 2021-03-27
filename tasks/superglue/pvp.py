@@ -361,13 +361,13 @@ class CopaPVP(PVP):
     @property
     def mask(self) -> str:
         """Return the underlying LM's mask token"""
-        mask_token = 'sMASK' if self.task_mask else 'MASK'
+        mask_token = 'MASK'
         return self.tokenizer.get_command(mask_token).Id
 
     @property
     def mask_id(self) -> int:
         """Return the underlying LM's mask id"""
-        mask_token = 'sMASK' if self.task_mask else 'MASK'
+        mask_token = 'MASK'
         return self.tokenizer.get_command(mask_token).Id
 
     def get_answers(self, example: InputExample):
