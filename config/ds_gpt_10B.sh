@@ -7,7 +7,7 @@ config_json="$script_dir/config_gpt_10B.json"
 gpt_options=" \
        --experiment-name txl-10b \
        --model-parallel-size ${MP_SIZE} \
-       --num-layers 50 \
+       --num-layers 48 \
        --hidden-size 4096 \
        --num-attention-heads 32 \
        --seq-length 512 \
