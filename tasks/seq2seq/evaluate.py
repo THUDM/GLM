@@ -77,17 +77,17 @@ def fix_tokenization(text, dataset):
             output_tokens[-1] += '.' + input_tokens[i + 1]
             i += 2
         elif tok == "." and len(output_tokens) > 0 and len(output_tokens[-1]) == 1 and output_tokens[
-            -1].isupper() and i < len(input_tokens) - 2 and len(input_tokens[i + 1]) == 1 and input_tokens[
-            i + 1].isupper() and input_tokens[i + 2] == '.':
+            -1].isalpha() and i < len(input_tokens) - 2 and len(input_tokens[i + 1]) == 1 and input_tokens[
+            i + 1].isalpha() and input_tokens[i + 2] == '.':
             # U . N . -> U.N.
             k = i + 3
             while k + 2 < len(input_tokens):
-                if len(input_tokens[k + 1]) == 1 and input_tokens[k + 1].isupper() and input_tokens[k + 2] == '.':
+                if len(input_tokens[k + 1]) == 1 and input_tokens[k + 1].isalpha() and input_tokens[k + 2] == '.':
                     k += 2
                 else:
                     break
             output_tokens[-1] += ''.join(input_tokens[i:k])
-            i += 2
+            i = k
         elif tok == "-":
             if i < len(input_tokens) - 1 and input_tokens[i + 1] == "-":
                 output_tokens.append("--")
