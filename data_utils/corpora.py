@@ -388,6 +388,30 @@ class BertData(PromptReader):
             return [], []
 
 
+class Pile(PromptReader):
+    is_json = True
+    PATH = "/dataset/fd5061f6/english_data/pile/train"
+    filtered_sources = ["Github", "StackExchange", "DM Mathematics", "Ubuntu IRC", "EuroParl", "YoutubeSubtitles",
+                        "Enron Emails"]
+    downsample_sources = {"PubMed Central": 0.3, "ArXiv": 0.3, "FreeLaw": 0.3}
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        source = data.get("pile_set_name", None)
+        text = data.get("text", None)
+        if source and text:
+            if source in cls.filtered_sources:
+                return [], []
+            elif source in cls.downsample_sources and random.random() > cls.downsample_sources[source]:
+                return [], []
+            else:
+                prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer,
+                                                                                               tokenize)
+                return [prompt], [text]
+        else:
+            return [], []
+
+
 class BertBaseData(BertData):
     PATH = '/root/data/formatted_one_article_per_line'
 
