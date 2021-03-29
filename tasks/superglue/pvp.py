@@ -36,7 +36,7 @@ class PVP(ABC):
 
     def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
                  seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train',
-                 continuous_prompt=False):
+                 continuous_prompt=False, task_mask=False):
         """
         Create a new PVP.
 
@@ -58,6 +58,7 @@ class PVP(ABC):
         self._is_multi_token = is_multi_token
         self.max_segment_length = max_segment_length
         self.continuous_prompt = continuous_prompt
+        self.task_mask = task_mask
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
@@ -175,7 +176,8 @@ class PVP(ABC):
                         segments = [answer_ids]
                     for segment in segments:
                         data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
-                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True)
+                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True,
+                                                    mask_id=self.mask_id)
                         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                         prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
                         ids = [idx if idx != prompt_id else 0 for idx in ids]
@@ -355,6 +357,18 @@ class CopaPVP(PVP):
     @property
     def spell_length(self):
         return self.pattern_id
+
+    @property
+    def mask(self) -> str:
+        """Return the underlying LM's mask token"""
+        mask_token = 'MASK'
+        return self.tokenizer.get_command(mask_token).Id
+
+    @property
+    def mask_id(self) -> int:
+        """Return the underlying LM's mask id"""
+        mask_token = 'MASK'
+        return self.tokenizer.get_command(mask_token).Id
 
     def get_answers(self, example: InputExample):
         choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))

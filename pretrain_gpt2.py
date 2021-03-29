@@ -240,7 +240,7 @@ def forward_step(data_iterator, model, args, timers, mems):
                   tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
                   position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
-    if "mode" in data:
+    if data is not None and "mode" in data:
         mode = data['mode']
     else:
         mode = 'bert'
@@ -413,9 +413,9 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
     # Reduce across processes.
     loss_data = torch.cuda.FloatTensor(
         [total_lm_loss, total_gpt_loss, total_bert_loss, total_sent_loss, gpt_iters, bert_iters, sent_iters])
-    torch.distributed.all_reduce(loss_data)
+    torch.distributed.all_reduce(loss_data, group=mpu.get_data_parallel_group())
     loss_data = loss_data.tolist()
-    total_lm_loss = loss_data[0] / args.eval_iters / args.world_size
+    total_lm_loss = loss_data[0] / args.eval_iters / (args.world_size / args.model_parallel_size)
     total_gpt_loss = loss_data[1] / loss_data[4] if loss_data[4] > 0 else 0
     total_bert_loss = loss_data[2] / loss_data[5] if loss_data[5] > 0 else 0
     total_sent_loss = loss_data[3] / loss_data[6] if loss_data[6] > 0 else 0
@@ -536,7 +536,7 @@ def main():
     # Arguments.
     args = get_args()
     args.mem_length = args.mem_length if args.transformer_xl else 0
-    if args.load:
+    if args.load and not args.new_save_directory:
         args.experiment_name = os.path.basename(os.path.normpath(args.load))
     else:
         args.experiment_name = args.experiment_name + datetime.now().strftime("%m-%d-%H-%M")
@@ -557,8 +557,10 @@ def main():
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
 
     if args.load is not None:
-        with FileLock("./checkpoint_lock", timeout=-1):
-            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+        for i in range(8):
+            if i == args.local_rank:
+                args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+            torch.distributed.barrier()
     else:
         args.iteration = 0
     torch.distributed.barrier()

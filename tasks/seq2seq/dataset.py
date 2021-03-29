@@ -91,6 +91,8 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             guid = "%s-%s" % (split, idx)
             meta = {"ref": tokenizer.DecodeIds(tokenizer.EncodeAsIds(target_text).tokenization)}
             example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+            if idx < 10:
+                print_rank_0((source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
             self.examples[guid] = example
             self.example_list.append(example)
         print_rank_0(f"Return {len(self.examples)} {split} examples")
@@ -102,7 +104,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         example = self.example_list[idx]
         source_text, target_text = example.text_a, example.text_b
         cls_id = self.tokenizer.get_command('ENC').Id
-        mask_token = 'gMASK' if self.args.task_mask else 'MASK'
+        mask_token = 'sMASK' if self.args.task_mask else 'MASK'
         mask_id = self.tokenizer.get_command(mask_token).Id
         pad_id = self.tokenizer.get_command('pad').Id
         sop_id = self.tokenizer.get_command('sop').Id

@@ -1,11 +1,11 @@
 {
-  "train_micro_batch_size_per_gpu": 8,
-  "gradient_accumulation_steps": 4,
-  "steps_per_print": 100,
+  "train_micro_batch_size_per_gpu": 21,
+  "gradient_accumulation_steps": 1,
+  "steps_per_print": 20,
   "gradient_clipping": 1.0,
   "zero_optimization": {
     "stage": 2,
-    "contiguous_gradients": true,
+    "contiguous_gradients": false,
     "overlap_comm": true,
     "reduce_scatter": true,
     "reduce_bucket_size": 50000000,
