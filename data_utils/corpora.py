@@ -371,7 +371,7 @@ class OpenWebText(PromptReader):
 
 
 class CCNews(PromptReader):
-    PATH = "/root/data/cc_news"
+    PATH = "/dataset/fd5061f6/english_data/cc_news.json"
     assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
 
     @classmethod
