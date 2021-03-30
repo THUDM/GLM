@@ -862,7 +862,8 @@ class BertWordPieceTokenizer(Tokenizer):
 
 
 class GPT2BPETokenizer(Tokenizer):
-    def __init__(self, model_type_or_path, cache_dir=None, add_block_symbols=False, **kwargs):
+    def __init__(self, model_type_or_path, cache_dir=None, add_block_symbols=False, add_task_mask=False,
+                 add_decoder_mask=False, **kwargs):
         self.text_tokenizer = GPT2Tokenizer.from_pretrained(model_type_or_path,
                                                             cache_dir=cache_dir)
 
@@ -902,9 +903,24 @@ class GPT2BPETokenizer(Tokenizer):
                     CommandToken('ENC', '[CLS]', self.num_tokens + 2),
                     CommandToken('MASK', '[MASK]', self.num_tokens + 3),
                     CommandToken('sep', '[SEP]', self.num_tokens + 4),
+                    CommandToken('unk', '[UNK]', self.num_tokens + 5)
                 ])
-                self.num_tokens += 5
-                self.num_command_tokens += 5
+                self.num_tokens += 6
+                self.num_command_tokens += 6
+        if add_block_symbols:
+            if add_task_mask:
+                self._command_tokens.extend([
+                    CommandToken('gMASK', '[gMASK]', self.num_tokens),
+                    CommandToken('sMASK', '[sMASK]', self.num_tokens + 1)
+                ])
+                self.num_tokens += 2
+                self.num_command_tokens += 2
+            if add_decoder_mask:
+                self._command_tokens.extend([
+                    CommandToken('dBLOCK', '[dBLOCK]', self.num_tokens)
+                ])
+                self.num_tokens += 1
+                self.num_command_tokens += 1
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}

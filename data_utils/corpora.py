@@ -112,7 +112,7 @@ class DataReader:
                      not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
-        task_queue, done_queue, info_queue = Queue(maxsize=1000000), Queue(maxsize=1000000), Queue()
+        task_queue, done_queue, info_queue = Queue(maxsize=10000000), Queue(maxsize=10000000), Queue()
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
@@ -122,6 +122,7 @@ class DataReader:
 
         def read_input_to_queue():
             for path in paths:
+                print_rank_0(f"Start reading {path}")
                 with open(path) as file:
                     for row in file:
                         task_queue.put(row)
@@ -423,7 +424,7 @@ class Pile(PromptReader):
                     total_dict[source] += length
             except Empty:
                 break
-        print(total_dict)
+        print_rank_0(total_dict)
 
     @classmethod
     def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
@@ -445,7 +446,7 @@ class Pile(PromptReader):
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
-        source = data.get("pile_set_name", None)
+        source = data["meta"].get("pile_set_name", None)
         text = data.get("text", None)
         if source and text:
             if source in cls.filtered_sources:
