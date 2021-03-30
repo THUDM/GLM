@@ -320,7 +320,7 @@ class ConstructBlockStrategy:
                 if last_index < len(tokens):
                     sentence_spans.append((last_index, len(tokens)))
                 if not sentence_spans:
-                    print(self.tokenizer.DecodeIds(tokens).encode('utf-8'))
+                    print(self.tokenizer.DecodeIds(tokens[1:]).encode('utf-8'))
                 rng.shuffle(sentence_spans)
                 block_spans, block_length = [], 0
                 for start, end in sentence_spans:
