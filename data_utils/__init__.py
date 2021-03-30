@@ -64,7 +64,8 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
                 prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
                 text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                 writers = {'prompt': prompt_writer, 'text': text_writer}
-                dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                reader = dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                reader.process()
                 prompt_writer.close()
                 text_writer.close()
             else:

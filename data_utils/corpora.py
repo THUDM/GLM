@@ -106,6 +106,8 @@ class DataReader:
         self.tokenizer = tokenizer
         self.tokenize = tokenize
         self.writers = writers
+
+    def process(self):
         if os.path.isdir(self.PATH):
             paths = [entry.path for entry in os.scandir(self.PATH) if
                      not entry.is_dir() and not entry.name.endswith("bz2")]
@@ -115,7 +117,7 @@ class DataReader:
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
-                              args=(task_queue, done_queue, info_queue, tokenizer, tokenize))
+                              args=(task_queue, done_queue, info_queue, self.tokenizer, self.tokenize))
             process.start()
             processes.append(process)
 
@@ -263,7 +265,7 @@ class zhihu(PromptReader):
             prompt = self.qtitle_prefix + qtitle + self.qcontent_prefix + qcontent + self.user_prefix + user + self.answer_prefix
             text = data["ans-content"]
             prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer,
-                                                                                               tokenize)
+                                                                                                 tokenize)
             prompts.append(prompt)
             texts.append(text)
         # prompt = data["q_title"] + data["q-content"] + data["user-signature"]
@@ -350,13 +352,21 @@ class OpenWebText(PromptReader):
     PATH = '/root/data/openwebtext2'
     assert_str = "make sure to set PATH for openwebtext data_utils/corpora.py"
 
+    def __init__(self, *args, **kwargs):
+        import fasttext
+        super().__init__(*args, **kwargs)
+        self.model = fasttext.load_model('/public/home/sleepychord/zhengxiao/data/lid.176.bin')
+        print_rank_0("Load language detection model")
+
     def process_line(self, data, tokenizer, tokenize):
         text = data['text']
         if len(text) > 100:
-            prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
-            return [prompt], [text]
-        else:
-            return [], []
+            lang = self.model.predict(text.replace('\n', ''))[0][0]
+            if lang == '__label__en':
+                prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
+                                                                                                 tokenize)
+                return [prompt], [text]
+        return [], []
 
 
 class CCNews(PromptReader):
