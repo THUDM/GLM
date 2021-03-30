@@ -94,8 +94,7 @@ class DataReader:
     assert_str = None
     reserve_punct = False
 
-    @classmethod
-    def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
+    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         raise NotImplementedError
 
     def print_info(self, info):
@@ -116,7 +115,7 @@ class DataReader:
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
-                              args=(task_queue, done_queue, info_queue, type(self), tokenizer, tokenize))
+                              args=(task_queue, done_queue, info_queue, tokenizer, tokenize))
             process.start()
             processes.append(process)
 
@@ -169,22 +168,20 @@ class DataReader:
             content += "......"
         return content
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         raise NotImplementedError
 
 
 class PromptReader(DataReader):
     is_json = True
 
-    @classmethod
-    def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
+    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
             row = row.rstrip()
             if row:
-                if cls.is_json:
+                if self.is_json:
                     row = json.loads(row)
-                prompts, texts = reader.process_line(row, tokenizer, tokenize)
+                prompts, texts = self.process_line(row, tokenizer, tokenize)
                 for prompt, text in zip(prompts, texts):
                     output.put((prompt, text))
         output.put("COMPLETE")
@@ -200,8 +197,7 @@ class KeyReader(DataReader):
     PATH = '/root/data/wikipedia/wiki-key.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         keys, contents = data['key'], data["content"]
         assert len(keys) == len(contents)
         for i in range(1, len(keys)):
@@ -210,7 +206,7 @@ class KeyReader(DataReader):
         keys = [tokenizer.EncodeAsIds(key).tokenization for key in keys]
         contents = [tokenizer.EncodeAsIds(content).tokenization for content in contents]
         summary = sum(keys, [])
-        summary_prefix = cls.process_sample("Summary: ", tokenizer, tokenize)
+        summary_prefix = self.process_sample("Summary: ", tokenizer, tokenize)
         summary_mask = [len(summary_prefix), len(summary)]
         summary = summary_prefix + summary
         text, text_mask = [], []
@@ -222,11 +218,10 @@ class KeyReader(DataReader):
             text_mask.append(len(content))
         return (summary, summary_mask), (text, text_mask)
 
-    @classmethod
-    def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
+    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
             data = json.loads(row)
-            summary, content = reader.process_line(data, tokenizer, tokenize)
+            summary, content = self.process_line(data, tokenizer, tokenize)
             output.put((summary, content))
         output.put("COMPLETE")
 
@@ -253,8 +248,7 @@ class zhihu(PromptReader):
     # user_prefix = []
     # answer_prefix = []
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         prompts, texts = [], []
         ans_length = len(data.get("ans-content", ""))
         ans_up = data.get("ans-up-num", "")
@@ -264,11 +258,11 @@ class zhihu(PromptReader):
             qcontent = data["q-content"]
             if qcontent is None:
                 qcontent = ""
-            qcontent = cls.trim_field(qcontent, max_length=100)
+            qcontent = self.trim_field(qcontent, max_length=100)
             user = data.get("user-signature", "")
-            prompt = cls.qtitle_prefix + qtitle + cls.qcontent_prefix + qcontent + cls.user_prefix + user + cls.answer_prefix
+            prompt = self.qtitle_prefix + qtitle + self.qcontent_prefix + qcontent + self.user_prefix + user + self.answer_prefix
             text = data["ans-content"]
-            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer,
+            prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer,
                                                                                                tokenize)
             prompts.append(prompt)
             texts.append(text)
@@ -287,26 +281,25 @@ class zhidao(PromptReader):
     qcontent_prefix = "问题描述："
     answer_prefix = "回答："
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         if "title" not in data:
             return [], []
         prompts, texts = [], []
         qtitle = data["title"]
         qcontent = data.get("content", "")
-        qcontent = cls.trim_field(qcontent, max_length=100)
-        prompt = cls.qtitle_prefix + qtitle + cls.qcontent_prefix + qcontent + cls.answer_prefix
-        prompt = cls.process_sample(prompt, tokenizer, tokenize)
+        qcontent = self.trim_field(qcontent, max_length=100)
+        prompt = self.qtitle_prefix + qtitle + self.qcontent_prefix + qcontent + self.answer_prefix
+        prompt = self.process_sample(prompt, tokenizer, tokenize)
         if "best_answer" in data:
             text = data["best_answer"]["content"]
             if len(text) > 10:
-                text = cls.process_sample(text, tokenizer, tokenize)
+                text = self.process_sample(text, tokenizer, tokenize)
                 prompts.append(prompt)
                 texts.append(text)
         for answer in data.get("other_answers", []):
             text = answer["content"]
             if len(text) > 100:
-                text = cls.process_sample(text, tokenizer, tokenize)
+                text = self.process_sample(text, tokenizer, tokenize)
                 prompts.append(prompt)
                 texts.append(text)
         return prompts, texts
@@ -317,12 +310,11 @@ class baike(PromptReader):
     reserve_punct = True
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         prompts, texts = [], []
         text = data.get("title", "") + data.get("abstract", "") + data.get("content", "")
         if text:
-            p, t = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            p, t = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
             prompts.append(p)
             texts.append(t)
         return prompts, texts
@@ -338,10 +330,9 @@ class wikipedia(PromptReader):
     PATH = '/root/data/bert_data/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         text = data['text']
-        prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+        prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
         return [prompt], [text]
 
 
@@ -349,10 +340,9 @@ class TestDataset(PromptReader):
     PATH = '/root/data/test.json'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         prompt, text = data['prompt'], data['text']
-        prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+        prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
         return [prompt], [text]
 
 
@@ -360,11 +350,10 @@ class OpenWebText(PromptReader):
     PATH = '/root/data/openwebtext2'
     assert_str = "make sure to set PATH for openwebtext data_utils/corpora.py"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         text = data['text']
         if len(text) > 100:
-            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
             return [prompt], [text]
         else:
             return [], []
@@ -374,8 +363,7 @@ class CCNews(PromptReader):
     PATH = "/dataset/fd5061f6/english_data/cc_news.json"
     assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         text = ""
         title = data.get("title", None)
         description = data.get("description", None)
@@ -387,7 +375,7 @@ class CCNews(PromptReader):
         if maintext:
             text += maintext
         if len(text) > 100:
-            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
+            prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
             return [prompt], [text]
         else:
             return [], []
@@ -397,12 +385,11 @@ class BertData(PromptReader):
     is_json = False
     PATH = '/dataset/fd5061f6/english_data/wikibook'
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         if data:
             prompt, text = "", data
-            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer,
-                                                                                               tokenize)
+            prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer,
+                                                                                                 tokenize)
             return [prompt], [text]
         else:
             return [], []
@@ -426,15 +413,14 @@ class Pile(PromptReader):
                 break
         print_rank_0(total_dict)
 
-    @classmethod
-    def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
+    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         source_dict = defaultdict(int)
         for row in iter(input.get, 'STOP'):
             row = row.rstrip()
             if row:
-                if cls.is_json:
+                if self.is_json:
                     row = json.loads(row)
-                prompts, texts, source = reader.process_line(row, tokenizer, tokenize)
+                prompts, texts, source = self.process_line(row, tokenizer, tokenize)
                 length = 0
                 for prompt, text in zip(prompts, texts):
                     length += len(text)
@@ -444,18 +430,17 @@ class Pile(PromptReader):
         output.put("COMPLETE")
         info.put(source_dict)
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         source = data["meta"].get("pile_set_name", None)
         text = data.get("text", None)
         if source and text:
-            if source in cls.filtered_sources:
+            if source in self.filtered_sources:
                 return [], [], None
-            elif source in cls.downsample_sources and random.random() > cls.downsample_sources[source]:
+            elif source in self.downsample_sources and random.random() > self.downsample_sources[source]:
                 return [], [], None
             else:
-                prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer,
-                                                                                               tokenize)
+                prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
+                                                                                                 tokenize)
                 return [prompt], [text], source
         else:
             return [], [], None
@@ -465,12 +450,11 @@ class Stories(PromptReader):
     is_json = True
     PATH = "/root/data/stories_31G.jsonl"
 
-    @classmethod
-    def process_line(cls, data, tokenizer, tokenize):
+    def process_line(self, data, tokenizer, tokenize):
         text = data.get("text", None)
         if text:
-            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer,
-                                                                                           tokenize)
+            prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
+                                                                                             tokenize)
             return [prompt], [text]
         else:
             return [], []
