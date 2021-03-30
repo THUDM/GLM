@@ -461,6 +461,21 @@ class Pile(PromptReader):
             return [], [], None
 
 
+class Stories(PromptReader):
+    is_json = True
+    PATH = "/root/data/stories_31G.jsonl"
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        text = data.get("text", None)
+        if text:
+            prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer,
+                                                                                           tokenize)
+            return [prompt], [text]
+        else:
+            return [], []
+
+
 class BertBaseData(BertData):
     PATH = '/root/data/formatted_one_article_per_line'
 
@@ -481,5 +496,6 @@ NAMED_CORPORA = {
     "bert-base": BertBaseData,
     "bert-large": BertLargeData,
     'cc-news': CCNews,
-    'pile': Pile
+    'pile': Pile,
+    'stories': Stories
 }
