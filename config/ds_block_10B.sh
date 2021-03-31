@@ -23,17 +23,18 @@ gpt_options=" \
        --log-interval 50 \
        --eval-interval 500 \
        --save-interval 2000 \
-       --train-iters 100000 \
+       --train-iters 250000 \
        --resume-dataloader \
        --train-data pile cc-news \
+       --num-workers 4 \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \
        --lr-decay-ratio 0.1 \
-       --lr-decay-iters 20000 \
-       --warmup .2 \
+       --lr-decay-iters 175000 \
+       --warmup 0.04 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \
