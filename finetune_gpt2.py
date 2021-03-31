@@ -251,12 +251,12 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             if args.eval_interval and valid_dataloader is not None and args.iteration % args.eval_interval == 0:
                 prefix = 'iteration {}'.format(args.iteration)
                 evaluate_and_print_results(prefix, valid_dataloader, model, args, timers, step=args.iteration,
-                                           verbose=False, forward_step_func=finetune_forward_step,
+                                           verbose=False, forward_step_func=forward_step,
                                            summary_writer=summary_writer)
 
         # Checkpointing at the end of each epoch.
-        # if args.save and (epoch + 1) % args.save_epoch == 0:
-        #     save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
+        if args.save and (epoch + 1) % args.save_epoch == 0:
+            save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None and (epoch + 1) % args.eval_epoch == 0:
@@ -396,7 +396,7 @@ if __name__ == '__main__':
         from tasks.superglue.finetune import main
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
-    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword']:
+    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank']:
         from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))

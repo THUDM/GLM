@@ -248,6 +248,7 @@ def add_text_generate_args(parser):
     group.add_argument("--no-repeat-ngram-size", type=int, default=0)
     group.add_argument("--min-tgt-length", type=int, default=0)
     group.add_argument("--select-topk", action='store_true')
+    group.add_argument("--blank-maskratio", type=float, default=0.1)
     return parser
 
 
