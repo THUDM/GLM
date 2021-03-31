@@ -288,8 +288,9 @@ def add_data_args(parser):
                        help='comma-separated list of proportions for training,'
                             ' validation, and test split')
 
-    group.add_argument('--lazy-loader', action='store_true',
+    group.add_argument('--no-lazy-loader', action='store_true',
                        help='whether to lazy read the data set')
+    group.add_argument('--loader-scatter', type=int, default=None, help='Number of scatters to use for dataloaders')
     group.add_argument('--loose-json', action='store_true',
                        help='Use loose json (one json-formatted string per '
                             'newline), instead of tight json (data file is one '

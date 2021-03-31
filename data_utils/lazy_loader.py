@@ -45,6 +45,20 @@ def exists_lazy(path, data_type='data'):
     return True
 
 
+def get_scatter_path(path, scatter_rank):
+    path = os.path.splitext(path)[0] + '.scatter'
+    scatter_path = os.path.join(path, str(scatter_rank))
+    return scatter_path
+
+
+def exists_scatter(path, scatter_num=64, data_type='data'):
+    for i in range(scatter_num):
+        scatter_path = get_scatter_path(path, scatter_rank=i)
+        if not exists_lazy(scatter_path, data_type=data_type):
+            return False
+    return True
+
+
 class LazyWriter:
     def __init__(self, path, data_type, is_array=False, array_data_type=np.int32):
         lazypath = get_lazy_path(path)
@@ -124,7 +138,8 @@ class LazyLoader(object):
         data_type2.len.pkl
     """
 
-    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32):
+    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32,
+                 load_memory=False):
         lazypath = get_lazy_path(path)
         datapath = os.path.join(lazypath, data_type)
         # get file where array entries are concatenated into one big string
@@ -138,6 +153,7 @@ class LazyLoader(object):
         self.ends = list(accumulate(self.lens))
         self.dumb_ends = list(self.ends)
         self.mem_map = mem_map
+        self.load_memory = load_memory
         if self.mem_map:
             if is_array:
                 if self.ends[-1] == 0:
@@ -149,6 +165,17 @@ class LazyLoader(object):
                     self.file = bytearray()
                 else:
                     self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
+        if self.load_memory:
+            self.contents = []
+            for index in range(len(self.lens)):
+                if index == 0:
+                    start = 0
+                else:
+                    start = self.ends[index - 1]
+                end = self.ends[index]
+                rtn = self.file_read(start, end)
+                self.contents.append(rtn)
+            del self.file
         self.read_lock = Lock()
         self.process_fn = map_fn
         self.map_fn = map_fn
@@ -175,24 +202,30 @@ class LazyLoader(object):
         read file and splice strings based on string ending array `self.ends`
         """
         if not isinstance(index, slice):
-            if index == 0:
-                start = 0
+            if self.load_memory:
+                rtn = self.contents[index]
             else:
-                start = self.ends[index - 1]
-            end = self.ends[index]
-            rtn = self.file_read(start, end)
+                if index == 0:
+                    start = 0
+                else:
+                    start = self.ends[index - 1]
+                end = self.ends[index]
+                rtn = self.file_read(start, end)
             if self.map_fn is not None:
                 return self.map_fn(rtn)
         else:
             # if slice, fetch strings with 1 diskread and then splice in memory
-            chr_lens = self.ends[index]
-            if index.start == 0 or index.start is None:
-                start = 0
+            if self.load_memory:
+                rtn = self.contents[index]
             else:
-                start = self.ends[index.start - 1]
-            stop = chr_lens[-1]
-            strings = self.file_read(start, stop)
-            rtn = split_strings(strings, start, chr_lens)
+                chr_lens = self.ends[index]
+                if index.start == 0 or index.start is None:
+                    start = 0
+                else:
+                    start = self.ends[index.start - 1]
+                stop = chr_lens[-1]
+                strings = self.file_read(start, stop)
+                rtn = split_strings(strings, start, chr_lens)
             if self.map_fn is not None:
                 return self.map_fn([s for s in rtn])
         return rtn

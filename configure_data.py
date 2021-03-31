@@ -209,7 +209,9 @@ def make_loaders(args, tokenizer):
         'tokenizer': tokenizer,
         'save_splits': args.save_splits,
         'load_splits': args.load_splits,
-        'save_test_data': args.save_test_data
+        'save_test_data': args.save_test_data,
+        'no_lazy_loader': args.no_lazy_loader,
+        'loader_scatter': args.loader_scatter
     }
 
     eval_set_args = copy.copy(data_set_args)

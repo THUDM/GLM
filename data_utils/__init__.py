@@ -22,7 +22,7 @@ import torch
 from .samplers import DistributedBatchSampler
 from .datasets import split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
     GPT2Dataset, ShuffleDataset, XLDataset, BlockDataset
-from .lazy_loader import exists_lazy, LazyWriter, LazyLoader
+from .lazy_loader import exists_lazy, LazyWriter, LazyLoader, exists_scatter, get_scatter_path
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
 from . import corpora
@@ -49,7 +49,7 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_dataset(name, tokenizer, pre_tokenize):
+def get_dataset(name, tokenizer, pre_tokenize, loader_scatter=None, no_lazy_loader=False):
     """gets dataset object based on keyword args and file at `path`"""
     if supported_corpus(name):
         dataset = corpora.NAMED_CORPORA[name]
@@ -58,6 +58,7 @@ def get_dataset(name, tokenizer, pre_tokenize):
             if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
                 # create cached version of dataset for lazy loading if it doesn't exist
                 if torch.distributed.get_rank() == 0:
+                    print(f"Creating lazy loader for dataset {name}")
                     prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
                     text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                     writers = {'prompt': prompt_writer, 'text': text_writer}
@@ -68,10 +69,39 @@ def get_dataset(name, tokenizer, pre_tokenize):
                     while not os.path.exists(LazyWriter.get_len_path(path, data_type='prompt')):
                         time.sleep(1)
             map_fn = (lambda x: x.tolist()) if pre_tokenize else None
-            prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                                 is_array=pre_tokenize)
-            texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
-                               is_array=pre_tokenize)
+            if loader_scatter is not None:
+                if not (exists_scatter(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+                    if torch.distributed.get_rank() == 0:
+                        print(f"Creating scatter loader for dataset {name}")
+                        prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                             is_array=pre_tokenize)
+                        texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
+                                           is_array=pre_tokenize)
+                        indices = list(range(len(texts)))
+                        random.shuffle(indices)
+                        segment_length = len(indices) // loader_scatter + 1
+                        for i in range(loader_scatter):
+                            scatter_path = get_scatter_path(path, scatter_rank=i)
+                            prompt_writer = LazyWriter(scatter_path, data_type='prompt', is_array=pre_tokenize)
+                            text_writer = LazyWriter(scatter_path, data_type='text', is_array=pre_tokenize)
+                            for idx in indices[i * segment_length: (i + 1) * segment_length]:
+                                prompt_writer.write(prompts[idx])
+                                text_writer.write(texts[idx])
+                            prompt_writer.close()
+                            text_writer.close()
+                    else:
+                        while not (exists_scatter(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+                            time.sleep(1)
+                scatter_path = get_scatter_path(path, scatter_rank=torch.distributed.get_rank() % loader_scatter)
+                prompts = LazyLoader(scatter_path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                     is_array=pre_tokenize, load_memory=no_lazy_loader)
+                texts = LazyLoader(scatter_path, data_type='text', map_fn=map_fn, mem_map=True,
+                                   is_array=pre_tokenize, load_memory=no_lazy_loader)
+            else:
+                prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                     is_array=pre_tokenize, load_memory=no_lazy_loader)
+                texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
+                                   is_array=pre_tokenize, load_memory=no_lazy_loader)
             text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
                                          to_tokenize=not pre_tokenize)
             if torch.distributed.get_rank() == 0:
@@ -112,16 +142,18 @@ def supported_corpus(corpus_name):
 
 def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
-                 save_test_data=None, **kwargs):
+                 save_test_data=None, no_lazy_loader=False, loader_scatter=None, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
-        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize)
+        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
+                         loader_scatter=loader_scatter)
     else:
-        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize) for p in path]
+        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
+                          loader_scatter=loader_scatter) for p in path]
         ds = ConcatDataset(ds)
 
     # Split dataset into train/val/test (and wrap bert dataset)
