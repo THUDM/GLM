@@ -18,7 +18,20 @@ def _is_digit(w):
     return True
 
 
-def fix_tokenization(text):
+gigaword_tok_dict = {"(": "-lrb-", ")": "-rrb-",
+                     "[": "-lsb-", "]": "-rsb-",
+                     "{": "-lcb-", "}": "-rcb-",
+                     "[UNK]": "UNK", '&': '&amp;', '<': '&lt;', '>': '&gt;'}
+
+cnndm_tok_dict = {"(": "-LRB-", ")": "-RRB-",
+                  "[": "-LSB-", "]": "-RSB-",
+                  "{": "-LCB-", "}": "-RCB-"}
+
+
+def fix_tokenization(text, dataset):
+    if dataset == 'gigaword':
+        text = text.replace('[UNK]', 'UNK')
+        return text
     input_tokens = text.split()
     output_tokens = []
     has_left_quote = False
@@ -65,17 +78,17 @@ def fix_tokenization(text):
             output_tokens[-1] += '.' + input_tokens[i + 1]
             i += 2
         elif tok == "." and len(output_tokens) > 0 and len(output_tokens[-1]) == 1 and output_tokens[
-            -1].isupper() and i < len(input_tokens) - 2 and len(input_tokens[i + 1]) == 1 and input_tokens[
-            i + 1].isupper() and input_tokens[i + 2] == '.':
+            -1].isalpha() and i < len(input_tokens) - 2 and len(input_tokens[i + 1]) == 1 and input_tokens[
+            i + 1].isalpha() and input_tokens[i + 2] == '.':
             # U . N . -> U.N.
             k = i + 3
             while k + 2 < len(input_tokens):
-                if len(input_tokens[k + 1]) == 1 and input_tokens[k + 1].isupper() and input_tokens[k + 2] == '.':
+                if len(input_tokens[k + 1]) == 1 and input_tokens[k + 1].isalpha() and input_tokens[k + 2] == '.':
                     k += 2
                 else:
                     break
             output_tokens[-1] += ''.join(input_tokens[i:k])
-            i += 2
+            i = k
         elif tok == "-":
             if i < len(input_tokens) - 1 and input_tokens[i + 1] == "-":
                 output_tokens.append("--")
@@ -138,20 +151,20 @@ def remove_duplicate(l_list, duplicate_rate):
     return r_list
 
 
-def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7):
+def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7, dataset='cnn_dm'):
     metric_dict = {"rouge-1": "rouge1", "rouge-2": "rouge2", "rouge-l": "rougeLsum"}
     refs = [example.meta["ref"] for example in examples]
     ref_list = []
     for ref in refs:
         ref = ref.strip().split('[SEP]')
-        ref = [fix_tokenization(sentence) for sentence in ref]
+        ref = [fix_tokenization(sentence, dataset=dataset) for sentence in ref]
         ref = "\n".join(ref)
         ref_list.append(ref)
     pred_list = []
     for prediction in predictions:
         buf = []
         for sentence in prediction.strip().split("[SEP]"):
-            sentence = fix_tokenization(sentence)
+            sentence = fix_tokenization(sentence, dataset=dataset)
             if any(get_f1(sentence, s) > 1.0 for s in buf):
                 continue
             s_len = len(sentence.split())
@@ -162,6 +175,11 @@ def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate
             buf = remove_duplicate(buf, duplicate_rate)
         line = "\n".join(buf)
         pred_list.append(line)
+    if torch.distributed.get_rank() == 0:
+        import json
+        with open("./results.json", "w") as output:
+            for ref, pred in zip(ref_list, pred_list):
+                output.write(json.dumps({"ref": ref, "pred": pred}) + "\n")
     scorer = rouge_scorer.RougeScorer([metric_dict[metric]], use_stemmer=True)
     scores = [scorer.score(pred, ref) for pred, ref in zip(pred_list, ref_list)]
     scores = [score[metric_dict[metric]].fmeasure for score in scores]
@@ -182,7 +200,7 @@ class DecoderEvaluater:
         self.tokenizer = tokenizer
         self.start_token = tokenizer.get_command('sop').Id
         self.end_token = tokenizer.get_command('eop').Id
-        self.mask_token = tokenizer.get_command('gMASK').Id if args.task_mask else tokenizer.get_command('MASK').Id
+        self.mask_token = tokenizer.get_command('sMASK').Id if args.task_mask else tokenizer.get_command('MASK').Id
         self.pad_token = tokenizer.get_command('pad').Id
         self.processors = LogitsProcessorList()
         if args.min_tgt_length > 0:

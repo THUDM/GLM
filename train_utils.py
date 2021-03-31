@@ -53,7 +53,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
                           checkpoint_num_layers=args.checkpoint_num_layers,
                           parallel_output=paralle_output,
                           relative_encoding=args.transformer_xl,
-                          block_position_encoding=args.block_lm,
+                          block_position_encoding=args.block_lm and not args.masked_lm,
                           output_predict=output_predict,
                           spell_length=spell_length,
                           nonautoregressive=args.nonautoregressive)
@@ -233,8 +233,8 @@ def backward_step(optimizer, model, lm_loss, args, timers):
             loss.backward()
 
     reduced_losses = lm_loss.view(1)
-    torch.distributed.all_reduce(reduced_losses.data)
-    reduced_losses.data = reduced_losses.data / args.world_size
+    torch.distributed.all_reduce(reduced_losses.data, group=mpu.get_data_parallel_group())
+    reduced_losses.data = reduced_losses.data / (args.world_size / args.model_parallel_size)
     lm_loss_reduced = reduced_losses
 
     if args.deepspeed:

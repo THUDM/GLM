@@ -69,8 +69,9 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
             print(position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
     # Forward model.
-    if isinstance(model, ClozeModel):
-        logits, *mems = model(tokens, position_ids, attention_mask)
+    if args.continuous_prompt:
+        prompt_pos = data["prompt_pos"].long().cuda()
+        logits, *mems = model(tokens, position_ids, attention_mask, *mems, prompt_pos=prompt_pos)
     else:
         logits, *mems = model(tokens, position_ids, attention_mask, *mems)
         

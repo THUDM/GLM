@@ -36,7 +36,7 @@ class PVP(ABC):
 
     def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
                  seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train',
-                 continuous_prompt=False):
+                 continuous_prompt=False, task_mask=False):
         """
         Create a new PVP.
 
@@ -58,6 +58,7 @@ class PVP(ABC):
         self._is_multi_token = is_multi_token
         self.max_segment_length = max_segment_length
         self.continuous_prompt = continuous_prompt
+        self.task_mask = task_mask
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
@@ -175,7 +176,8 @@ class PVP(ABC):
                         segments = [answer_ids]
                     for segment in segments:
                         data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
-                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True)
+                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True,
+                                                    mask_id=self.mask_id)
                         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
                         prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
                         ids = [idx if idx != prompt_id else 0 for idx in ids]
@@ -356,6 +358,18 @@ class CopaPVP(PVP):
     def spell_length(self):
         return self.pattern_id
 
+    @property
+    def mask(self) -> str:
+        """Return the underlying LM's mask token"""
+        mask_token = 'MASK'
+        return self.tokenizer.get_command(mask_token).Id
+
+    @property
+    def mask_id(self) -> int:
+        """Return the underlying LM's mask id"""
+        mask_token = 'MASK'
+        return self.tokenizer.get_command(mask_token).Id
+
     def get_answers(self, example: InputExample):
         choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -474,6 +488,8 @@ class WscPVP(PVP):
                 return [1, text_a, 1, " pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
             elif self.pattern_id == 3:
                 return [1, text_a, 1, " pronoun '*" + pronoun + "*'", 1, " to", [self.mask], '.'], []
+            elif self.pattern_id == 9:
+                return [3, text_a, 3, " pronoun '*" + pronoun + "*'", 3, " to", [self.mask], '.'], []
             else:
                 raise NotImplementedError(self.pattern_id)
         if self.pattern_id == 0:
@@ -505,6 +521,7 @@ class WscPVP(PVP):
             assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
 
         tokenizer = self.tokenizer
+        prompt_id = tokenizer.num_tokens
         raw_parts_a, raw_parts_b = self.get_parts(example)
 
         raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
@@ -517,7 +534,7 @@ class WscPVP(PVP):
                     flag = [0] * len(x)
                 elif isinstance(x, int):
                     flag = [1] * x
-                    x = [0] * x
+                    x = [prompt_id] * x
                 else:
                     flag = [0] * len(x)
                 parts.append((x, s))
@@ -538,22 +555,16 @@ class WscPVP(PVP):
         data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer, args=self.args,
                                     add_cls=True, add_sep=False, add_piece=True)
         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+        prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
+        ids = [token if token != prompt_id else 0 for token in ids]
         if example.label is not None:
             label = self.label_list.index(example.label)
         else:
             label = 0
-        self.truncate(flags_a, flags_b, answer_ids, max_length=self.max_seq_length)
-        flag_tokens_a = [flag for part, _ in flags_a for flag in part]
-        flag_tokens_b = [flag for part, _ in flags_b for flag in part]
-        flag_data = build_input_from_ids(flag_tokens_a, flag_tokens_b, [0] * len(answer_ids), self.max_seq_length,
-                                         self.tokenizer, args=self.args, add_cls=True, add_sep=False,
-                                         add_piece=True)
-        prompt_flags = flag_data[0]
-        prompt_pos = [idx for idx, flag in enumerate(prompt_flags) if flag]
         return {'text': np.array(ids, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
                 'attention_mask': np.array(sep, dtype=np.int64), 'loss_mask': np.array(loss_masks, dtype=np.int64),
                 "position_id": np.array(position_ids, dtype=np.int64),
-                'propmt_pos': np.array(prompt_pos, dtype=np.int64), 'label': label, 'uid': example.guid}
+                'prompt_pos': np.array(prompt_pos, dtype=np.int64), 'label': label, 'uid': example.guid}
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -627,6 +638,10 @@ class RtePVP(PVP):
                 return [1, '"', self.shortenable(text_b), '" ?'], [1, [self.mask], ',', 1, ' "',
                                                                    self.shortenable(text_a),
                                                                    '"']
+            elif self.pattern_id == 9:
+                return [3, '"', self.shortenable(text_b), '" ?'], [3, [self.mask], ',', 3, ' "',
+                                                                   self.shortenable(text_a),
+                                                                   '"']
             else:
                 raise NotImplementedError(self.pattern_id)
         elif self.pattern_id == 0:
@@ -695,6 +710,9 @@ class BoolQPVP(PVP):
                         [self.mask], '.'], []
             elif self.pattern_id == 3:
                 return [1, self.shortenable(passage), 1, ' Question:', self.shortenable(" " + question), '? Answer:', 1,
+                        [self.mask], '.'], []
+            elif self.pattern_id == 9:
+                return [3, self.shortenable(passage), 3, ' Question:', self.shortenable(" " + question), '? Answer:', 3,
                         [self.mask], '.'], []
         if self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', [self.mask],

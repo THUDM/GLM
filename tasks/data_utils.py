@@ -104,8 +104,9 @@ def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_s
 
 
 def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tokenizer, args=None, add_cls=True,
-                         add_sep=False, add_piece=False, add_eos=True):
-    mask_id = tokenizer.get_command('MASK').Id
+                         add_sep=False, add_piece=False, add_eos=True, mask_id=None):
+    if mask_id is None:
+        mask_id = tokenizer.get_command('MASK').Id
     eos_id = tokenizer.get_command('eos').Id
     cls_id = tokenizer.get_command('ENC').Id
     sep_id = tokenizer.get_command('sep').Id
@@ -184,7 +185,8 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
         block_position_ids.extend([0] * padding_length)
         target_ids.extend([0] * padding_length)
         loss_masks.extend([0] * padding_length)
-    position_ids = [position_ids, block_position_ids]
+    if not args.masked_lm:
+        position_ids = [position_ids, block_position_ids]
     return ids, types, paddings, position_ids, sep, target_ids, loss_masks
 
 

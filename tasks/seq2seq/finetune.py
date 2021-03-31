@@ -51,7 +51,7 @@ def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
     if args.task.lower() == 'blank':
         train_dataset = BlankLMDataset(args, split='train', tokenizer=tokenizer)
-        valid_dataset = None #BlankLMDataset(args, split='dev', tokenizer=tokenizer)
+        valid_dataset = None
     else:
         train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
         valid_dataset = None
@@ -62,9 +62,6 @@ def train_valid_datasets_provider(args, tokenizer):
 
 def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
-    if not is_test:
-        return None
-
     def single_dataset_provider(split):
         if args.task.lower() == 'blank':
             return BlankLMDataset(args, split=split, tokenizer=tokenizer)
@@ -78,9 +75,15 @@ def metrics_func_provider(args, tokenizer, is_test):
     else:
         evaluater = DecoderEvaluater(args, tokenizer)
         eval_func = evaluater.evaluate
-        metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1"),
-                                   "rouge-2": functools.partial(rouge_metric, metric="rouge-2"),
-                                   "rouge-l": functools.partial(rouge_metric, metric="rouge-l")})
+        if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original':
+            dataset = 'cnn_dm'
+        elif args.task.lower() == 'gigaword':
+            dataset = 'gigaword'
+        else:
+            raise NotImplementedError(args.task)
+        metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
+                                   "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
+                               "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
 
     def output_func(predictions, examples, output_file):
         with open(output_file + ".hyps", "w", encoding='utf-8') as output:

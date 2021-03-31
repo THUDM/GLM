@@ -159,6 +159,7 @@ def add_training_args(parser):
     # model checkpointing
     group.add_argument('--save', type=str, default=None,
                        help='Output directory to save checkpoints to.')
+    group.add_argument('--new-save-directory', action='store_true')
     group.add_argument('--save-epoch', type=int, default=1,
                        help='number of epochs between saves')
     group.add_argument('--save-interval', type=int, default=5000,
@@ -192,8 +193,11 @@ def add_training_args(parser):
                        help='local rank passed from distributed launcher')
     # BlockLM training args
     group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
+    group.add_argument('--masked-lm', action='store_true', help='whether to use the mlm objective')
     group.add_argument('--bert-prob', type=float, default=0.5)
-    group.add_argument('--infill-prob', type=float, default=0.5)
+    group.add_argument('--gpt-infill-prob', type=float, default=0.5)
+    group.add_argument('--gpt-min-ratio', type=float, default=0.5)
+    group.add_argument('--gap-sentence-prob', type=float, default=0.0)
     group.add_argument('--avg-block-length', type=int, default=3)
     group.add_argument('--task-mask', action='store_true', help="Use different mask for generation and blank filling")
     group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
@@ -202,9 +206,10 @@ def add_training_args(parser):
     group.add_argument('--sentinel-token', action='store_true',
                        help="Use sentinel (mask) tokens to replace 2d position encoding")
     group.add_argument('--block-mask-prob', type=float, default=0.0)
+    group.add_argument('--context-mask-ratio', type=float, default=0.0)
     group.add_argument('--random-position', action='store_true',
                        help="Use random start position to cover all the position embeddings")
-    group.add_argument('--nonautoregressive', action='store_true', help="whether add a nonautoregressive loss")
+    group.add_argument('--nonautoregressive', action='store_true', help="whether add a non-autoregressive loss")
     return parser
 
 
@@ -359,6 +364,8 @@ def add_finetune_config_args(parser):
     group.add_argument('--optimizer', type=str, choices=['adam', 'adafactor'], default='adam')
     group.add_argument('--wsc-negative', action='store_true')
     group.add_argument('--overwrite', action='store_true')
+    group.add_argument('--no-validation', action='store_true')
+    group.add_argument('--start-validation', action='store_true')
     return parser
 
 

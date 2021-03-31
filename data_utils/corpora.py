@@ -19,11 +19,13 @@ import json
 import random
 import tqdm
 from multiprocessing import Queue, Process
+from queue import Empty
+from collections import defaultdict
 from torch.utils import data
 from .lazy_loader import LazyLoader
 from utils import print_rank_0
 
-NUM_PROCESSES = 40
+NUM_PROCESSES = 100
 
 
 class KeyDataset(data.Dataset):
@@ -85,8 +87,11 @@ class DataReader:
     assert_str = None
 
     @classmethod
-    def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
+    def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
         raise NotImplementedError
+
+    def print_info(self, info):
+        pass
 
     def __init__(self, writers, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
@@ -98,16 +103,17 @@ class DataReader:
                      not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
-        task_queue, done_queue = Queue(maxsize=1000000), Queue(maxsize=1000000)
+        task_queue, done_queue, info_queue = Queue(maxsize=10000000), Queue(maxsize=10000000), Queue()
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
-                              args=(task_queue, done_queue, type(self), tokenizer, tokenize))
+                              args=(task_queue, done_queue, info_queue, type(self), tokenizer, tokenize))
             process.start()
             processes.append(process)
 
         def read_input_to_queue():
             for path in paths:
+                print_rank_0(f"Start reading {path}")
                 with open(path) as file:
                     for row in file:
                         task_queue.put(row)
@@ -129,6 +135,7 @@ class DataReader:
                 self.write_result(data, self.writers)
                 progress_bar.update()
         progress_bar.close()
+        self.print_info(info_queue)
 
     @staticmethod
     def write_result(data, writers):
@@ -160,7 +167,7 @@ class PromptReader(DataReader):
     is_json = True
 
     @classmethod
-    def tokenize_worker(cls, input, output, reader, tokenizer, tokenize):
+    def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
             row = row.rstrip()
             if row:
@@ -375,7 +382,7 @@ class CCNews(PromptReader):
 
 class BertData(PromptReader):
     is_json = False
-    PATH = '/root/data/wikibook'
+    PATH = '/dataset/fd5061f6/english_data/wikibook'
 
     @classmethod
     def process_line(cls, data, tokenizer, tokenize):
@@ -386,6 +393,59 @@ class BertData(PromptReader):
             return [prompt], [text]
         else:
             return [], []
+
+
+class Pile(PromptReader):
+    is_json = True
+    PATH = "/dataset/fd5061f6/english_data/pile/train"
+    filtered_sources = ["Github", "StackExchange", "DM Mathematics", "Ubuntu IRC", "EuroParl", "YoutubeSubtitles",
+                        "Enron Emails"]
+    downsample_sources = {"PubMed Central": 0.3, "ArXiv": 0.3, "FreeLaw": 0.3}
+
+    def print_info(self, info):
+        total_dict = defaultdict(int)
+        while True:
+            try:
+                source_dict = info.get(block=False)
+                for source, length in source_dict.items():
+                    total_dict[source] += length
+            except Empty:
+                break
+        print_rank_0(total_dict)
+
+    @classmethod
+    def tokenize_worker(cls, input, output, info, reader, tokenizer, tokenize):
+        source_dict = defaultdict(int)
+        for row in iter(input.get, 'STOP'):
+            row = row.rstrip()
+            if row:
+                if cls.is_json:
+                    row = json.loads(row)
+                prompts, texts, source = reader.process_line(row, tokenizer, tokenize)
+                length = 0
+                for prompt, text in zip(prompts, texts):
+                    length += len(text)
+                    output.put((prompt, text))
+                if source:
+                    source_dict[source] += length
+        output.put("COMPLETE")
+        info.put(source_dict)
+
+    @classmethod
+    def process_line(cls, data, tokenizer, tokenize):
+        source = data["meta"].get("pile_set_name", None)
+        text = data.get("text", None)
+        if source and text:
+            if source in cls.filtered_sources:
+                return [], [], None
+            elif source in cls.downsample_sources and random.random() > cls.downsample_sources[source]:
+                return [], [], None
+            else:
+                prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer,
+                                                                                               tokenize)
+                return [prompt], [text], source
+        else:
+            return [], [], None
 
 
 class BertBaseData(BertData):
@@ -407,5 +467,6 @@ NAMED_CORPORA = {
     'wikibook': BertData,
     "bert-base": BertBaseData,
     "bert-large": BertLargeData,
-    'cc-news': CCNews
+    'cc-news': CCNews,
+    'pile': Pile
 }

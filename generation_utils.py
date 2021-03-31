@@ -333,7 +333,7 @@ class BeamHypotheses:
         """
         Add a new hypothesis to the list.
         """
-        score = sum_logprobs / (hyp.shape[-1] ** self.length_penalty)
+        score = sum_logprobs / (max(hyp.shape[-1], 1) ** self.length_penalty)
         if len(self) < self.num_beams or score > self.worst_score:
             self.beams.append((score, hyp, mems))
             if len(self) > self.num_beams:

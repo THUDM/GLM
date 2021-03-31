@@ -216,7 +216,7 @@ def forward_step(data_iterator, model, args, timers, mems):
         block_position_ids = position_ids[:, 1]
         position_ids_ = position_ids[:, 0]
         output_tokens = []
-        sep = attention_mask.item()
+        sep = attention_mask.item() if torch.numel(attention_mask) == 1 else attention_mask[batch_id].item()
         for i, token in enumerate(tokens[batch_id, :sep].tolist()):
             token = tokenizer.IdToToken(token)
             if token.startswith('[MASK') or token.endswith('MASK]'):
@@ -240,8 +240,8 @@ def forward_step(data_iterator, model, args, timers, mems):
                   tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
                   position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
-    if tokens.size(1) <= args.seq_length + 2:
-        mode = 'gpt'
+    if data is not None and "mode" in data:
+        mode = data['mode']
     else:
         mode = 'bert'
 
@@ -252,9 +252,9 @@ def forward_step(data_iterator, model, args, timers, mems):
                                                   labels)
         loss_mask = loss_mask.view(-1)
         loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-        
+
         na_losses = mpu.vocab_parallel_cross_entropy(na_logits.contiguous().float(),
-                                                    labels)
+                                                     labels)
         na_loss = torch.sum(na_losses.view(-1) * loss_mask) / loss_mask.sum()
         loss = loss + na_loss
     else:
@@ -262,7 +262,9 @@ def forward_step(data_iterator, model, args, timers, mems):
         losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                                   labels)
         loss_mask = loss_mask.view(-1)
-        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
+        loss = torch.sum(losses.view(-1) * loss_mask)
+        if loss_mask.sum().item() > 0:
+            loss = loss / loss_mask.sum()
 
     return loss, mems, mode
 
@@ -282,13 +284,16 @@ def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, 
         summary_writer.add_scalar(f'Train/elapsed_time', elapsed_time, step)
 
 
-def report_evaluate_metrics(summary_writer, prefix, loss, ppl, gpt_loss, bert_loss, step):
+def report_evaluate_metrics(summary_writer, prefix, loss, ppl, gpt_loss, bert_loss, sent_loss, step):
     string = ' validation loss at {}'.format(prefix)
     string += ' | LM loss: {:.6E}'.format(loss)
     string += ' | LM PPL: {:.6E}'.format(ppl)
-    if gpt_loss != 0 and bert_loss != 0:
+    if gpt_loss != 0:
         string += ' | GPT loss: {:.6E}'.format(gpt_loss)
+    if bert_loss != 0:
         string += ' | BERT loss: {:.6E}'.format(bert_loss)
+    if sent_loss != 0:
+        string += ' | Sent loss: {:.6E}'.format(sent_loss)
     length = len(string) + 1
     print_rank_0('-' * 100)
     print_rank_0('-' * length)
@@ -301,6 +306,8 @@ def report_evaluate_metrics(summary_writer, prefix, loss, ppl, gpt_loss, bert_lo
             summary_writer.add_scalar(f'Train/valid_gpt_loss', gpt_loss, step)
         if bert_loss != 0:
             summary_writer.add_scalar(f'Train/valid_bert_loss', bert_loss, step)
+        if sent_loss != 0:
+            summary_writer.add_scalar(f'Train/valid_sent_loss', sent_loss, step)
 
 
 def train(model, optimizer, lr_scheduler,
@@ -370,8 +377,8 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
     # Turn on evaluation mode which disables dropout.
     model.eval()
 
-    total_lm_loss, total_gpt_loss, total_mask_loss = 0, 0, 0
-    gpt_iters, mask_iters = 0, 0
+    total_lm_loss, total_gpt_loss, total_bert_loss, total_sent_loss = 0, 0, 0, 0
+    gpt_iters, bert_iters, sent_iters = 0, 0, 0
     mems = []
     with torch.no_grad():
         iteration = 0
@@ -395,29 +402,34 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
                 total_gpt_loss += lm_loss
                 gpt_iters += 1
             elif mode == 'bert':
-                total_mask_loss += lm_loss
-                mask_iters += 1
+                total_bert_loss += lm_loss
+                bert_iters += 1
+            elif mode == 'sentence':
+                total_sent_loss += lm_loss
+                sent_iters += 1
 
     # Move model back to the train mode.
     model.train()
     # Reduce across processes.
-    loss_data = torch.cuda.FloatTensor([total_lm_loss, total_gpt_loss, total_mask_loss, gpt_iters, mask_iters])
-    torch.distributed.all_reduce(loss_data)
+    loss_data = torch.cuda.FloatTensor(
+        [total_lm_loss, total_gpt_loss, total_bert_loss, total_sent_loss, gpt_iters, bert_iters, sent_iters])
+    torch.distributed.all_reduce(loss_data, group=mpu.get_data_parallel_group())
     loss_data = loss_data.tolist()
-    total_lm_loss = loss_data[0] / args.eval_iters / args.world_size
-    total_gpt_loss = loss_data[1] / loss_data[3] if loss_data[3] > 0 else 0
-    total_mask_loss = loss_data[2] / loss_data[4] if loss_data[4] > 0 else 0
-    return total_lm_loss, total_gpt_loss, total_mask_loss
+    total_lm_loss = loss_data[0] / args.eval_iters / (args.world_size / args.model_parallel_size)
+    total_gpt_loss = loss_data[1] / loss_data[4] if loss_data[4] > 0 else 0
+    total_bert_loss = loss_data[2] / loss_data[5] if loss_data[5] > 0 else 0
+    total_sent_loss = loss_data[3] / loss_data[6] if loss_data[6] > 0 else 0
+    return total_lm_loss, total_gpt_loss, total_bert_loss, total_sent_loss
 
 
 def evaluate_and_print_results(prefix, data_iterator, model,
                                args, timers, forward_step_func, verbose=False, step=None, summary_writer=None):
     """Helper function to evaluate and dump results on screen."""
-    lm_loss, gpt_loss, bert_loss = evaluate(data_iterator, model, args, timers, verbose=verbose,
-                                            forward_step_func=forward_step_func)
+    lm_loss, gpt_loss, bert_loss, sent_loss = evaluate(data_iterator, model, args, timers, verbose=verbose,
+                                                       forward_step_func=forward_step_func)
 
     lm_ppl = math.exp(min(20, lm_loss))
-    report_evaluate_metrics(summary_writer, prefix, lm_loss, lm_ppl, gpt_loss, bert_loss, step)
+    report_evaluate_metrics(summary_writer, prefix, lm_loss, lm_ppl, gpt_loss, bert_loss, sent_loss, step)
 
     return lm_loss
 
@@ -524,7 +536,7 @@ def main():
     # Arguments.
     args = get_args()
     args.mem_length = args.mem_length if args.transformer_xl else 0
-    if args.load:
+    if args.load and not args.new_save_directory:
         args.experiment_name = os.path.basename(os.path.normpath(args.load))
     else:
         args.experiment_name = args.experiment_name + datetime.now().strftime("%m-%d-%H-%M")
@@ -545,8 +557,10 @@ def main():
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
 
     if args.load is not None:
-        with FileLock("./checkpoint_lock", timeout=-1):
-            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+        for i in range(8):
+            if i == args.local_rank:
+                args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+            torch.distributed.barrier()
     else:
         args.iteration = 0
     torch.distributed.barrier()

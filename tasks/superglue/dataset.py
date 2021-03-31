@@ -84,7 +84,8 @@ class GlueDataset(Dataset):
         if args.cloze_eval:
             pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id,
                                   is_multi_token=args.multi_token, max_segment_length=args.segment_length,
-                                  fast_decode=args.fast_decode, split=split, continuous_prompt=args.continuous_prompt)
+                                  fast_decode=args.fast_decode, split=split, continuous_prompt=args.continuous_prompt,
+                                  task_mask=args.task_mask)
             for example in examples:
                 sample = pvp.encode(example)
                 self.samples.append(sample)
@@ -476,7 +477,7 @@ class CopaProcessor(DataProcessor):
                                                            add_piece=False)
             if len(tokens_a) + len(tokens_b) + num_special_tokens > args.seq_length:
                 self.num_truncated += 1
-            data = build_input_from_ids(tokens_a, tokens_b, None, args.seq_length, tokenizer,
+            data = build_input_from_ids(tokens_a, tokens_b, None, args.seq_length, tokenizer, args,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if args.pretrained_bert:
@@ -651,7 +652,7 @@ class RecordProcessor(DataProcessor):
                                                       add_piece=False)
             if total_length > args.seq_length:
                 self.num_truncated += 1
-            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, args.seq_length, tokenizer,
+            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, args.seq_length, tokenizer, args,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if args.pretrained_bert:

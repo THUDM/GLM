@@ -14,7 +14,7 @@ gpt_options=" \
        --save /root/data/checkpoints \
        --train-iters 50000 \
        --resume-dataloader \
-       --train-data wikipedia \
+       --train-data wikibook \
        --lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
