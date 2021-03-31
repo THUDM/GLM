@@ -86,9 +86,11 @@ def prepare_tokenizer(args):
 
 
 def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
-    world_size = torch.distributed.get_world_size(
-        group=mpu.get_data_parallel_group())
+    world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
+    if args.loader_scatter is not None:
+        rank = rank // args.loader_scatter
+        world_size = world_size // args.loader_scatter
     distributed = world_size > 1
     if args.transformer_xl:
         batch_sampler = data_utils.samplers.DistributedSequentialSampler(len(dataset),
@@ -211,7 +213,8 @@ def make_loaders(args, tokenizer):
         'load_splits': args.load_splits,
         'save_test_data': args.save_test_data,
         'no_lazy_loader': args.no_lazy_loader,
-        'loader_scatter': args.loader_scatter
+        'loader_scatter': args.loader_scatter,
+        'data_parallel_rank': mpu.get_data_parallel_rank()
     }
 
     eval_set_args = copy.copy(data_set_args)
