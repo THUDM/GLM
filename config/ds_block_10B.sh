@@ -26,8 +26,8 @@ gpt_options=" \
        --train-iters 250000 \
        --resume-dataloader \
        --train-data pile cc-news \
-       --num-workers 4 \
-       --lazy-loader \
+       --no-lazy-loader \
+       --loader-scatter 32 \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
