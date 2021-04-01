@@ -165,6 +165,11 @@ class LazyLoader(object):
                     self.file = bytearray()
                 else:
                     self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
+        self.read_lock = Lock()
+        self.process_fn = map_fn
+        self.map_fn = map_fn
+        self._tokenizer = None
+        self.is_lazy = True
         if self.load_memory:
             self.contents = []
             for index in range(len(self.lens)):
@@ -176,11 +181,6 @@ class LazyLoader(object):
                 rtn = self.file_read(start, end)
                 self.contents.append(rtn)
             del self.file
-        self.read_lock = Lock()
-        self.process_fn = map_fn
-        self.map_fn = map_fn
-        self._tokenizer = None
-        self.is_lazy = True
 
     def SetTokenizer(self, tokenizer):
         """
