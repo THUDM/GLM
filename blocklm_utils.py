@@ -66,8 +66,10 @@ class ConstructBlockStrategy:
         self.gap_sentence_mask = self.tokenizer.get_command(self.gap_sentence_mask).Id
         self.random_position = random_position
         self.masked_lm = masked_lm
-        print_rank_0(f"BERT prob {self.bert_prob}, GPT prob {self.gpt_prob}, infill prob {self.infill_prob}")
-        print_rank_0(f"min generation length {self.min_generation_length}, block ratio {self.bert_ratio}")
+        print_rank_0(
+            f"BERT prob {self.bert_prob}, gap sent prob {self.gap_sentence_prob}, GPT prob {self.gpt_prob}, infill prob {self.infill_prob}")
+        print_rank_0(
+            f"min generation length {self.min_generation_length}, block ratio {self.bert_ratio}, gap sent ratio {self.gap_sentence_ratio}")
         print_rank_0(f"block length distribution {self.block_length_distribution}")
         print_rank_0(f"block mask prob {self.block_mask_prob}, context total mask {self.context_total_mask}")
 

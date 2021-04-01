@@ -120,6 +120,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
     if use_block:
         strategy = ConstructBlockStrategy(args, tokenizer, args.max_position_embeddings, bert_prob=args.bert_prob,
                                           gap_sentence_prob=args.gap_sentence_prob,
+                                          gap_sentence_ratio=args.gap_sentence_ratio,
                                           gpt_infill_prob=args.gpt_infill_prob,
                                           average_block_length=args.avg_block_length,
                                           gpt_min_ratio=args.gpt_min_ratio,
