@@ -154,7 +154,12 @@ class LazyLoader(object):
         self.dumb_ends = list(self.ends)
         self.mem_map = mem_map
         self.load_memory = load_memory
-        if self.mem_map:
+        if self.load_memory:
+            data_type_size = np.dtype(self.array_data_type).itemsize
+            self.file = self.file.read()
+            self.file = np.ndarray(shape=(len(self.file) // data_type_size,), dtype=array_data_type, buffer=self.file,
+                                   order='C')
+        elif self.mem_map:
             if is_array:
                 if self.ends[-1] == 0:
                     self.file = np.array([], dtype=array_data_type)
@@ -170,17 +175,6 @@ class LazyLoader(object):
         self.map_fn = map_fn
         self._tokenizer = None
         self.is_lazy = True
-        if self.load_memory:
-            self.contents = []
-            for index in range(len(self.lens)):
-                if index == 0:
-                    start = 0
-                else:
-                    start = self.ends[index - 1]
-                end = self.ends[index]
-                rtn = self.file_read(start, end)
-                self.contents.append(rtn)
-            del self.file
 
     def SetTokenizer(self, tokenizer):
         """
@@ -202,32 +196,26 @@ class LazyLoader(object):
         read file and splice strings based on string ending array `self.ends`
         """
         if not isinstance(index, slice):
-            if self.load_memory:
-                rtn = self.contents[index]
+            if index == 0:
+                start = 0
             else:
-                if index == 0:
-                    start = 0
-                else:
-                    start = self.ends[index - 1]
-                end = self.ends[index]
-                rtn = self.file_read(start, end)
+                start = self.ends[index - 1]
+            end = self.ends[index]
+            rtn = self.file_read(start, end)
             if self.map_fn is not None:
-                return self.map_fn(rtn)
+                rtn = self.map_fn(rtn)
         else:
             # if slice, fetch strings with 1 diskread and then splice in memory
-            if self.load_memory:
-                rtn = self.contents[index]
+            chr_lens = self.ends[index]
+            if index.start == 0 or index.start is None:
+                start = 0
             else:
-                chr_lens = self.ends[index]
-                if index.start == 0 or index.start is None:
-                    start = 0
-                else:
-                    start = self.ends[index.start - 1]
-                stop = chr_lens[-1]
-                strings = self.file_read(start, stop)
-                rtn = split_strings(strings, start, chr_lens)
+                start = self.ends[index.start - 1]
+            stop = chr_lens[-1]
+            strings = self.file_read(start, stop)
+            rtn = split_strings(strings, start, chr_lens)
             if self.map_fn is not None:
-                return self.map_fn([s for s in rtn])
+                rtn = [self.map_fn(s) for s in rtn]
         return rtn
 
     def __len__(self):
@@ -238,7 +226,7 @@ class LazyLoader(object):
         data_type_size = np.dtype(self.array_data_type).itemsize
         # atomic reads to avoid race conditions with multiprocess dataloader
         self.read_lock.acquire()
-        if not self.mem_map:
+        if not self.mem_map and not self.load_memory:
             # seek to start of file read
             if self.is_array:
                 start = start * data_type_size
@@ -251,7 +239,7 @@ class LazyLoader(object):
             else:
                 rtn = self.file.read(end - start)
             if self.is_array:
-                rtn = np.ndarray(shape=(len(rtn) / data_type_size,), dtype=self.array_data_type, buffer=rtn, order='C')
+                rtn = np.ndarray(shape=(len(rtn) // data_type_size,), dtype=self.array_data_type, buffer=rtn, order='C')
             else:
                 rtn = rtn.decode('utf-8', 'ignore')
         else:

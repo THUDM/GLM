@@ -91,6 +91,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
     if args.loader_scatter is not None:
         rank = rank // args.loader_scatter
         world_size = world_size // args.loader_scatter
+        batch_size = batch_size // args.loader_scatter
     distributed = world_size > 1
     if args.transformer_xl:
         batch_sampler = data_utils.samplers.DistributedSequentialSampler(len(dataset),
@@ -181,8 +182,8 @@ def make_loaders(args, tokenizer):
 
     if args.use_tfrecords:
         return make_tfrecord_loaders(args)
-    world_size = torch.distributed.get_world_size(
-        group=mpu.get_data_parallel_group())
+    world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
+    assert world_size % args.loader_scatter == 0
     batch_size = args.batch_size * world_size
     eval_batch_size = batch_size
     if args.eval_batch_size is not None:
