@@ -43,8 +43,10 @@ from fp16 import FP16_Module
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
     new_batch = {'text': batch['text'].long().cuda().contiguous(), 'label': batch['label'].long().cuda().contiguous()}
-    if "types" in batch:
-        new_batch["types"] = batch['types'].long().cuda().contiguous()
+    for key in ['text', 'label', 'types', 'target', 'logit_mask', 'position', 'segment_id', 'prompt_pos',
+                'dec_text', 'dec_position', 'dec_mask', 'dec_target', 'dec_logit_mask']:
+        if key in batch:
+            new_batch[key] = batch[key].long().cuda().contiguous()
     if "padding_mask" in batch:
         attention_mask = batch['padding_mask'].float().cuda().contiguous()
         if args.fp16:
@@ -53,28 +55,11 @@ def process_batch(batch, args):
     elif "mask" in batch:
         attention_mask = batch['mask'].long().cuda().contiguous()
         new_batch["attention_mask"] = attention_mask
-    if "target" in batch:
-        new_batch["target"] = batch['target'].long().cuda().contiguous()
-    if "logit_mask" in batch:
-        new_batch["logit_mask"] = batch['logit_mask'].long().cuda().contiguous()
-    if "position" in batch:
-        new_batch["position"] = batch['position'].long().cuda().contiguous()
     if "loss_mask" in batch:
         new_batch["loss_mask"] = batch["loss_mask"].float().cuda().contiguous()
         if args.fp16:
             new_batch['loss_mask'] = new_batch['loss_mask'].half()
-    if "segment_id" in batch:
-        new_batch["segment_id"] = batch["segment_id"].long().cuda().contiguous()
-    if "prompt_pos" in batch:
-        new_batch["prompt_pos"] = batch["prompt_pos"].long().cuda().contiguous()
     return new_batch
-    # if args.fp16:
-    #     attention_mask = attention_mask.half()
-    # position_ids = torch.arange(tokens.size(-1), dtype=torch.long, device=tokens.device)
-    # block_position_ids = tokens.new_zeros(tokens.size(-1)).unsqueeze(0).unsqueeze(0).expand_as(tokens)
-    # position_ids = position_ids.unsqueeze(0).unsqueeze(0).expand_as(tokens)
-    # position_ids = torch.stack((position_ids, block_position_ids), dim=2)
-
 
 tokenizer = None
 
@@ -97,7 +82,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
         logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
     elif args.cloze_eval:
         tokens, labels, position_ids = data['text'], data['label'], data['position']
-        attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
+        attention_mask = data['attention_mask']
 
         def print_masked_text(batch_id):
             output_tokens = []
@@ -116,11 +101,12 @@ def finetune_forward_step(batch, model, args, timers, mems):
             print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
             print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
+
         if not args.fast_decode:
+            target_ids, logit_mask = data['target'], data['logit_mask']
             if args.continuous_prompt:
                 prompt_pos = data["prompt_pos"]
-                result = model(tokens, position_ids, attention_mask, target_ids, logit_mask,
-                                      prompt_pos=prompt_pos)
+                result = model(tokens, position_ids, attention_mask, target_ids, logit_mask, prompt_pos=prompt_pos)
             else:
                 result = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
             if not args.multi_token:
