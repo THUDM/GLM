@@ -16,68 +16,53 @@ from utils import print_rank_0
 def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
     """Build the model."""
     print_rank_0('building GPT2 model ...')
-    if args.pretrained_bert:
-        if model_type == "multiple_choice":
-            model = BertForMultipleChoice.from_pretrained(args.tokenizer_model_type,
-                                                          cache_dir=args.cache_dir,
-                                                          fp32_layernorm=args.fp32_layernorm,
-                                                          fp32_embedding=args.fp32_embedding,
-                                                          layernorm_epsilon=args.layernorm_epsilon)
-        elif model_type == "classification":
-            model = BertForSequenceClassification.from_pretrained(args.tokenizer_model_type,
-                                                                  cache_dir=args.cache_dir,
-                                                                  fp32_layernorm=args.fp32_layernorm,
-                                                                  fp32_embedding=args.fp32_embedding,
-                                                                  layernorm_epsilon=args.layernorm_epsilon,
-                                                                  num_labels=num_labels)
-        else:
-            raise NotImplementedError
-    else:
-        output_predict, paralle_output = True, True
-        if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
-            output_predict = False
-        if model_type is not None:
-            paralle_output = False
-        if spell_length is not None:
-            print_rank_0(f"Continuous spell length {spell_length}")
-        model = GPT2Model(num_layers=args.num_layers,
-                          vocab_size=args.vocab_size,
-                          hidden_size=args.hidden_size,
-                          num_attention_heads=args.num_attention_heads,
-                          embedding_dropout_prob=args.hidden_dropout,
-                          attention_dropout_prob=args.attention_dropout,
-                          output_dropout_prob=args.hidden_dropout,
-                          max_sequence_length=args.max_position_embeddings,
-                          max_memory_length=args.mem_length,
-                          checkpoint_activations=args.checkpoint_activations,
-                          checkpoint_num_layers=args.checkpoint_num_layers,
-                          parallel_output=paralle_output,
-                          relative_encoding=args.transformer_xl,
-                          block_position_encoding=args.block_lm and not args.masked_lm,
-                          output_predict=output_predict,
-                          spell_length=spell_length,
-                          nonautoregressive=args.nonautoregressive)
-        if model_type is not None:
-            if model_type == 'multiple_choice':
-                if args.cloze_eval:
-                    if multi_token:
-                        if args.fast_decode:
-                            model = FastClozeModel(model, length_penalty=args.length_penalty)
-                        else:
-                            model = ClozeModel(model, length_penalty=args.length_penalty)
+
+    output_predict, paralle_output = True, True
+    if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
+        output_predict = False
+    if model_type is not None:
+        paralle_output = False
+    if spell_length is not None:
+        print_rank_0(f"Continuous spell length {spell_length}")
+
+    model = GPT2Model(num_layers=args.num_layers,
+                      vocab_size=args.vocab_size,
+                      hidden_size=args.hidden_size,
+                      num_attention_heads=args.num_attention_heads,
+                      embedding_dropout_prob=args.hidden_dropout,
+                      attention_dropout_prob=args.attention_dropout,
+                      output_dropout_prob=args.hidden_dropout,
+                      max_sequence_length=args.max_position_embeddings,
+                      max_memory_length=args.mem_length,
+                      checkpoint_activations=args.checkpoint_activations,
+                      checkpoint_num_layers=args.checkpoint_num_layers,
+                      parallel_output=paralle_output,
+                      relative_encoding=args.transformer_xl,
+                      block_position_encoding=args.block_lm and not args.masked_lm,
+                      output_predict=output_predict,
+                      spell_length=spell_length,
+                      nonautoregressive=args.nonautoregressive)
+    if model_type is not None:
+        if model_type == 'multiple_choice':
+            if args.cloze_eval:
+                if multi_token:
+                    if args.fast_decode:
+                        model = FastClozeModel(model, length_penalty=args.length_penalty)
                     else:
-                        model = VerbalizerModel(model, hidden_size=args.hidden_size, vocab_size=args.vocab_size,
-                                                num_class=num_labels)
+                        model = ClozeModel(model, length_penalty=args.length_penalty)
                 else:
-                    model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
-                                         num_class=num_labels)
-            elif model_type == 'classification':
+                    model = VerbalizerModel(model, hidden_size=args.hidden_size, vocab_size=args.vocab_size,
+                                            num_class=num_labels)
+            else:
                 model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
                                      num_class=num_labels)
-            elif model_type == 'generation':
-                pass
-            else:
-                raise NotImplementedError(model_type)
+        elif model_type == 'classification':
+            model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                 num_class=num_labels)
+        elif model_type == 'generation':
+            pass
+        else:
+            raise NotImplementedError(model_type)
 
     if mpu.get_data_parallel_rank() == 0:
         print(' > number of parameters on model parallel rank {}: {}'.format(

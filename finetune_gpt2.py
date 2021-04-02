@@ -92,10 +92,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
     timers('batch generator').stop()
 
     # Forward model.
-    if args.pretrained_bert:
-        tokens, types, labels, attention_mask = data['text'], data['types'], data['label'], data['attention_mask']
-        logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
-    elif args.cloze_eval:
+    if args.cloze_eval:
         tokens, labels, position_ids = data['text'], data['label'], data['position']
         attention_mask, target_ids, logit_mask = data['attention_mask'], data['target'], data['logit_mask']
 
@@ -116,17 +113,10 @@ def finetune_forward_step(batch, model, args, timers, mems):
             print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
             print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
+
         if not args.fast_decode:
-            if args.continuous_prompt:
-                prompt_pos = data["prompt_pos"]
-                result = model(tokens, position_ids, attention_mask, target_ids, logit_mask,
-                                      prompt_pos=prompt_pos)
-            else:
-                result = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
-            if not args.multi_token:
-                logits, lm_logits, *mems = result
-            else:
-                logits, *mems = result
+            result = model(tokens, position_ids, attention_mask, target_ids, logit_mask)
+            logits, *mems = result
         else:
             dec_input_ids, dec_position_ids, dec_attention_mask = data['dec_text'], data['dec_position'], data[
                 'dec_mask']
@@ -138,12 +128,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
             'attention_mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
 
-    if "segment_id" in data:
-        from torch_scatter import scatter_sum
-        if "loss_mask" in data:
-            logits = logits * data["loss_mask"]
-        logits = scatter_sum(logits, data["segment_id"], dim=1)
-    elif "loss_mask" in data:
+    if "loss_mask" in data:
         loss_mask = data["loss_mask"]
         logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
     if args.loss_func == "cross_entropy":
