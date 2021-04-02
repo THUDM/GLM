@@ -1,7 +1,9 @@
-source config_tasks/model_blocklm_large_generation.sh
-source $1
-CHECKPOINT_PATH="/root/data/checkpoints"
+DATA_ROOT=/root/data/gigaword
+CHECKPOINT_PATH=/root/data/checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
+
+source $1    # Model
+source $2    # Task
 
 export NCCL_DEBUG=info
 export NCCL_IB_DISABLE=0

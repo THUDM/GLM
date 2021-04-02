@@ -841,12 +841,12 @@ class GPT2ParallelTransformer(torch.nn.Module):
         if not return_memory:
             new_memory_length = min(self.max_memory_length, new_memory_length)
         new_mems = []
-        with torch.no_grad():
-            for i in range(len(hiddens)):
-                if new_memory_length <= query_length:
-                    new_mems.append(hiddens[i][:, -new_memory_length:])
-                else:
-                    new_mems.append(torch.cat((mems[i][:, -new_memory_length + query_length:], hiddens[i]), dim=1))
+        # with torch.no_grad():
+        for i in range(len(hiddens)):
+            if new_memory_length <= query_length:
+                new_mems.append(hiddens[i][:, -new_memory_length:])
+            else:
+                new_mems.append(torch.cat((mems[i][:, -new_memory_length + query_length:], hiddens[i]), dim=1))
         return new_mems
 
 
