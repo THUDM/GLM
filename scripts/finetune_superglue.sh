@@ -1,5 +1,6 @@
 DATA_ROOT=/root/data/superglue
 CHECKPOINT_PATH=/root/data/checkpoints
+SAVE_PATH=/root/data/finetune_checkpoints
 
 source $1    # Model
 source $2    # Task
@@ -9,12 +10,13 @@ DISTRIBUTED_ARGS="--nproc_per_node 2 --nnodes 1 --node_rank 0 --master_addr loca
 DATESTR=$(date +"%m-%d-%H-%M")
 
 mkdir logs
-python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
+python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        --finetune \
+       --cloze-eval \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
+       --save ${SAVE_PATH} \
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
        --batch-size 8 \

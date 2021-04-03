@@ -1,6 +1,5 @@
 MODEL_TYPE="generation-base"
 MODEL_ARGS="--block-lm \
-            --cloze-eval \
             --num-layers 12 \
             --hidden-size 768 \
             --num-attention-heads 12 \

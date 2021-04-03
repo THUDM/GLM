@@ -21,7 +21,7 @@ do
     do
     HYPER=${lr}-b${bs}-ep${epoch}-wm${warmup}-wd${wd}-${seed}
     PER_GPU_BS=$((bs/N_GPU))
-    python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
+    python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        --finetune \
        --experiment-name ${EXPERIMENT_NAME}/${HYPER} \
        --task ${TASK_NAME} \

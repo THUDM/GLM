@@ -22,7 +22,7 @@ import torch
 
 from utils import print_rank_0
 from tasks.data_utils import build_data_loader
-from finetune_gpt2 import process_batch
+from finetune_glm import process_batch
 from collections import OrderedDict
 from typing import List
 from tasks.data_utils import InputExample

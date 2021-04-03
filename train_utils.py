@@ -6,59 +6,50 @@ from torch import distributed as dist
 import mpu
 from fp16 import FP16_Module, FP16_Optimizer
 from learning_rates import AnnealingLR
-from model import VerbalizerModel, ClozeModel, FastClozeModel, PoolingModel, GPT2Model, \
-    PyTorchDistributedDataParallel as TorchDDP, \
-    DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
-from model.modeling import BertForMultipleChoice, BertForSequenceClassification
+from model import GLMModel, glm_get_params_for_weight_decay_optimization
+from model import GLMForMultiTokenCloze, GLMForMultiTokenClozeFast, GLMForSingleTokenCloze, GLMForSequenceClassification
+from model import PyTorchDistributedDataParallel as TorchDDP, DistributedDataParallel as LocalDDP
 from utils import print_rank_0
 
 
-def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
+def get_model(args, model_type=None, multi_token=True, num_labels=None):
     """Build the model."""
-    print_rank_0('building GPT2 model ...')
+    print_rank_0('building GLM model ...')
 
-    output_predict, paralle_output = True, True
+    output_predict, parallel_output = True, True
     if (model_type == "multiple_choice" or model_type == "classification") and not args.cloze_eval:
         output_predict = False
     if model_type is not None:
-        paralle_output = False
-    if spell_length is not None:
-        print_rank_0(f"Continuous spell length {spell_length}")
+        parallel_output = False
 
-    model = GPT2Model(num_layers=args.num_layers,
-                      vocab_size=args.vocab_size,
-                      hidden_size=args.hidden_size,
-                      num_attention_heads=args.num_attention_heads,
-                      embedding_dropout_prob=args.hidden_dropout,
-                      attention_dropout_prob=args.attention_dropout,
-                      output_dropout_prob=args.hidden_dropout,
-                      max_sequence_length=args.max_position_embeddings,
-                      max_memory_length=args.mem_length,
-                      checkpoint_activations=args.checkpoint_activations,
-                      checkpoint_num_layers=args.checkpoint_num_layers,
-                      parallel_output=paralle_output,
-                      relative_encoding=args.transformer_xl,
-                      block_position_encoding=args.block_lm and not args.masked_lm,
-                      output_predict=output_predict,
-                      spell_length=spell_length,
-                      nonautoregressive=args.nonautoregressive)
+    model = GLMModel(num_layers=args.num_layers,
+                     vocab_size=args.vocab_size,
+                     hidden_size=args.hidden_size,
+                     num_attention_heads=args.num_attention_heads,
+                     embedding_dropout_prob=args.hidden_dropout,
+                     attention_dropout_prob=args.attention_dropout,
+                     output_dropout_prob=args.hidden_dropout,
+                     max_sequence_length=args.max_position_embeddings,
+                     max_memory_length=args.mem_length,
+                     checkpoint_activations=args.checkpoint_activations,
+                     checkpoint_num_layers=args.checkpoint_num_layers,
+                     parallel_output=parallel_output,
+                     relative_encoding=args.transformer_xl,
+                     block_position_encoding=args.block_lm and not args.masked_lm,
+                     output_predict=output_predict)
+
     if model_type is not None:
-        if model_type == 'multiple_choice':
-            if args.cloze_eval:
-                if multi_token:
-                    if args.fast_decode:
-                        model = FastClozeModel(model, length_penalty=args.length_penalty)
-                    else:
-                        model = ClozeModel(model, length_penalty=args.length_penalty)
+        if model_type == 'cloze':
+            if multi_token:
+                if args.fast_decode:
+                    model = GLMForMultiTokenClozeFast(model, length_penalty=args.length_penalty)
                 else:
-                    model = VerbalizerModel(model, hidden_size=args.hidden_size, vocab_size=args.vocab_size,
-                                            num_class=num_labels)
+                    model = GLMForMultiTokenCloze(model, length_penalty=args.length_penalty)
             else:
-                model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
-                                     num_class=num_labels)
+                model = GLMForSingleTokenCloze(model)
         elif model_type == 'classification':
-            model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
-                                 num_class=num_labels)
+            model = GLMForSequenceClassification(model, args.hidden_size, args.output_dropout, args.pool_token,
+                                                 num_class=num_labels)
         elif model_type == 'generation':
             pass
         else:
@@ -96,7 +87,7 @@ def get_optimizer_param_groups(model):
     # Build parameter groups (weight decay and non-decay).
     while isinstance(model, (LocalDDP, TorchDDP, FP16_Module)):
         model = model.module
-    param_groups = gpt2_get_params_for_weight_decay_optimization(model)
+    param_groups = glm_get_params_for_weight_decay_optimization(model)
 
     # Add model parallel attribute if it is not set.
     for param_group in param_groups:
@@ -174,11 +165,10 @@ def get_learning_rate_scheduler(optimizer, args):
     return lr_scheduler
 
 
-def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
+def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_labels=None):
     """Setup model and optimizer."""
 
-    model = get_model(args, model_type=model_type, multi_token=multi_token, num_labels=num_labels,
-                      spell_length=spell_length)
+    model = get_model(args, model_type=model_type, multi_token=multi_token, num_labels=num_labels)
     param_groups = get_optimizer_param_groups(model)
 
     if args.train_data is not None or args.data_dir is not None:

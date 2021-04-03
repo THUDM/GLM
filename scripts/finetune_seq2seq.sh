@@ -18,7 +18,7 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 HOST_FILE_PATH="/root/code/config/hostfile"
 
 mkdir logs
-deepspeed --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} finetune_gpt2.py \
+deepspeed --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} finetune_glm.py \
        --finetune \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \

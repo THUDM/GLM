@@ -3,23 +3,8 @@ import json
 
 from tasks.data_utils import build_data_loader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
-from model import GPT2Model, VerbalizerModel
+from model import GLMModel
 from arguments import get_args
-
-# coding=utf-8
-# Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """Finetune utilities."""
 
@@ -31,10 +16,10 @@ from utils import print_rank_0
 from utils import Timers
 from train_utils import setup_model_and_optimizer, train_step
 from utils import load_checkpoint, save_checkpoint
-from pretrain_gpt2 import report_iteration_metrics
-from pretrain_gpt2 import evaluate_and_print_results
-from pretrain_gpt2 import initialize_distributed
-from pretrain_gpt2 import set_random_seed
+from pretrain_glm import report_iteration_metrics
+from pretrain_glm import evaluate_and_print_results
+from pretrain_glm import initialize_distributed
+from pretrain_glm import set_random_seed
 from model import PyTorchDistributedDataParallel as TorchDDP
 from model import DistributedDataParallel as LocalDDP
 from fp16 import FP16_Module
@@ -231,8 +216,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     return best_iteration
 
 
-def finetune(args, train_valid_datasets_provider, model_kwargs,
-             forward_step=finetune_forward_step,
+def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=finetune_forward_step,
              end_of_epoch_callback_provider=None):
     """Main finetune function used across all tasks."""
     global tokenizer
@@ -272,7 +256,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             module = module.module
         if isinstance(module, FP16_Module):
             module = module.module
-        if not isinstance(module, GPT2Model):
+        if not isinstance(module, GLMModel):
             module = module.model
         args.load = args.load_pretrained
         load_checkpoint(module, optimizer, lr_scheduler, args)

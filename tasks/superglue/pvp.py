@@ -34,16 +34,20 @@ class PVP(ABC):
     custom implementation of a PVP.
     """
 
-    def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train',
-                 continuous_prompt=False, task_mask=False):
+    def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id=0, seed=42, is_multi_token=False,
+                 fast_decode=False, continuous_prompt=False):
         """
         Create a new PVP.
 
-        :param wrapper: the wrapper for the underlying language model
+        :param args: the args
+        :param tokenizer: the tokenizer
+        :param label_list: the list of labels
+        :param max_seq_length: the maximum length of the sequence
         :param pattern_id: the pattern id to use
-        :param verbalizer_file: an optional file that contains the verbalizer to be used
         :param seed: a seed to be used for generating random numbers if necessary
+        :param is_multi_token: if the verbalizers contain multiple tokens
+        :param fast_decode: whether to use the fast decode mode for multi-token tasks
+        :param continuous_prompt: whether to use continuous prompt optimization
         """
         self.args = args
         self.tokenizer = tokenizer
@@ -53,15 +57,9 @@ class PVP(ABC):
         self.rng = random.Random(seed)
         self.num_truncated = 0
         self.fast_decode = fast_decode
-        self.split = split
         self.max_dec_seq_length = 16
         self._is_multi_token = is_multi_token
-        self.max_segment_length = max_segment_length
         self.continuous_prompt = continuous_prompt
-        self.task_mask = task_mask
-
-        if verbalizer_file:
-            self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
 
     @property
     def is_multi_token(self):
@@ -157,7 +155,6 @@ class PVP(ABC):
 
             if not self.fast_decode:
                 ids_list, positions_list, sep_list, mask_list, target_list, prompt_list = [], [], [], [], [], []
-                segment_id_list = []
                 for idx, answer in enumerate(answers):
                     this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                     answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
@@ -166,42 +163,27 @@ class PVP(ABC):
                                                         max_length=self.max_seq_length)
                     tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                     tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
-                    if self.max_segment_length > 0:
-                        num_segments = (len(answer_ids) - 1) // self.max_segment_length + 1
-                        segments = [answer_ids[index * self.max_segment_length: (index + 1) * self.max_segment_length]
-                                    for
-                                    index in range(num_segments)]
-                        segment_id_list += [idx] * len(segments)
-                    else:
-                        segments = [answer_ids]
-                    for segment in segments:
-                        data = build_input_from_ids(tokens_a, tokens_b, segment, self.max_seq_length, self.tokenizer,
-                                                    args=self.args, add_cls=True, add_sep=False, add_piece=True,
-                                                    mask_id=self.mask_id)
-                        ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-                        prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
-                        ids = [idx if idx != prompt_id else 0 for idx in ids]
-                        prompt_list.append(prompt_pos)
-                        ids_list.append(ids)
-                        positions_list.append(position_ids)
-                        sep_list.append(sep)
-                        target_list.append(target_ids)
-                        mask_list.append(loss_masks)
-                        if self.mask in tokens_a:
-                            mask_pos = tokens_a.index(self.mask)
-                            tokens_a = tokens_a[:mask_pos] + segment + tokens_a[mask_pos:]
-                        else:
-                            mask_pos = tokens_b.index(self.mask)
-                            tokens_b = tokens_b[:mask_pos] + segment + tokens_b[mask_pos:]
+                    data = build_input_from_ids(tokens_a, tokens_b, answer_ids, self.max_seq_length, self.tokenizer,
+                                                args=self.args, add_cls=True, add_sep=False, add_piece=True,
+                                                mask_id=self.mask_id)
+                    ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+                    prompt_pos = [idx for idx, token in enumerate(ids) if token == prompt_id]
+                    ids = [idx if idx != prompt_id else 0 for idx in ids]
+                    prompt_list.append(prompt_pos)
+                    ids_list.append(ids)
+                    positions_list.append(position_ids)
+                    sep_list.append(sep)
+                    target_list.append(target_ids)
+                    mask_list.append(loss_masks)
                 if example.label is not None:
                     label = self.label_list.index(example.label)
                 else:
                     label = 0
-                segment_id_list = segment_id_list if segment_id_list else None
                 sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
-                                      logit_mask=mask_list, target=target_list,
-                                      unique_id=example.guid, segment_ids=segment_id_list, prompt_ids=prompt_list)
+                                      logit_mask=mask_list, target=target_list, unique_id=example.guid,
+                                      prompt_ids=prompt_list)
                 return sample
+
             else:
                 this_parts_a, this_parts_b = copy.deepcopy(parts_a), copy.deepcopy(parts_b)
                 self.num_truncated += self.truncate(this_parts_a, this_parts_b, None, max_length=self.max_seq_length)
@@ -361,18 +343,6 @@ class CopaPVP(PVP):
     def spell_length(self):
         return self.pattern_id
 
-    @property
-    def mask(self) -> str:
-        """Return the underlying LM's mask token"""
-        mask_token = 'MASK'
-        return self.tokenizer.get_command(mask_token).Id
-
-    @property
-    def mask_id(self) -> int:
-        """Return the underlying LM's mask id"""
-        mask_token = 'MASK'
-        return self.tokenizer.get_command(mask_token).Id
-
     def get_answers(self, example: InputExample):
         choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
         choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
@@ -514,10 +484,8 @@ class WscPVP(PVP):
         :param labeled: if ``priming=True``, whether the label should be appended to this example
         :return: A tuple, consisting of a list of input ids and a list of token type ids
         """
-        if self.args.loss_func in ['generative', 'mix']:
+        if self.args.wsc_negative:
             sample = super().encode(example, priming=priming, labeled=labeled)
-            if self.split == 'train':
-                sample['label'] = 0
             return sample
 
         if not priming:
@@ -571,28 +539,6 @@ class WscPVP(PVP):
 
     def verbalize(self, label) -> List[str]:
         return []
-
-
-class Wsc1PVP(PVP):
-    VERBALIZER = {
-        "False": [" No"],
-        "True": [" Yes"]
-    }
-
-    def get_parts(self, example: InputExample) -> FilledPattern:
-        pronoun = example.meta['span2_text']
-        pronoun_idx = example.meta['span2_index']
-
-        words_a = example.text_a.split()
-        words_a[pronoun_idx] = '*' + words_a[pronoun_idx] + '*'
-        text_a = ' '.join(words_a)
-        text_a = self.shortenable(text_a)
-        text_b = ' ' + example.text_b
-
-        return [text_a, " The pronoun '*" + pronoun + "*' refers to", text_b, '?', self.mask, '.'], []
-
-    def verbalize(self, label) -> List[str]:
-        return Wsc1PVP.VERBALIZER[label]
 
 
 class RecordPVP(PVP):
@@ -1013,7 +959,6 @@ PVPS = {
     'wic': WicPVP,
     'cb': CbPVP,
     'wsc': WscPVP,
-    'wsc1': Wsc1PVP,
     'boolq': BoolQPVP,
     'copa': CopaPVP,
     'multirc': MultiRcPVP,

@@ -35,7 +35,7 @@ COMMON_TASK_ARGS_EXT="--train-data $TRAIN_DATA \
                       --weight-decay 1.0e-1"
 
 mkdir logs
-#MASTER_PORT=${MASTER_PORT} python finetune_gpt2.py \
+#MASTER_PORT=${MASTER_PORT} python finetune_glm.py \
 python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --experiment-name ${EXPERIMENT_NAME} \
        --task RACE \

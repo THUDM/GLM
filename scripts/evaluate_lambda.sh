@@ -7,7 +7,7 @@ DATESTR=$(date +"%m-%d-%H-%M")
 source config_tasks/model_gpt_large.sh
 source $1
 
-python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
+python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        --finetune \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \

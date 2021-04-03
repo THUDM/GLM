@@ -21,9 +21,9 @@ import torch.nn.functional as F
 import time
 from arguments import get_args
 from utils import Timers
-from pretrain_gpt2 import initialize_distributed
-from pretrain_gpt2 import set_random_seed
-from pretrain_gpt2 import get_masks_and_position_ids
+from pretrain_glm import initialize_distributed
+from pretrain_glm import set_random_seed
+from pretrain_glm import get_masks_and_position_ids
 from utils import load_checkpoint, get_checkpoint_iteration
 from data_utils import make_tokenizer
 import mpu
