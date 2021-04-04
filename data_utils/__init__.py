@@ -52,48 +52,49 @@ def get_dataset(name, tokenizer, pre_tokenize, local_rank):
     if supported_corpus(name):
         dataset = corpora.NAMED_CORPORA[name]
         path = dataset.PATH
-        if issubclass(dataset, corpora.PromptReader):
-            if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
-                # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
-                    prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
-                    text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
-                    writers = {'prompt': prompt_writer, 'text': text_writer}
-                    dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
-                    prompt_writer.close()
-                    text_writer.close()
-                else:
-                    while not os.path.exists(LazyWriter.get_len_path(path, data_type='prompt')):
-                        time.sleep(1)
-            map_fn = (lambda x: x.tolist()) if pre_tokenize else None
-            prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                                 is_array=pre_tokenize)
-            texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
-                               is_array=pre_tokenize)
-            text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
-                                         to_tokenize=not pre_tokenize)
-            return text
-        elif issubclass(dataset, corpora.KeyReader):
-            if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
-                # create cached version of dataset for lazy loading if it doesn't exist
-                if local_rank == 0:
-                    text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
-                    mask_writer = LazyWriter(path, data_type='mask', is_array=True)
-                    writers = {'mask': mask_writer, 'text': text_writer}
-                    dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
-                    mask_writer.close()
-                    text_writer.close()
-                else:
-                    while not os.path.exists(LazyWriter.get_len_path(path, data_type='mask')):
-                        time.sleep(1)
-            map_fn = (lambda x: x.tolist()) if pre_tokenize else None
-            masks = LazyLoader(path, data_type='mask', map_fn=map_fn, mem_map=True, is_array=True)
-            texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True, is_array=pre_tokenize)
-            text = corpora.KeyDataset(mask_loader=masks, text_loader=texts, tokenizer=tokenizer,
-                                      to_tokenize=not pre_tokenize)
-            return text
     else:
-        raise NotImplementedError('dataset %s is not supported' % name)
+        dataset = corpora.get_finetune_dataset(name)
+        path = dataset.PATH
+    if issubclass(dataset, corpora.PromptReader):
+        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+            # create cached version of dataset for lazy loading if it doesn't exist
+            if local_rank == 0:
+                prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
+                text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
+                writers = {'prompt': prompt_writer, 'text': text_writer}
+                dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                prompt_writer.close()
+                text_writer.close()
+            else:
+                while not os.path.exists(LazyWriter.get_len_path(path, data_type='prompt')):
+                    time.sleep(1)
+        map_fn = (lambda x: x.tolist()) if pre_tokenize else None
+        prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                             is_array=pre_tokenize)
+        texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
+                           is_array=pre_tokenize)
+        text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
+                                     to_tokenize=not pre_tokenize)
+        return text
+    elif issubclass(dataset, corpora.KeyReader):
+        if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
+            # create cached version of dataset for lazy loading if it doesn't exist
+            if local_rank == 0:
+                text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
+                mask_writer = LazyWriter(path, data_type='mask', is_array=True)
+                writers = {'mask': mask_writer, 'text': text_writer}
+                dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                mask_writer.close()
+                text_writer.close()
+            else:
+                while not os.path.exists(LazyWriter.get_len_path(path, data_type='mask')):
+                    time.sleep(1)
+        map_fn = (lambda x: x.tolist()) if pre_tokenize else None
+        masks = LazyLoader(path, data_type='mask', map_fn=map_fn, mem_map=True, is_array=True)
+        texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True, is_array=pre_tokenize)
+        text = corpora.KeyDataset(mask_loader=masks, text_loader=texts, tokenizer=tokenizer,
+                                  to_tokenize=not pre_tokenize)
+        return text
 
 
 def supported_corpus(corpus_name):

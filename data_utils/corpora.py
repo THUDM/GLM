@@ -331,6 +331,7 @@ class wikipedia(PromptReader):
         prompt, text = cls.process_sample("", tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
         return [prompt], [text]
 
+
 class TestDataset(PromptReader):
     PATH = '/root/data/test.json'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
@@ -340,6 +341,21 @@ class TestDataset(PromptReader):
         prompt, text = data['prompt'], data['text']
         prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer, tokenize)
         return [prompt], [text]
+
+
+def get_finetune_dataset(path):
+    class FinetuneDataset(PromptReader):
+        PATH = path
+        assert_str = f"File not exists at {PATH}"
+
+        @classmethod
+        def process_line(cls, data, tokenizer, tokenize):
+            prompt, text = data['prompt'], data['text']
+            prompt, text = cls.process_sample(prompt, tokenizer, tokenize), cls.process_sample(text, tokenizer,
+                                                                                               tokenize)
+            return [prompt], [text]
+
+    return FinetuneDataset
 
 
 NAMED_CORPORA = {
