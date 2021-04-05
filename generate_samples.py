@@ -220,13 +220,14 @@ def read_context(tokenizer, args, output):
             if raw_text == "stop":
                 terminate_runs = 1
                 break
-            if args.block_lm and '[MASK]' not in raw_text:
-                raw_text += ' [MASK]'
+            generation_mask = '[gMASK]' if args.task_mask else '[MASK]'
+            if args.block_lm and 'MASK]' not in raw_text:
+                raw_text += ' ' + generation_mask
             output.write(raw_text)
             context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
             if args.block_lm:
                 context_tokens = [tokenizer.get_command('ENC').Id] + context_tokens
-                if not raw_text.endswith('[MASK]'):
+                if not raw_text.endswith('MASK]'):
                     context_tokens = context_tokens + [tokenizer.get_command('eos').Id]
             context_length = len(context_tokens)
 
@@ -277,9 +278,13 @@ def generate_samples(model, tokenizer, args, device):
             if args.block_lm:
                 mems = []
                 tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
-                mask_token = tokenizer.get_command('MASK').Id
+                mask_tokens = ['MASK', 'sMASK', 'gMASK']
+                mask_tokens = [tokenizer.get_command(token).Id for token in mask_tokens]
                 end_tokens = [tokenizer.get_command('eop').Id, args.eod_token]
-                mask_positions = (context_tokens_tensor == mask_token).nonzero(as_tuple=True)[0].tolist()
+                mask_positions = []
+                for token in mask_tokens:
+                    mask_positions += (context_tokens_tensor == token).nonzero(as_tuple=True)[0].tolist()
+                mask_positions.sort()
                 if args.no_block_position:
                     for mask_position in mask_positions:
                         position_ids[0, mask_position + 1:] += args.out_seq_length
