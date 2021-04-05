@@ -101,9 +101,10 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
             i = torch.cuda.current_device()
             model = TorchDDP(model, device_ids=[i], output_device=i,
                              process_group=mpu.get_data_parallel_group())
-        else:
+        elif args.DDP_impl == 'local':
             model = LocalDDP(model)
-
+        else:
+            print_rank_0("Skip DDP model")
     return model
 
 

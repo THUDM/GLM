@@ -29,7 +29,7 @@ class PyTorchDistributedDataParallel(DDP):
         return sd
 
     def load_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+        return self.module.load_state_dict(state_dict, strict=strict)
 
 
 class DistributedDataParallel(Module):
@@ -98,7 +98,7 @@ class DistributedDataParallel(Module):
         return sd
 
     def load_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+        return self.module.load_state_dict(state_dict, strict=strict)
 
     '''
     def _sync_buffers(self):

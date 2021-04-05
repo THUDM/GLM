@@ -68,7 +68,7 @@ class FP16_Module(nn.Module):
         return self.module.state_dict(destination, prefix, keep_vars)
 
     def load_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+        return self.module.load_state_dict(state_dict, strict=strict)
 
 # TODO:  Update overflow check + downscale to use Carl's fused kernel.
 class FP16_Optimizer(object):

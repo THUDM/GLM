@@ -186,7 +186,7 @@ def add_training_args(parser):
     group.add_argument('--distributed-backend', default='nccl',
                        help='which backend to use for distributed training. One of [gloo, nccl]',
                        choices=['nccl', 'gloo'])
-    group.add_argument('--DDP-impl', default='torch', choices=['local', 'torch'],
+    group.add_argument('--DDP-impl', default='torch', choices=['local', 'torch', 'none'],
                        help='which DistributedDataParallel implementation to use.')
 
     group.add_argument('--local_rank', type=int, default=None,

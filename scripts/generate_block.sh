@@ -1,5 +1,5 @@
 #!/bin/bash
-source config_tasks/model_blocklm_large_generation.sh
+source config_tasks/model_blocklm_10B.sh
 
 MPSIZE=1
 MAXSEQLEN=512
@@ -17,11 +17,10 @@ script_dir=$(dirname $script_path)
 config_json="$script_dir/ds_config.json"
 
 MASTER_PORT=${MASTER_PORT} python generate_samples.py \
+       --DDP-impl none \
        --model-parallel-size $MPSIZE \
        --deepspeed_config ${config_json} \
        $MODEL_ARGS \
-       --tokenizer-type BertWordPieceTokenizer \
-       --tokenizer-model-type bert-large-uncased \
        --fp16 \
        --cache-dir cache \
        --out-seq-length $MAXSEQLEN \
