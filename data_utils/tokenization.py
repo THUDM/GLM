@@ -18,6 +18,7 @@ import random
 import os
 import csv
 import torch
+import itertools
 
 import nltk
 from nltk import tokenize as nltk_tokenize
@@ -150,10 +151,12 @@ def prep_command_tokens(tokenlist, token_format=token_format):
 
 
 class CommandToken(object):
-    def __init__(self, name, token, Id):
+    def __init__(self, name, token, Id, lstrip=False, rstrip=False):
         self.name = name
         self.token = token
         self.Id = Id
+        self.lstrip = lstrip
+        self.rstrip = rstrip
 
     def __str__(self):
         return str(COMMAND_TUPLE(self.name, self.token, self.Id))
@@ -879,7 +882,7 @@ class GPT2BPETokenizer(Tokenizer):
                 CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['</s>']),
                 CommandToken('sep', '[SEP]', self.text_tokenizer.encoder['</s>']),
                 CommandToken('ENC', '[CLS]', self.text_tokenizer.encoder['<s>']),
-                CommandToken('MASK', '[MASK]', self.text_tokenizer.encoder['<mask>']),
+                CommandToken('MASK', '[MASK]', self.text_tokenizer.encoder['<mask>'], lstrip=True),
                 CommandToken('unk', '[UNK]', self.text_tokenizer.encoder['<unk>'])
             ]
             if add_block_symbols:
@@ -901,7 +904,7 @@ class GPT2BPETokenizer(Tokenizer):
                     CommandToken('sop', '<|startofpiece|>', self.num_tokens),
                     CommandToken('eop', '<|endofpiece|>', self.num_tokens + 1),
                     CommandToken('ENC', '[CLS]', self.num_tokens + 2),
-                    CommandToken('MASK', '[MASK]', self.num_tokens + 3),
+                    CommandToken('MASK', '[MASK]', self.num_tokens + 3, lstrip=True),
                     CommandToken('sep', '[SEP]', self.num_tokens + 4),
                     CommandToken('unk', '[UNK]', self.num_tokens + 5)
                 ])
@@ -910,8 +913,8 @@ class GPT2BPETokenizer(Tokenizer):
         if add_block_symbols:
             if add_task_mask:
                 self._command_tokens.extend([
-                    CommandToken('gMASK', '[gMASK]', self.num_tokens),
-                    CommandToken('sMASK', '[sMASK]', self.num_tokens + 1)
+                    CommandToken('gMASK', '[gMASK]', self.num_tokens, lstrip=True),
+                    CommandToken('sMASK', '[sMASK]', self.num_tokens + 1, lstrip=True)
                 ])
                 self.num_tokens += 2
                 self.num_command_tokens += 2
@@ -945,12 +948,73 @@ class GPT2BPETokenizer(Tokenizer):
         self._token_types = list(self.type_token_map.keys())
         self._token_type_vocab = {t: Id for Id, t in self.type_id_map.items()}
 
+        for idx, tok in self.command_id_map.items():
+            self.text_tokenizer.decoder[idx] = tok.token
+
     def EncodeAsIds(self, text, process_fn=None):
         processed_text = text
         if process_fn is not None:
             processed_text = process_fn(processed_text)
-        Ids = self.text_tokenizer.encode(processed_text)
-        # return Tokenization(Ids, processed_text, text)
+
+        def split_on_token(tok_extended: CommandToken, text):
+            result = []
+            tok = tok_extended.token
+            split_text = text.split(tok)
+            for i, sub_text in enumerate(split_text):
+                # CommandToken can control whitespace stripping around them.
+                # We use them for GPT2 and Roberta to have different behavior depending on the special token
+                # Cf. https://github.com/huggingface/transformers/pull/2778
+                # and https://github.com/huggingface/transformers/issues/3788
+                # Strip white spaces on the right
+                if tok_extended.rstrip and i > 0:
+                    # A bit counter-intuitive but we strip the left of the string
+                    # since tok_extended.rstrip means the special token is eating all white spaces on its right
+                    sub_text = sub_text.lstrip()
+                # Strip white spaces on the left
+                if tok_extended.lstrip and i < len(split_text) - 1:
+                    sub_text = sub_text.rstrip()  # Opposite here
+
+                if i == 0 and not sub_text:
+                    result.append(tok)
+                elif i == len(split_text) - 1:
+                    if sub_text:
+                        result.append(sub_text)
+                    else:
+                        pass
+                else:
+                    if sub_text:
+                        result.append(sub_text)
+                    result.append(tok)
+            return result
+
+        def split_on_tokens(tok_list, text):
+            if not text.strip():
+                return []
+            if not tok_list:
+                return self.text_tokenizer.encode(text)
+
+            tokenized_text = []
+            text_list = [text]
+            for tok in tok_list:
+                tokenized_text = []
+                for sub_text in text_list:
+                    if sub_text not in self._command_token_tokens:
+                        tokenized_text.extend(split_on_token(tok, sub_text))
+                    else:
+                        tokenized_text.append(sub_text)
+                text_list = tokenized_text
+
+            return list(
+                itertools.chain.from_iterable(
+                    (
+                        self.text_tokenizer.encode(token) if token not in self._command_token_tokens else [
+                            self.command_token_map[token].Id] for token in tokenized_text
+                    )
+                )
+            )
+
+        no_split_tokens = self._command_tokens
+        Ids = split_on_tokens(no_split_tokens, processed_text)
         tokenization = Tokenization(Ids, processed_text, text)
         tokenization.set_command_tokens(self._command_tokens)
         return tokenization
