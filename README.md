@@ -33,7 +33,7 @@ bash scripts/finetune_superglue.sh \
 
 - To apply GLM to a new NLU dataset with cloze-filling finetuning, add a `DataProcessor` in 
   [tasks/superglue/dataset.py](tasks/superglue/dataset.py) for data loading and add a `PVP` in 
-  [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. More details can be found [here](https://github.com/timoschick/pet#-train-your-own-pet).
+  [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. More details can be found [here](tasks/superglue/README.md).
 
 ### Text Summarization
 
