@@ -49,3 +49,19 @@ bash scripts/finetune_seq2seq.sh \
      config_tasks/model_blocklm_large_generation.sh \ 
      config_tasks/seq_gigaword.sh
 ```
+### Language Modeling
+#### LAMBADA Cloze Accuracy
+* Download the [LAMBADA](https://github.com/cybertronai/bflm/blob/master/lambada_test.jsonl) data and change `DATA_ROOT` and `CHECKPOINT_PATH` in [scripts/evaluate_lm.sh](scripts/evaluate_lm.sh)
+* Run the following script
+```shell
+bash scripts/evaluate_lm.sh \ 
+     config_tasks/model_blocklm_large_generation.sh \
+     config_tasks/zero_lambada.sh 
+```
+#### LM Perplexity
+* Download our test set of wikibook (or any dataset following the same format) and hange `DATA_ROOT` and `CHECKPOINT_PATH` in [scripts/evaluate_lm.sh](scripts/evaluate_lm.sh)
+* Run the following script
+```shell
+bash scripts/evaluate_lm.sh \ 
+     config_tasks/model_blocklm_large_generation.sh \
+     config_tasks/zero_lm.sh 
