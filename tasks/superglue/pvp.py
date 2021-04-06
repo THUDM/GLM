@@ -33,9 +33,10 @@ class PVP(ABC):
     This class contains functions to apply patterns and verbalizers as required by PET. Each task requires its own
     custom implementation of a PVP.
     """
+    is_multi_token = False
 
-    def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id=0, seed=42, is_multi_token=False,
-                 fast_decode=False, continuous_prompt=False):
+    def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id=0, seed=42, fast_decode=False,
+                 continuous_prompt=False):
         """
         Create a new PVP.
 
@@ -58,12 +59,7 @@ class PVP(ABC):
         self.num_truncated = 0
         self.fast_decode = fast_decode
         self.max_dec_seq_length = 16
-        self._is_multi_token = is_multi_token
         self.continuous_prompt = continuous_prompt
-
-    @property
-    def is_multi_token(self):
-        return self._is_multi_token
 
     @property
     def spell_length(self):
@@ -335,9 +331,7 @@ class PVP(ABC):
 
 
 class CopaPVP(PVP):
-    @property
-    def is_multi_token(self):
-        return True
+    is_multi_token = True
 
     @property
     def spell_length(self):
@@ -373,62 +367,9 @@ class CopaPVP(PVP):
     def verbalize(self, label) -> List[str]:
         return []
 
-    def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
-        """
-        Encode an input example using this pattern-verbalizer pair.
-
-        :param example: the input example to encode
-        :param priming: whether to use this example for priming
-        :param labeled: if ``priming=True``, whether the label should be appended to this example
-        :return: A tuple, consisting of a list of input ids and a list of token type ids
-        """
-        if self.continuous_prompt or self.pattern_id < 2:
-            return super().encode(example, priming=priming, labeled=labeled)
-        if not priming:
-            assert not labeled, "'labeled' can only be set to true if 'priming' is also set to true"
-
-        tokenizer = self.tokenizer
-        premise = self.remove_final_punc(self.shortenable(example.text_a))
-        choice1 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice1']))
-        choice2 = " " + self.remove_final_punc(self.lowercase_first(example.meta['choice2']))
-        question = example.meta['question']
-        assert question in ['cause', 'effect']
-        answer = " because" if question == 'cause' else " so"
-        answer_ids = [get_verbalization_ids(answer, tokenizer, force_single_token=True)]
-        if self.is_multi_token:
-            answer_ids.append(tokenizer.get_command('eop').Id)
-
-        ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
-
-        for choice in [choice1, choice2]:
-            parts = ['"', choice1[1:], '" or "', choice2[1:], '"?', premise, [self.mask], choice]
-            parts = [x if isinstance(x, tuple) else (x, False) for x in parts]
-            parts = [(tokenizer.EncodeAsIds(x).tokenization if isinstance(x, str) else x, s) for x, s in parts if
-                     x]
-            self.num_truncated += self.truncate(parts, None, answer_ids, max_length=self.max_seq_length)
-            tokens_a = [token_id for part, _ in parts for token_id in part]
-            data = build_input_from_ids(tokens_a, None, answer_ids, self.max_seq_length, self.tokenizer, args=self.args,
-                                        add_cls=True, add_sep=False, add_piece=True)
-            ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-            ids_list.append(ids)
-            positions_list.append(position_ids)
-            sep_list.append(sep)
-            target_list.append(target_ids)
-            mask_list.append(loss_masks)
-        if example.label is not None:
-            label = self.label_list.index(example.label)
-        else:
-            label = 0
-        sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
-                              logit_mask=mask_list, target=target_list,
-                              unique_id=example.guid)
-        return sample
-
 
 class WscPVP(PVP):
-    @property
-    def is_multi_token(self):
-        return True
+    is_multi_token = True
 
     @property
     def spell_length(self):
@@ -542,9 +483,7 @@ class WscPVP(PVP):
 
 
 class RecordPVP(PVP):
-    @property
-    def is_multi_token(self):
-        return True
+    is_multi_token = True
 
     def get_answers(self, example: InputExample):
         choices = example.meta['candidates']
@@ -663,7 +602,7 @@ class BoolQPVP(PVP):
             elif self.pattern_id == 9:
                 return [3, self.shortenable(passage), 3, ' Question:', self.shortenable(" " + question), '? Answer:', 3,
                         [self.mask], '.'], []
-        if self.pattern_id < 2:
+        elif self.pattern_id < 2:
             return [self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:', [self.mask],
                     '.'], []
         elif self.pattern_id < 4:
@@ -752,13 +691,13 @@ class WicPVP(PVP):
             elif self.pattern_id == 3:
                 return [1, self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1,
                         ' Similar sense of "' + word + '"?', 1, [self.mask], '.'], []
-        if self.pattern_id == 0:
+        elif self.pattern_id == 0:
             return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), ' Similar sense of "' + word + '"?',
                     [self.mask], '.'], []
-        if self.pattern_id == 1:
+        elif self.pattern_id == 1:
             return [self.shortenable(text_a), self.shortenable(" " + text_b),
                     ' Does' + " " + word + ' have the same meaning in both sentences?', [self.mask]], []
-        if self.pattern_id == 2:
+        elif self.pattern_id == 2:
             return [word, ' . Sense (1) (a)', self.shortenable(' "' + text_a + '"'), ' (', [self.mask], ') "', text_b,
                     '"'], []
 

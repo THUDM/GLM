@@ -22,8 +22,7 @@ We provide scripts for finetuning GLM on some downstream tasks.
 ### SuperGLUE
 
 - Download the [SuperGlue](https://super.gluebenchmark.com/tasks) data and change `DATA_ROOT` and `CHECKPOINT_PATH` in 
-  [scripts/finetune_superglue.sh](scripts/finetune_superglue.sh)
-
+  [scripts/finetune_superglue.sh](scripts/finetune_superglue.sh). Also change `batch-size` and `nproc_per_node` according to your available hardware. To reproduce our results, we use aggregated batch size 32 for `MultiRC` and `ReCORD` and 16 for other tasks.  
 - Run the following script (use the COPA dataset as an example)
 
 ```
@@ -34,8 +33,7 @@ bash scripts/finetune_superglue.sh \
 
 - To apply GLM to a new NLU dataset with cloze-filling finetuning, add a `DataProcessor` in 
   [tasks/superglue/dataset.py](tasks/superglue/dataset.py) for data loading and add a `PVP` in 
-  [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. Our implementation is inherited from PET and
-  more details can be found [here](https://github.com/timoschick/pet#-train-your-own-pet).
+  [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. More details can be found [here](https://github.com/timoschick/pet#-train-your-own-pet).
 
 ### Text Summarization
 
