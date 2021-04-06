@@ -185,18 +185,6 @@ RUN chmod +x /root/.jupyter/prepare.sh && mkdir /dataset /logs /model
 EXPOSE 8888
 
 ##############################################################################
-## Add deepspeed user
-###############################################################################
-# Add a deepspeed user with user id 1001
-RUN echo 'root:baai2020keg' | chpasswd
-#RUN useradd --create-home --uid 1001 --shell /bin/bash deepspeed
-#RUN echo 'deepspeed:baai2020keg' | chpasswd
-#RUN usermod -aG sudo deepspeed
-#RUN echo "deepspeed ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-## # Change to non-root privilege
-#USER deepspeed
-
-##############################################################################
 # Client Liveness & Uncomment Port 22 for SSH Daemon
 ##############################################################################
 # Keep SSH client alive froGm server side
