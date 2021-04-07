@@ -1,5 +1,6 @@
-DATA_ROOT=/root/data/gigaword
+DATA_ROOT=/root/data
 CHECKPOINT_PATH=/root/data/checkpoints
+SAVE_PATH=/root/data/finetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
 source $1    # Model
@@ -23,7 +24,7 @@ deepspeed --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${N
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
+       --save ${SAVE_PATH} \
        --checkpoint-activations \
        $MODEL_ARGS \
        $TRAIN_ARGS \
