@@ -19,6 +19,7 @@ from collections import OrderedDict
 from finetune_glm import finetune
 from tasks.superglue.dataset import SuperGlueDataset, PROCESSORS, get_output_func
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
+from tasks.superglue.pvp import PVPS
 from tasks.eval_utils import accuracy_func_provider
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
 
@@ -68,9 +69,9 @@ def main(args):
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
         processor = PROCESSORS[args.task.lower()](args)
-        args.multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
+        pvp = PVPS[args.task.lower()]
         model_kwargs["model_type"] = "cloze" if args.cloze_eval else "classification"
-        model_kwargs["multi_token"] = args.multi_token
+        model_kwargs["multi_token"] = pvp.is_multi_token
         model_kwargs["num_labels"] = len(processor.get_labels())
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider)
