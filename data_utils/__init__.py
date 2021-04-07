@@ -157,7 +157,8 @@ def supported_corpus(corpus_name):
 
 def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
-                 save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None, **kwargs):
+                 save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None,
+                 filter_english=False, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
@@ -184,7 +185,7 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
             dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
         elif ds_type.lower() == 'block':
             dataset = BlockDataset(dataset, tokenizer, max_seq_len=seq_length,
-                                   sample_across_doc=not sample_one_document)
+                                   sample_across_doc=not sample_one_document, filter_english=filter_english)
         return dataset
 
     if should_split(split):

@@ -208,6 +208,7 @@ def make_loaders(args, tokenizer):
         'max_preds_per_seq': args.max_preds_per_seq,
         'presplit_sentences': args.presplit_sentences,
         'sample_one_document': args.sample_one_document,
+        'filter_english': args.filter_english,
         'pre_tokenize': not args.no_pre_tokenize,
         'tokenizer': tokenizer,
         'save_splits': args.save_splits,

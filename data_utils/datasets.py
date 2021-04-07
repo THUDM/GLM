@@ -26,7 +26,6 @@ import random
 import torch
 import tqdm
 
-
 from torch.utils import data
 import pandas as pd
 import numpy as np
@@ -572,7 +571,7 @@ class BlockDataset(data.Dataset):
     def __init__(self, ds, tokenizer,
                  max_seq_len=1024,
                  sample_across_doc=True,
-                 sentence_start=True, **kwargs):
+                 sentence_start=True, filter_english=False, **kwargs):
         """
         sentence_start: the stripped article must start with a complete sentence
         """
@@ -583,8 +582,13 @@ class BlockDataset(data.Dataset):
         self.tokenizer = tokenizer
         self.sample_across_doc = sample_across_doc
         self.sentence_start = sentence_start
+        self.filter_english = filter_english
         self.weighting, self.total_len = None, None
         self.is_lazy = False
+        if self.filter_english:
+            import fasttext
+            self.model = fasttext.load_model('/dataset/fd5061f6/english_data/lid.176.bin')
+            print_rank_0("Load language detection model")
         if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
             self.is_lazy = True
         self.init_weighting()
@@ -613,7 +617,14 @@ class BlockDataset(data.Dataset):
         # get possibly weighted random index from dataset
         data_idx = self.get_weighted_samples(rng)
         tokens, loss_mask = self.getidx(data_idx)
-
+        if self.filter_english:
+            while True:
+                text = self.tokenizer.DecodeIds(tokens[:1024])
+                lang = self.model.predict(text.replace('\n', ''))[0][0]
+                if lang == '__label__en':
+                    break
+                data_idx = self.get_weighted_samples(rng)
+                tokens, loss_mask = self.getidx(data_idx)
         # truncate or pad tokens
         num_tokens = len(tokens)
         tokens_to_strip = num_tokens - self.max_seq_len + 1

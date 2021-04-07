@@ -27,7 +27,7 @@ gpt_options=" \
        --train-iters 250000 \
        --resume-dataloader \
        --train-data pile cc-news \
-       --no-lazy-loader \
+       --filter-english \
        --loader-scatter 32 \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
