@@ -4,7 +4,7 @@ from apex.optimizers import FusedAdam as Adam
 from torch import distributed as dist
 
 import mpu
-from fp16 import FP16_Module, FP16_Optimizer
+from fp16 import FP16_Module, FP16_Optimizer, DynamicLossScaler
 from learning_rates import AnnealingLR
 from model import VerbalizerModel, ClozeModel, FastClozeModel, PoolingModel, GPT2Model, \
     PyTorchDistributedDataParallel as TorchDDP, \
@@ -233,11 +233,6 @@ def backward_step(optimizer, model, lm_loss, args, timers):
         else:
             loss.backward()
 
-    reduced_losses = lm_loss.view(1)
-    torch.distributed.all_reduce(reduced_losses.data, group=mpu.get_data_parallel_group())
-    reduced_losses.data = reduced_losses.data / (args.world_size / args.model_parallel_size)
-    lm_loss_reduced = reduced_losses
-
     if args.deepspeed:
         # DeepSpeed backward propagation already addressed all reduce communication.
         # Reset the timer to avoid breaking timer logs below.
@@ -261,7 +256,7 @@ def backward_step(optimizer, model, lm_loss, args, timers):
             else:
                 optimizer.clip_master_grads(args.clip_grad)
 
-    return lm_loss_reduced
+    return lm_loss
 
 
 def see_memory_usage(message, force=False):
@@ -294,37 +289,48 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
         if not args.deepspeed:
             lm_loss /= args.gradient_accumulation_steps
 
-        # Calculate gradients, reduce across processes, and clip.
-        timers('backward').start()
-        lm_loss_total += backward_step(optimizer, model, lm_loss, args, timers)
-        count += 1
-        timers('backward').stop()
+        reduced_loss = lm_loss.detach().clone().view(1)
+        torch.distributed.all_reduce(reduced_loss.data, group=mpu.get_data_parallel_group())
+        reduced_loss.data = reduced_loss.data / (args.world_size / args.model_parallel_size)
 
-        # Update parameters.
-        skipped_iter, complete = 0, False
-        timers('optimizer').start()
-        if args.deepspeed:
-            if model.is_gradient_accumulation_boundary():
-                model.step()
-                complete = True
-                if not (args.fp16 and optimizer.overflow):
-                    lr_scheduler.step()
+        if not DynamicLossScaler._has_inf_or_nan(reduced_loss):
+            lm_loss_total += reduced_loss
+            count += 1
+
+            # Calculate gradients, reduce across processes, and clip.
+            timers('backward').start()
+            backward_step(optimizer, model, lm_loss, args, timers)
+            timers('backward').stop()
+
+            # Update parameters.
+            skipped_iter, complete = 0, False
+            timers('optimizer').start()
+            if args.deepspeed:
+                if model.is_gradient_accumulation_boundary():
+                    model.step()
+                    complete = True
+                    if not (args.fp16 and optimizer.overflow):
+                        lr_scheduler.step()
+                    else:
+                        skipped_iter = 1
                 else:
-                    skipped_iter = 1
+                    model.step()
             else:
-                model.step()
+                if count == args.gradient_accumulation_steps:
+                    optimizer.step()
+                    complete = True
+                    # Update learning rate.
+                    if not (args.fp16 and optimizer.overflow):
+                        lr_scheduler.step()
+                    else:
+                        skipped_iter = 1
+            timers('optimizer').stop()
+            if complete:
+                break
         else:
-            if count == args.gradient_accumulation_steps:
-                optimizer.step()
-                complete = True
-                # Update learning rate.
-                if not (args.fp16 and optimizer.overflow):
-                    lr_scheduler.step()
-                else:
-                    skipped_iter = 1
-        timers('optimizer').stop()
-        if complete:
-            break
+            print_rank_0("Found NaN loss, skip backward")
+            del lm_loss, reduced_loss
+            mems = []
     if args.deepspeed:
         lm_loss_total = lm_loss_total / count
     return lm_loss_total, skipped_iter, mems
