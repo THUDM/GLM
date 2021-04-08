@@ -1,5 +1,7 @@
 #!/bin/bash
-source config_tasks/model_blocklm_large_generation.sh
+CHECKPOINT_PATH=/root/data/checkpoints
+
+source $1
 
 MPSIZE=1
 MAXSEQLEN=512

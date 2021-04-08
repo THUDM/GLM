@@ -85,3 +85,14 @@ bash scripts/finetune_blank.sh \
      config_tasks/model_blocklm_large.sh \ 
      config_tasks/seq_blank.sh
 ```
+
+### Blank Filling (Interactive)
+* Change `CHECKPOINT_PATH` to your local path. Run the following script
+```
+bash scripts/generate_block.sh \
+     config_tasks/model_blocklm_large.sh
+```
+Example:
+```
+
+```
