@@ -67,11 +67,12 @@ bash scripts/evaluate_lm.sh \
 * Download our test set of wikibook (or any dataset following the same format) and change `DATA_ROOT, CHECKPOINT_PATH` 
   in [scripts/evaluate_lm.sh](scripts/evaluate_lm.sh)
 * Run the following script
-```shell
-bash scripts/evaluate_lm.sh \ 
+  ```shell
+  bash scripts/evaluate_lm.sh \ 
      config_tasks/model_blocklm_large_generation.sh \
      config_tasks/zero_lm.sh 
-```
+  ```
+* For calculating rouge, install file2rouge from [here](https://github.com/pltrdy/files2rouge) and run `bash scripts/evaluate_seq2seq.sh`
 
 ### Blank Language Model
 - Download the [Yahoo](https://github.com/Varal7/blank_language_model) dataset and check the experiment setup in 
