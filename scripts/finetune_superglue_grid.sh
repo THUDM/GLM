@@ -11,15 +11,11 @@ DISTRIBUTED_ARGS="--nproc_per_node ${N_GPU} --nnodes 1 --node_rank 0 --master_ad
 DATESTR=$(date +"%m-%d-%H-%M")
 GRID_LOG=logs/grid_${EXPERIMENT_NAME}_${DATESTR}.txt
 
-for lr in 1e-5 #2e-5
+for lr in 6e-5 1e-5 2e-5
 do
-  for bs in 16 #32
-  do
-    for epoch in 10 20 # 40
+    for seed in 1234 5678 9753
     do
-    for seed in 1 2 3
-    do
-    HYPER=${lr}-b${bs}-ep${epoch}-wm${warmup}-wd${wd}-${seed}
+    HYPER=${lr}-${seed}
     PER_GPU_BS=$((bs/N_GPU))
     python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        --finetune \
@@ -32,19 +28,13 @@ do
        --eval-batch-size 16 \
        $MODEL_ARGS \
        $COMMON_ARGS \
-       --lr-decay-style linear \
-       --epochs ${epoch} \
        --lr ${lr} \
-       --batch-size ${PER_GPU_BS} \
+       --batch-size 8 \
        --seed ${seed} \
-       --optimizer adam \
-       --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}-${HYPER}.txt
     echo $lr $bs $epoch $warmup $seed >> $GRID_LOG
     cat runs/${EXPERIMENT_NAME}/${HYPER}/results.json >> $GRID_LOG
     done
-    done
-  done
 done
 
 echo $EXPERIMENT_NAME >> $GRID_LOG
