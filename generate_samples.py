@@ -305,7 +305,7 @@ def generate_samples(model, tokenizer, args, device):
                 print("\nContext:", raw_text, flush=True)
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
                 trim_decode_tokens = decode_tokens
-                print("\nGPT2:", trim_decode_tokens, flush=True)
+                print("\nGLM:", trim_decode_tokens, flush=True)
                 output.write(trim_decode_tokens + "\n")
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())

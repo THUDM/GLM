@@ -26,6 +26,8 @@ MASTER_PORT=${MASTER_PORT} python generate_samples.py \
        --tokenizer-model-type bert-large-uncased \
        --fp16 \
        --cache-dir cache \
+       --num-beams 5 \
+       --length-penalty 1.0 \
        --out-seq-length $MAXSEQLEN \
        --seq-length 512 \
        --temperature $TEMP \
