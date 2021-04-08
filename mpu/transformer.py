@@ -749,6 +749,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                     mask = ids < sep.view(-1, 1)
                     m = m.masked_fill(mask.unsqueeze(1).expand_as(m), 1)
                 if memory_length > 0:
+                    m = m.expand(batch_size, -1, -1)
                     m = torch.cat((hidden_states.new_ones((batch_size, seq_length, memory_length)), m), dim=2)
                 m = m.unsqueeze(1)
                 return m
