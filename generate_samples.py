@@ -278,7 +278,7 @@ def generate_samples(model, tokenizer, args, device):
             if args.block_lm:
                 mems = []
                 tokens, attention_mask, position_ids = get_batch(context_tokens_tensor, device, args)
-                mask_tokens = ['MASK', 'sMASK', 'gMASK']
+                mask_tokens = ['MASK', 'sMASK', 'gMASK'] if args.task_mask else ['MASK']
                 mask_tokens = [tokenizer.get_command(token).Id for token in mask_tokens]
                 end_tokens = [tokenizer.get_command('eop').Id, args.eod_token]
                 mask_positions = []
