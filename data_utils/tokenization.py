@@ -322,10 +322,75 @@ class Tokenizer(object):
         """
         encode text using text tokenizer and shift Id values for command tokens
         """
-        tokenization = self.text_tokenizer.EncodeAsIds(text, process_fn=process_fn)
-        tokenization.tokenization = [t + self.num_command_tokens for t in tokenization.tokenization]
+        processed_text = text
+        if process_fn is not None:
+            processed_text = process_fn(processed_text)
+
+        def split_on_token(tok_extended: CommandToken, text):
+            result = []
+            tok = tok_extended.token
+            split_text = text.split(tok)
+            for i, sub_text in enumerate(split_text):
+                # CommandToken can control whitespace stripping around them.
+                # We use them for GPT2 and Roberta to have different behavior depending on the special token
+                # Cf. https://github.com/huggingface/transformers/pull/2778
+                # and https://github.com/huggingface/transformers/issues/3788
+                # Strip white spaces on the right
+                if tok_extended.rstrip and i > 0:
+                    # A bit counter-intuitive but we strip the left of the string
+                    # since tok_extended.rstrip means the special token is eating all white spaces on its right
+                    sub_text = sub_text.lstrip()
+                # Strip white spaces on the left
+                if tok_extended.lstrip and i < len(split_text) - 1:
+                    sub_text = sub_text.rstrip()  # Opposite here
+
+                if i == 0 and not sub_text:
+                    result.append(tok)
+                elif i == len(split_text) - 1:
+                    if sub_text:
+                        result.append(sub_text)
+                    else:
+                        pass
+                else:
+                    if sub_text:
+                        result.append(sub_text)
+                    result.append(tok)
+            return result
+
+        def split_on_tokens(tok_list, text):
+            if not text.strip():
+                return []
+            if not tok_list:
+                return self.text_tokenizer.encode(text)
+
+            tokenized_text = []
+            text_list = [text]
+            for tok in tok_list:
+                tokenized_text = []
+                for sub_text in text_list:
+                    if sub_text not in self._command_token_tokens:
+                        tokenized_text.extend(split_on_token(tok, sub_text))
+                    else:
+                        tokenized_text.append(sub_text)
+                text_list = tokenized_text
+
+            return list(
+                itertools.chain.from_iterable(
+                    (
+                        self._encode(token) if token not in self._command_token_tokens else [
+                            self.command_token_map[token].Id] for token in tokenized_text
+                    )
+                )
+            )
+
+        no_split_tokens = self._command_tokens
+        Ids = split_on_tokens(no_split_tokens, processed_text)
+        tokenization = Tokenization(Ids, processed_text, text)
         tokenization.set_command_tokens(self._command_tokens)
         return tokenization
+
+    def _encode(self, text):
+        raise NotImplementedError
 
     def EncodeAsTokens(self, text, process_fn=None):
         """
@@ -800,14 +865,10 @@ class BertWordPieceTokenizer(Tokenizer):
         self._token_types = list(self.type_token_map.keys())
         self._token_type_vocab = {t: Id for Id, t in self.type_id_map.items()}
 
-    def EncodeAsIds(self, text, process_fn=None):
-        """convert text to wordpiece Ids"""
-        processed_text = text
-        if process_fn is not None:
-            processed_text = process_fn(processed_text)
-        tokens = self.text_tokenizer.tokenize(processed_text)
-        Ids = self.text_tokenizer.convert_tokens_to_ids(tokens)
-        return Tokenization(Ids, processed_text, text)
+    def _encode(self, text):
+        tokens = self.text_tokenizer.tokenize(text)
+        ids = self.text_tokenizer.convert_tokens_to_ids(tokens)
+        return ids
 
     def EncodeAsTokens(self, text, process_fn=None):
         """convert wordpiece token to Id"""
@@ -1019,6 +1080,9 @@ class GPT2BPETokenizer(Tokenizer):
         tokenization.set_command_tokens(self._command_tokens)
         return tokenization
 
+    def _encode(self, text):
+        return self.text_tokenizer.encode(text)
+
     def EncodeAsTokens(self, text, process_fn=None):
         processed_text = text
         if process_fn is not None:
@@ -1109,15 +1173,9 @@ class ChineseSPTokenizer(Tokenizer):
         self._token_types = list(self.type_token_map.keys())
         self._token_type_vocab = {t: Id for Id, t in self.type_id_map.items()}
 
-    def EncodeAsIds(self, text, process_fn=None):
-        processed_text = text
-        if process_fn is not None:
-            processed_text = process_fn(processed_text)
-        Ids = self.text_tokenizer.encode(processed_text)
-        # return Tokenization(Ids, processed_text, text)
-        tokenization = Tokenization(Ids, processed_text, text)
-        tokenization.set_command_tokens(self._command_tokens)
-        return tokenization
+    def _encode(self, text):
+        ids = self.text_tokenizer.encode(text)
+        return ids
 
     def EncodeAsTokens(self, text, process_fn=None):
         processed_text = text
