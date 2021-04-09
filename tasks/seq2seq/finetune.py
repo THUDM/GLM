@@ -21,8 +21,8 @@ from tasks.eval_utils import accuracy_func_provider
 from finetune_gpt2 import finetune
 from pretrain_gpt2 import get_batch
 from collections import OrderedDict
-from tasks.seq2seq.dataset import Seq2SeqDataset
-from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater
+from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset
+from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater, BlankLMEvaluater
 
 global_tokenizer = None
 
@@ -49,8 +49,12 @@ def seq2seq_forward_step(data, model, args, timers, mems):
 
 def train_valid_datasets_provider(args, tokenizer):
     """Provide train and validation datasets."""
-    train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
-    valid_dataset = None
+    if args.task.lower() == 'blank':
+        train_dataset = BlankLMDataset(args, split='train', tokenizer=tokenizer)
+        valid_dataset = None
+    else:
+        train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
+        valid_dataset = None
     global global_tokenizer
     global_tokenizer = tokenizer
     return train_dataset, valid_dataset
@@ -59,18 +63,26 @@ def train_valid_datasets_provider(args, tokenizer):
 def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
     def single_dataset_provider(split):
-        return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
+        if args.task.lower() == 'blank':
+            return BlankLMDataset(args, split=split, tokenizer=tokenizer)
+        else:
+            return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
 
-    evaluater = DecoderEvaluater(args, tokenizer)
-    eval_func = evaluater.evaluate
-    if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original':
-        dataset = 'cnn_dm'
-    elif args.task.lower() == 'gigaword':
-        dataset = 'gigaword'
+    if args.task.lower() == 'blank':
+        evaluater = BlankLMEvaluater(args, tokenizer)
+        eval_func = evaluater.evaluate
+        metric_dict = {}
     else:
-        raise NotImplementedError(args.task)
-    metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
-                               "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
+        evaluater = DecoderEvaluater(args, tokenizer)
+        eval_func = evaluater.evaluate
+        if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original':
+            dataset = 'cnn_dm'
+        elif args.task.lower() == 'gigaword':
+            dataset = 'gigaword'
+        else:
+            raise NotImplementedError(args.task)
+        metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
+                                   "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
                                "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
 
     def output_func(predictions, examples, output_file):
@@ -90,7 +102,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword']:
+    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

@@ -1,5 +1,6 @@
 import string
 import datetime
+import random
 import torch
 import torch.nn.functional as F
 import mpu
@@ -213,7 +214,7 @@ class DecoderEvaluater:
         """Calculate correct over total answers and return prediction if the
         `output_predictions` is true."""
         model.eval()
-        store = torch.distributed.TCPStore(args.master_ip, 18931, mpu.get_data_parallel_world_size(),
+        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000), mpu.get_data_parallel_world_size(),
                                            torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
         print_rank_0("Distributed store created")
         with torch.no_grad():
@@ -315,3 +316,121 @@ class DecoderEvaluater:
             examples.append(example)
         torch.distributed.barrier()
         return predictions, [], examples
+
+
+def blanklm_fix_tokenization(text):
+    text = text.replace("` `", "``")
+    text = text.replace("\' \'", "\'\'")
+    text = text.replace("n \' t", "n\'t")
+    text = text.replace("\' s", "\'s")
+    text = text.replace("\' m", "\'m")
+    text = text.replace("\' re", "\'re")
+    text = text.replace(". . .", "...")
+    text = text.replace(" . .", " ..")
+    text = text.replace("- -", "--")
+    text = text.replace("u . s .", "u.s.")
+    text = text.replace("u . k .", "u.k.")
+    text = text.replace("e . g .", "e.g.")
+    return text
+
+class BlankLMEvaluater(DecoderEvaluater):
+
+    def evaluate(self, model, dataloader, example_dict, args):
+        model.eval()
+        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000), mpu.get_data_parallel_world_size(),
+                                           torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
+        print_rank_0("Distributed store created")
+
+        with torch.no_grad():
+            for idx, data in enumerate(dataloader):
+                tokens, attention_mask, position_ids = process_batch(data, args)
+                src_tokens = tokens
+                batch_size = tokens.size(0)
+                mask_positions = []
+                current_mask = []
+                for text in tokens.tolist():
+                    mask_positions.append([i for i, x in enumerate(text) if x == self.mask_token])
+                    current_mask.append(0)
+                    # print(self.tokenizer.DecodeIds(text))
+                    # print(mask_positions[-1])
+                counter = 0
+                done = [False] * batch_size
+                while counter < args.tgt_seq_length:
+                    if counter == 0:
+                        # print(tokens)
+                        # print(position_ids)
+                        next_token_logits, *mems = model(tokens, position_ids, attention_mask, return_memory=True)
+                        seq_length = next_token_logits.size(1)
+                        next_token_logits = next_token_logits[:, -1]
+                        position_ids = tokens.new_ones(batch_size, 2, 1)
+                        for i, text in enumerate(tokens.tolist()):
+                            mask_pos = mask_positions[i][current_mask[i]]
+                            position_ids[i, 0] = mask_pos
+                        tokens = tokens.new_zeros(batch_size, 0)
+                        attention_mask = tokens.new_zeros(batch_size)
+                    else:
+                        position_ids[:, 1] = position_ids[:, 1] + 1
+                        last_token = tokens[:, -1:]
+                        next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems,
+                                                         return_memory=True)
+                        next_token_logits = next_token_logits[:, -1]
+                    next_token_scores = F.log_softmax(next_token_logits, dim=-1)
+                    next_token_scores = self.processors(tokens, next_token_scores)
+                    next_tokens = next_token_scores.max(dim=-1)[1]
+                    # print(self.tokenizer.DecodeIds(next_tokens.tolist()))
+                    for i, next_token in enumerate(next_tokens.tolist()):
+                        if next_token == self.end_token:
+                            if current_mask[i] + 1 < len(mask_positions[i]):
+                                current_mask[i] += 1
+                                next_tokens[i] = self.start_token
+                                position_ids[i, 0] = mask_positions[i][current_mask[i]]
+                                position_ids[i, 1] = 0
+                            else:
+                                done[i] = True
+                        if done[i]:
+                            next_tokens[i] = self.pad_token
+                    if all(done):
+                        break
+                    tokens = torch.cat([tokens, next_tokens.unsqueeze(-1)], dim=-1)
+                    counter += 1
+                predictions = []
+                for i, text in enumerate(tokens.tolist()):
+                    text = [token for token in text if token not in [self.end_token, self.pad_token]]
+                    blanks = [[]]
+                    for token in text:
+                        if token == self.start_token:
+                            blanks.append([])
+                        else:
+                            blanks[-1].append(token)
+                    output_tokens = []
+                    current_blank = 0
+                    for token in src_tokens[i].tolist():
+                        if token == self.mask_token:
+                            if current_blank < len(blanks):
+                                output_tokens += blanks[current_blank]
+                            current_blank += 1
+                        else:
+                            if token not in [self.pad_token]:
+                                output_tokens.append(token)
+                    text = self.tokenizer.DecodeIds(output_tokens[:-1])
+                    text = blanklm_fix_tokenization(text)
+                    predictions.append(text)
+                    # print(text)
+                uid_list = data['uid']
+                if isinstance(uid_list, torch.Tensor):
+                    uid_list = uid_list.cpu().numpy().tolist()
+                for uid, prediction in zip(uid_list, predictions):
+                    store.set(uid, prediction)
+                if (idx + 1) % args.log_interval == 0:
+                    print_rank_0(f"Iteration {idx + 1} / {len(dataloader)}")
+
+        model.train()
+        torch.distributed.barrier()
+        print_rank_0("Evaluation completed")
+        predictions, examples = [], []
+        for uid, example in example_dict.items():
+            predictions.append(store.get(uid).decode('utf-8'))
+            examples.append(example)
+        torch.distributed.barrier()
+        return predictions, [], examples
+

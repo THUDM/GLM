@@ -1,13 +1,10 @@
-Megatron is a large, powerful transformer. This repo is for ongoing research on training large, powerful transformer language models at scale. Currently, we support model-parallel, multinode training of [GPT2](https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) and [BERT](https://arxiv.org/pdf/1810.04805.pdf) in mixed precision. 
+# GLM
 
-Our codebase is capable of efficiently training a 72-layer, 8.3 Billion Parameter GPT2 Language model with 8-way model and 64-way data parallelism across 512 GPUs. We find that bigger language models are able to surpass current GPT2-1.5B wikitext perplexities in as little as 5 epochs of training.
+GLM is a General Language Model pretrained with a blank-filling objective
+and can be finetuned on various natural language understanding and generation 
+tasks.
 
-For BERT training our repository trains BERT Large on 64 V100 GPUs in 3 days. We achieved a final language modeling perplexity of 3.15 and SQuAD F1-score of 90.7.
-<!--
-do we want to make any claims about GPT2 speed, convergence, or model release
--->
-
-# Setup
+## Setup
 We officially support only python3.6.
 
 To use this repo please install the latest supported versions of PyTorch with GPU support. 

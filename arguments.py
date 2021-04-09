@@ -254,6 +254,7 @@ def add_text_generate_args(parser):
     group.add_argument("--no-repeat-ngram-size", type=int, default=0)
     group.add_argument("--min-tgt-length", type=int, default=0)
     group.add_argument("--select-topk", action='store_true')
+    group.add_argument("--blank-maskratio", type=float, default=0.1)
     return parser
 
 
@@ -353,7 +354,8 @@ def add_finetune_config_args(parser):
     group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge", "generative", "mix"],
                        default="cross_entropy")
     group.add_argument('--pattern-id', type=int, default=0)
-    group.add_argument('--fast-decode', action='store_true', help="Fast decode for multi-token cloze")
+    group.add_argument('--fast-decode', action='store_true',
+                       help="Fast decode for multi-token cloze. Can only be used without checkpoint activation.")
     group.add_argument('--eval-valid', action='store_true', help="Whether evaluate on the valid set")
     group.add_argument('--validation-metric', type=str, default=None)
     group.add_argument('--unidirectional', action='store_true', help="Use the left to right language model")

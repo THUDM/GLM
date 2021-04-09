@@ -1,5 +1,5 @@
 DATA_ROOT=/root/data/superglue
-source config_tasks/model_blocklm_roberta_large.sh
+source config_tasks/model_blocklm.sh
 source $1
 
 CHECKPOINT_PATH="/root/data/finetune_checkpoints"
@@ -16,7 +16,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --data-dir ${DATA_PATH} \
        --save ${CHECKPOINT_PATH} \
        --seq-length ${MAX_SEQ_LEN} \
-       --checkpoint-activations \
+       --fast-decode \
        --batch-size 8 \
        --eval-batch-size 16 \
        --save-epoch 5 \

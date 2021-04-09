@@ -208,9 +208,12 @@ class PVP(ABC):
                 tokens_a = [token_id for part, _ in this_parts_a for token_id in part]
                 tokens_b = [token_id for part, _ in this_parts_b for token_id in part] if parts_b else None
                 data = build_input_from_ids(tokens_a, tokens_b, None, self.max_seq_length, self.tokenizer,
-                                            add_cls=True, add_sep=False, add_piece=False)
+                                            args=self.args, add_cls=True, add_sep=False, add_piece=False)
                 ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
-                label = 0
+                if example.label is not None:
+                    label = self.label_list.index(example.label)
+                else:
+                    label = 0
                 sample = build_sample(ids, positions=position_ids, masks=sep, label=label, unique_id=example.guid)
 
                 ids_list, positions_list, mask_list, target_list, logit_mask_list = [], [], [], [], []

@@ -365,11 +365,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
                             model.state_dict()["transformer.block_position_embeddings.weight"].data)
                         print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
 
-            missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
-            if missing_keys:
-                print_rank_0(f"Missing keys {missing_keys}")
-            if unexpected_keys:
-                print_rank_0(f"Unexpected keys {unexpected_keys}")
+            model.load_state_dict(sd['module'], strict=False)
         except KeyError:
             print_rank_0('A metadata file exists but unable to load model '
                          'from checkpoint {}, exiting'.format(checkpoint_name))

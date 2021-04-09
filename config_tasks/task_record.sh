@@ -1,4 +1,3 @@
-source config/model_blocklm_generation.sh
 EXPERIMENT_NAME=${MODEL_TYPE}-record
 TASK_NAME=ReCoRD
 DATA_PATH="${DATA_ROOT}/ReCoRD"
@@ -10,8 +9,7 @@ EPOCH_RANGE=(5)
 LR_SINGLE=1e-5
 EPOCH_SINGLE=5
 
-TRAIN_ARGS="--batch-size 8 \
-            --lr-decay-style linear \
+TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.06 \
             --weight-decay 1.0e-1"
 
