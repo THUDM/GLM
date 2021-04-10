@@ -68,6 +68,7 @@ bash scripts/finetune_seq2seq.sh \
      config_tasks/model_blocklm_large_generation.sh \ 
      config_tasks/seq_gigaword.sh
 ```
+- For calculating rouge, install file2rouge from [here](https://github.com/pltrdy/files2rouge) and run `bash scripts/evaluate_seq2seq.sh`
 
 ### Language Modeling
 #### LAMBADA Cloze Accuracy
@@ -88,7 +89,6 @@ bash scripts/evaluate_lm.sh \
      config_tasks/model_blocklm_large_generation.sh \
      config_tasks/zero_lm.sh 
   ```
-* For calculating rouge, install file2rouge from [here](https://github.com/pltrdy/files2rouge) and run `bash scripts/evaluate_seq2seq.sh`
 
 ### Blank Language Model
 - Download the [Yahoo](https://github.com/Varal7/blank_language_model) dataset and check the experiment setup in 
@@ -115,3 +115,22 @@ Example:
 Context: Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.
 
 GLM: [CLS] ng is an adjunct professor at [MASK] ( formerly associate professor and director of its stanford ai lab or sail ) . also a pioneer in online education , ng co - founded coursera and deeplearning . ai . [PAD] <|startofpiece|> the stanford university
+
+## Citation
+Please cite our paper if you find this code useful for your research:
+```
+@article{DBLP:journals/corr/abs-2103-10360,
+  author    = {Zhengxiao Du and
+               Yujie Qian and
+               Xiao Liu and
+               Ming Ding and
+               Jiezhong Qiu and
+               Zhilin Yang and
+               Jie Tang},
+  title     = {All {NLP} Tasks Are Generation Tasks: {A} General Pretraining Framework},
+  journal   = {CoRR},
+  volume    = {abs/2103.10360},
+  year      = {2021},
+  url       = {https://arxiv.org/abs/2103.10360}
+}
+```
