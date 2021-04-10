@@ -126,6 +126,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
                                           gpt_min_ratio=args.gpt_min_ratio,
                                           block_mask_prob=args.block_mask_prob,
                                           context_mask_ratio=args.context_mask_ratio,
+                                          short_seq_prob=args.short_seq_prob,
                                           shuffle_blocks=not args.no_shuffle_block,
                                           block_position_encoding=not args.no_block_position,
                                           sentinel_token=args.sentinel_token,
@@ -184,7 +185,8 @@ def make_loaders(args, tokenizer):
     if args.use_tfrecords:
         return make_tfrecord_loaders(args)
     world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
-    assert world_size % args.loader_scatter == 0
+    if args.loader_scatter is not None:
+        assert world_size % args.loader_scatter == 0
     batch_size = args.batch_size * world_size
     eval_batch_size = batch_size
     if args.eval_batch_size is not None:

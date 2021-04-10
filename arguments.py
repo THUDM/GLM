@@ -200,6 +200,7 @@ def add_training_args(parser):
     group.add_argument('--gap-sentence-prob', type=float, default=0.0)
     group.add_argument('--gap-sentence-ratio', type=float, default=0.15)
     group.add_argument('--avg-block-length', type=int, default=3)
+    group.add_argument('--short-seq-prob', type=float, default=0.0)
     group.add_argument('--task-mask', action='store_true', help="Use different mask for generation and blank filling")
     group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
     group.add_argument('--no-block-position', action='store_true',
