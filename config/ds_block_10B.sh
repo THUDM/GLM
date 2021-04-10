@@ -5,6 +5,7 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/config_gpt_10B.json"
 gpt_options=" \
+       --seed 5678 \
        --block-lm \
        --task-mask \
        --bert-prob 0.4 \

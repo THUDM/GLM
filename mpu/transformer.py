@@ -284,11 +284,12 @@ class ParallelSelfAttention(torch.nn.Module):
             # bd_score = bd_score.permute(2, 3, 0, 1) # bsz n_head qlen klen
 
             attention_scores = ac_score + bd_score
+            attention_scores = attention_scores / math.sqrt(self.hidden_size_per_attention_head)
         else:
             # Raw attention scores. [b, np, s, s]
-            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        attention_scores = attention_scores / math.sqrt(
-            self.hidden_size_per_attention_head)
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2) / math.sqrt(
+                self.hidden_size_per_attention_head))
+
         # Apply the left to right attention mask.
         attention_scores = torch.mul(attention_scores, ltor_mask) - \
                            10000.0 * (1.0 - ltor_mask)
