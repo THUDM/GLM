@@ -81,7 +81,7 @@ bash scripts/evaluate_lm.sh \
      config_tasks/zero_lambada.sh 
 ```
 #### LM Perplexity
-* Download our test set of wikibook (or any dataset following the same format) and change `DATA_ROOT, CHECKPOINT_PATH` 
+* Download our [test set of wikibook](https://mailstsinghuaeducn-my.sharepoint.com/:t:/g/personal/duzx16_mails_tsinghua_edu_cn/EQa_B6KY_q1FjtUeG-T52iMBFtNrfhfHcZbzMxfkJKXKRQ?e=inTdHh) (or any dataset following the same format) and change `DATA_ROOT, CHECKPOINT_PATH` 
   in [scripts/evaluate_lm.sh](scripts/evaluate_lm.sh)
 * Run the following script
   ```shell
