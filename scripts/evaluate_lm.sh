@@ -1,4 +1,4 @@
-DATA_ROOT=/root/data/lambada
+DATA_ROOT=/root/data
 CHECKPOINT_PATH="/root/data/checkpoints"
 
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
