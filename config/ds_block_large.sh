@@ -18,7 +18,6 @@ gpt_options=" \
        --train-iters 200000 \
        --resume-dataloader \
        --train-data bert-large \
-       --lazy-loader \
        --tokenizer-type BertWordPieceTokenizer \
        --tokenizer-model-type bert-large-uncased \
        --split 949,50,1 \

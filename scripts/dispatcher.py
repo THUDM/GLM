@@ -16,14 +16,14 @@ from termcolor import colored
 
 CONFIG = [
     {
-        "lr": [2e-6],
-        "batch-size": [16, 32],
-        "epochs": [20],
+        "lr": [1e-5,2e-5],
+        "batch-size": [16,32],
+        "epochs": [20,40],
         "warmup": [0.1],
         "weight-decay": [0.1],
         # "adam-beta2": [0.98],
         # "adam-eps": [1e-8],
-        "seed": [1]
+        "seed": [1,2,3]
     }
 ]
 
@@ -31,6 +31,11 @@ TASK_CONFIG = {
     "rte": (
         "--task rte "
         "--data-dir /root/data/superglue/RTE "
+        "--seq-length 256 "
+        ),
+    "cb": (
+        "--task cb "
+        "--data-dir /root/data/superglue/CB "
         "--seq-length 256 "
         ),
     "multirc": (
@@ -51,7 +56,18 @@ MODEL_CONFIG = {
         "--tokenizer-model-type roberta "
         "--tokenizer-type GPT2BPETokenizer "
         "--load-pretrained /root/data/checkpoints/blocklm-roberta-large/250000 "
-    )
+        ),
+    "blocklm-base-na": (
+        "--block-lm "
+        "--cloze-eval "
+        "--num-layers 12 "
+        "--hidden-size 768 "
+        "--num-attention-heads 12 "
+        "--max-position-embeddings 512 "
+        "--tokenizer-model-type bert-base-uncased "
+        "--tokenizer-type BertWordPieceTokenizer "
+        "--load-pretrained /root/data/checkpoints/blocklm-base-len6-na03-12-21-21"
+        ),
 }
 
 CHECKPOINT_PATH = "/root/data/finetune_checkpoints"
