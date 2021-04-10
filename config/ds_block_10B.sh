@@ -12,6 +12,7 @@ gpt_options=" \
        --avg-block-length 3 \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
+       --short-seq-prob 0.05 \
        --experiment-name blocklm-10b \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 48 \
