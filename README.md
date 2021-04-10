@@ -10,11 +10,27 @@ Please refer to our paper for a detailed description of GLM:
 Zhengxiao Du*, Yujie Qian*, Xiao Liu, Ming Ding, Jiezhong Qiu, Zhilin Yang, Jie Tang (*: equal contribution)
 
 ## Pretrained Models
+You can download the pretrained models used in the paper from [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR)  
 
-- [GLM-base]() (12-layer, 768-hidden, 12-heads, 110M parameters)
-- [GLM-large]() (24-layer, 1024-hidden, 16-heads, 336M parameters)
-- [GLM-roberta]() (24-layer, 1024-hidden, 16-heads, 336M parameters)
+| Name | Params | File | Config
+|  -----  | ----  | ---- | ----
+| GLM-Base | 110M | glm-base-blank.tar.bz2 | model_blocklm_base.sh
+| GLM-Large  | 335M | glm-large-blank.tar.bz2 | model_blocklm_large.sh
+| GLM-Large (multi-task) | 335M | glm-large-generation.tar.bz2 | model_blocklm_large_generation.sh
+| GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2 | model_blocklm_1.25_generation.sh
+| GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
+| GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2 | model_blocklm_roberta_large.sh
 
+## Installation
+Clone this repo
+```shell
+git clone https://github.com/THUDM/GLM
+cd GLM
+```
+Please first install PyTorch (we use 1.7.0) and [apex](https://github.com/NVIDIA/apex), and then install other dependencies by
+```shell
+pip install -r requirements.txt
+```
 
 ## Usage
 We provide scripts for finetuning GLM on some downstream tasks.
