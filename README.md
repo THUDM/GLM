@@ -40,7 +40,7 @@ We provide scripts for finetuning GLM on some downstream tasks.
 - Download the [SuperGlue](https://super.gluebenchmark.com/tasks) data and check the experiment setup in 
   [scripts/finetune_superglue.sh](scripts/finetune_superglue.sh). Note that `DATA_ROOT, CHECKPOINT_PATH, SAVE_PATH` 
   need to be changed to your local path. You may also change the `batch-size` and `nproc_per_node` according to your 
-  available hardware. We suggest to use aggregated batch size 32 for `MultiRC` and `ReCORD` and 16 for other tasks.
+  available hardware. We suggest to use aggregated batch size 64 for `MultiRC` and `ReCORD` and 16 for other tasks.
 
 - Run the following script (use the COPA dataset as an example)
 
