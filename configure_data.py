@@ -118,7 +118,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
                                                           drop_last)
     use_block = args.block_lm or args.encoder_decoder
     if use_block:
-        strategy = ConstructBlockStrategy(args, tokenizer, args.max_position_embeddings, bert_prob=args.bert_prob,
+        strategy = ConstructBlockStrategy(args, tokenizer, args.seq_length, bert_prob=args.bert_prob,
                                           gap_sentence_prob=args.gap_sentence_prob,
                                           gap_sentence_ratio=args.gap_sentence_ratio,
                                           gpt_infill_prob=args.gpt_infill_prob,
