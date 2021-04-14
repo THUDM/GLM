@@ -103,7 +103,7 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
         shuffle = args.shuffle
         if shuffle:
             sampler = data_utils.samplers.RandomSampler(dataset, replacement=True,
-                                                        num_samples=batch_size * args.train_iters)
+                                                        num_samples=batch_size * args.train_iters * args.gradient_accumulation_steps)
         else:
             sampler = torch.utils.data.SequentialSampler(dataset)
         drop_last = distributed

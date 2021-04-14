@@ -215,29 +215,32 @@ def forward_step(data_iterator, model, args, timers, mems):
     def print_masked_text(batch_id):
         block_position_ids = position_ids[:, 1]
         position_ids_ = position_ids[:, 0]
-        output_tokens = []
         sep = attention_mask.item() if torch.numel(attention_mask) == 1 else attention_mask[batch_id].item()
-        for i, token in enumerate(tokens[batch_id, :sep].tolist()):
-            token = tokenizer.IdToToken(token)
+        text, last_segment = "", []
+        for i, token_id in enumerate(tokens[batch_id, :sep].tolist()):
+            token = tokenizer.IdToToken(token_id)
             if token.startswith('[MASK') or token.endswith('MASK]'):
-                token = f"[{position_ids_[batch_id, i].item()}, {token}]"
-            if token.startswith('##') and len(output_tokens) > 0 and not output_tokens[-1].endswith(']'):
-                output_tokens[-1] += token[2:]
+                if last_segment:
+                    text += tokenizer.DecodeIds(last_segment)
+                    last_segment = []
+                text += f" [{position_ids_[batch_id, i].item()}, {token}]"
             else:
-                output_tokens.append(token)
-        print(" ".join(output_tokens))
+                last_segment.append(token_id)
+        if last_segment:
+            text += tokenizer.DecodeIds(last_segment)
+        print(text.encode('utf-8'))
         last_index = None
         for i in range(sep, tokens.size(1)):
             if tokenizer.IdToToken(tokens[batch_id, i].item()).startswith("<|startofpiece"):
                 if last_index is not None:
-                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()), "|",
-                          tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()),
+                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()).encode('utf-8'), "|",
+                          tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()).encode('utf-8'),
                           position_ids_[batch_id, last_index: i].tolist(),
                           block_position_ids[batch_id, last_index:i].tolist())
                 last_index = i
         if last_index is not None:
-            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()), "|",
-                  tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()),
+            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()).encode('utf-8'), "|",
+                  tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()).encode('utf-8'),
                   position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
 
     if data is not None and "mode" in data:
@@ -580,10 +583,8 @@ def main():
             train_data.batch_sampler.start_iter = args.iteration % \
                                                   len(train_data)
         if val_data is not None:
-            start_iter_val = (args.train_iters // args.save_interval) * \
-                             args.eval_interval
-            val_data.batch_sampler.start_iter = start_iter_val % \
-                                                len(val_data)
+            start_iter_val = (args.iteration // args.eval_interval) * args.eval_iters
+            val_data.batch_sampler.start_iter = start_iter_val % len(val_data)
     if train_data is not None:
         train_data_iterator = iter(train_data)
     else:
