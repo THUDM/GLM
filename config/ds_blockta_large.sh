@@ -12,6 +12,7 @@ gpt_options=" \
        --avg-block-length 3 \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
+       --short-seq-prob 0.02 \
        --experiment-name blocklm-roberta-large-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
