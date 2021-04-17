@@ -273,20 +273,20 @@ def save_ds_checkpoint(iteration, model, lr_scheduler, args, tag):
     model.save_checkpoint(args.save, tag, client_state=sd)
 
 
-def get_checkpoint_iteration(args):
+def get_checkpoint_iteration(load_path):
     # Read the tracker file and set the iteration.
-    tracker_filename = get_checkpoint_tracker_filename(args.load)
+    tracker_filename = get_checkpoint_tracker_filename(load_path)
     if not os.path.isfile(tracker_filename):
         print_rank_0('WARNING: could not find the metadata file {} '.format(
             tracker_filename))
-        if os.path.isdir(args.load):
-            path = os.path.normpath(args.load)
+        if os.path.isdir(load_path):
+            path = os.path.normpath(load_path)
             load_dir, tag = os.path.split(path)
             print_rank_0('Try to directly load the checkpoint from the directory')
             return load_dir, tag, False, True
         print_rank_0('    will not load any checkpoints and will start from '
                      'random')
-        return args.load, 0, False, False
+        return load_path, 0, False, False
     iteration = 0
     release = False
     with open(tracker_filename, 'r') as f:
@@ -303,13 +303,54 @@ def get_checkpoint_iteration(args):
     assert iteration > 0 or release, 'error parsing metadata file {}'.format(
         tracker_filename)
 
-    return args.load, iteration, release, True
+    return load_path, iteration, release, True
+
+
+def load_pretrained(model, checkpoint_path, args):
+    load_dir, tag, release, success = get_checkpoint_iteration(checkpoint_path)
+    checkpoint_name = get_checkpoint_name(load_dir, tag, release)
+    if mpu.get_data_parallel_rank() == 0:
+        print('global rank {} is loading pretrained model {}'.format(
+            torch.distributed.get_rank(), checkpoint_name))
+    # Load the checkpoint.
+    sd = torch.load(checkpoint_name, map_location='cpu')
+    if args.deepspeed:
+        model = model.module
+    if isinstance(model, torchDDP):
+        model = model.module
+    if hasattr(model, "model"):
+        model = model.model
+
+    # Model.
+    def extend_embedding_weights(state_weights, model_weights):
+        original_length = state_weights.shape[0]
+        assert original_length <= args.max_position_embeddings + 1
+        new_weights = model_weights.clone()
+        new_weights[:original_length] = state_weights
+        return new_weights
+
+    if args.block_lm:
+        if "transformer.block_position_embeddings.weight" in sd["module"]:
+            position_weights = sd['module']["transformer.position_embeddings.weight"]
+            if args.max_position_embeddings + 1 > position_weights.shape[0]:
+                sd['module']["transformer.position_embeddings.weight"] = extend_embedding_weights(
+                    position_weights, model.state_dict()["transformer.position_embeddings.weight"].data)
+                print_rank_0(f"Extend position embedding to {args.max_position_embeddings + 1}")
+        if "transformer.block_position_embeddings.weight" in sd["module"]:
+            block_position_weights = sd['module']["transformer.block_position_embeddings.weight"]
+            if args.max_position_embeddings + 1 > block_position_weights.shape[0]:
+                sd['module']["transformer.block_position_embeddings.weight"] = extend_embedding_weights(
+                    block_position_weights,
+                    model.state_dict()["transformer.block_position_embeddings.weight"].data)
+                print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
+    missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
+    print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
 
 
 def load_checkpoint(model, optimizer, lr_scheduler, args):
     """Load a model checkpoint."""
 
-    load_dir, tag, release, success = get_checkpoint_iteration(args)
+    load_dir, tag, release, success = get_checkpoint_iteration(args.load)
 
     if not success:
         return 0
@@ -342,34 +383,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
             model = model.module
 
         # Model.
-        try:
-            def extend_embedding_weights(state_weights, model_weights):
-                original_length = state_weights.shape[0]
-                assert original_length <= args.max_position_embeddings + 1
-                new_weights = model_weights.clone()
-                new_weights[:original_length] = state_weights
-                return new_weights
-
-            if args.block_lm:
-                if "transformer.block_position_embeddings.weight" in sd["module"]:
-                    position_weights = sd['module']["transformer.position_embeddings.weight"]
-                    if args.max_position_embeddings + 1 > position_weights.shape[0]:
-                        sd['module']["transformer.position_embeddings.weight"] = extend_embedding_weights(
-                            position_weights, model.state_dict()["transformer.position_embeddings.weight"].data)
-                        print_rank_0(f"Extend position embedding to {args.max_position_embeddings + 1}")
-                if "transformer.block_position_embeddings.weight" in sd["module"]:
-                    block_position_weights = sd['module']["transformer.block_position_embeddings.weight"]
-                    if args.max_position_embeddings + 1 > block_position_weights.shape[0]:
-                        sd['module']["transformer.block_position_embeddings.weight"] = extend_embedding_weights(
-                            block_position_weights,
-                            model.state_dict()["transformer.block_position_embeddings.weight"].data)
-                        print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
-
-            model.load_state_dict(sd['module'], strict=False)
-        except KeyError:
-            print_rank_0('A metadata file exists but unable to load model '
-                         'from checkpoint {}, exiting'.format(checkpoint_name))
-            exit()
+        missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
+        print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
 
         # Optimizer.
         if not release and not args.finetune and not args.no_load_optim:

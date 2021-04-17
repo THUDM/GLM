@@ -24,7 +24,7 @@ from arguments import get_args
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
 from pretrain_gpt2 import get_masks_and_position_ids
-from utils import load_checkpoint, get_checkpoint_iteration
+from utils import load_checkpoint
 from configure_data import prepare_tokenizer
 from generation_utils import BeamSearchScorer
 import mpu
