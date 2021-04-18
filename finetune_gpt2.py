@@ -30,14 +30,11 @@ from configure_data import prepare_tokenizer
 from utils import print_rank_0
 from utils import Timers
 from train_utils import setup_model_and_optimizer, train_step
-from utils import load_checkpoint, save_checkpoint
+from utils import load_checkpoint, save_checkpoint, load_pretrained
 from pretrain_gpt2 import report_iteration_metrics
 from pretrain_gpt2 import evaluate_and_print_results
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
-from model import PyTorchDistributedDataParallel as TorchDDP
-from model import DistributedDataParallel as LocalDDP
-from fp16 import FP16_Module
 
 
 def process_batch(batch, args):
@@ -60,6 +57,7 @@ def process_batch(batch, args):
         if args.fp16:
             new_batch['loss_mask'] = new_batch['loss_mask'].half()
     return new_batch
+
 
 tokenizer = None
 
@@ -228,6 +226,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 learning_rate = optimizer.param_groups[0]['lr']
                 avg_lm_loss = total_lm_loss.item() / args.log_interval
                 elapsed_time = timers('interval time').elapsed()
+                timers.log(['forward', 'backward', 'allreduce', 'optimizer', 'batch generator'],
+                           normalizer=args.log_interval)
                 report_iteration_metrics(summary_writer, optimizer, learning_rate, avg_lm_loss,
                                          elapsed_time * 1000.0 / args.log_interval, args.iteration, args.train_iters,
                                          args)
@@ -253,8 +253,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 best_iteration = args.iteration
                 best_score = validation_score
                 print_rank_0(f"Found best {validation_metric} {best_score} at {best_iteration}")
+                save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args, tag="best", barrier=False)
                 if torch.distributed.get_rank() == 0:
-                    save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args, tag="best", barrier=False)
                     score_dict.update({"type": "validation", "epoch": epoch})
                     with open(os.path.join(args.log_dir, "results.json"), "w") as output:
                         output.write(json.dumps(score_dict) + "\n")
@@ -300,15 +300,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # checkpoint.
     timers('pretrained checkpoint').start()
     if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
-        module = model
-        if isinstance(module, (LocalDDP, TorchDDP)):
-            module = module.module
-        if isinstance(module, FP16_Module):
-            module = module.module
-        if not isinstance(module, GPT2Model):
-            module = module.model
-        args.load = args.load_pretrained
-        load_checkpoint(module, optimizer, lr_scheduler, args)
+        load_pretrained(model, args.load_pretrained, args)
         args.load = None
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
@@ -320,6 +312,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         # master parameters are also updated.
         if args.fp16:
             optimizer._model_params_to_master_params()
+    torch.distributed.barrier()
     timers('pretrained checkpoint').stop()
     args.iteration = 0
     summary_writer = None

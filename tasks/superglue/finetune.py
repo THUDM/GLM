@@ -58,7 +58,7 @@ def metrics_func_provider(args, tokenizer, is_test):
         eval_func = classify_evaluate
     metric_dict = OrderedDict(default_metrics[args.task.lower()])
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
-                                  output_func=output_func)
+                                  output_func=output_func, only_rank0=False)
 
 
 def main(args):

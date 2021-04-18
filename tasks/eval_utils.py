@@ -17,9 +17,11 @@
 
 import os
 import time
-import json
+import random
 import torch
+import datetime
 
+import mpu
 from utils import print_rank_0
 from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
@@ -113,9 +115,11 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
     model.eval()
+    store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000),
+                                       mpu.get_data_parallel_world_size(),
+                                       torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
     with torch.no_grad():
         # For all the batches in the dataset.
-        predictions, labels, examples = [], [], []
         for _, batch in enumerate(dataloader):
             # Run the model forward.
             data = process_batch(batch, args)
@@ -177,15 +181,19 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
             uid_list = batch['uid']
             if isinstance(uid_list, torch.Tensor):
                 uid_list = uid_list.cpu().numpy().tolist()
-            if example_dict is not None:
-                example_batch = [example_dict[uid] for uid in uid_list]
-                examples.extend(example_batch)
-            # Compute the correct answers.
             predicted = torch.argmax(logits, dim=-1).tolist()
-            # Add output predictions.
-            predictions.extend(predicted)
-            labels.extend(labels_.tolist())
-    if args.task.lower() == 'wsc':
-        predictions = [1 if pred == 0 else 0 for pred in predictions]
+            labels = labels_.tolist()
+            if args.task.lower() == 'wsc':
+                predicted = [1 if pred == 0 else 0 for pred in predicted]
+            for uid, prediction, label in zip(uid_list, predicted, labels):
+                store.set(uid, str((prediction, label)))
     model.train()
+    torch.distributed.barrier()
+    predictions, labels, examples = [], [], []
+    for uid, example in example_dict.items():
+        prediction, label = eval(store.get(uid))
+        predictions.append(prediction)
+        labels.append(label)
+        examples.append(example)
+    torch.distributed.barrier()
     return predictions, labels, examples

@@ -579,6 +579,7 @@ def main():
 
     # Resume data loader if necessary.
     if args.resume_dataloader:
+        print_rank_0("Resume dataloader")
         if train_data is not None:
             train_data.batch_sampler.start_iter = args.iteration % \
                                                   len(train_data)
