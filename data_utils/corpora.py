@@ -349,13 +349,13 @@ class TestDataset(PromptReader):
 
 
 class OpenWebText(PromptReader):
-    PATH = '/root/data/openwebtext2'
+    PATH = '/dataset/fd5061f6/english_data/openwebtext2'
     assert_str = "make sure to set PATH for openwebtext data_utils/corpora.py"
 
     def __init__(self, *args, **kwargs):
         import fasttext
         super().__init__(*args, **kwargs)
-        self.model = fasttext.load_model('/public/home/sleepychord/zhengxiao/data/lid.176.bin')
+        self.model = fasttext.load_model('/dataset/fd5061f6/english_data/lid.176.bin')
         print_rank_0("Load language detection model")
 
     def process_line(self, data, tokenizer, tokenize):
@@ -458,7 +458,7 @@ class Pile(PromptReader):
 
 class Stories(PromptReader):
     is_json = True
-    PATH = "/root/data/stories_31G.jsonl"
+    PATH = "/dataset/fd5061f6/english_data/stories_31G.jsonl"
 
     def process_line(self, data, tokenizer, tokenize):
         text = data.get("text", None)
