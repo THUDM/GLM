@@ -291,11 +291,11 @@ class ParallelSelfAttention(torch.nn.Module):
                 self.hidden_size_per_attention_head))
 
         # Apply the left to right attention mask.
-        attention_scores = torch.mul(attention_scores, ltor_mask) - \
-                           10000.0 * (1.0 - ltor_mask)
+        attention_scores = torch.mul(attention_scores, ltor_mask) - 30000.0 * (1.0 - ltor_mask)
 
         # Attention probabilities. [b, np, s, s]
         attention_probs = torch.nn.Softmax(dim=-1)(attention_scores)
+        attention_probs = torch.mul(attention_probs, ltor_mask)
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
         with get_cuda_rng_tracker().fork():
