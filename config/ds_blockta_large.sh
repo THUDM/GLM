@@ -21,6 +21,7 @@ gpt_options=" \
        --seq-length 512 \
        --max-position-embeddings 1024 \
        --save /dataset/fd5061f6/english_data/checkpoints \
+       --load /dataset/fd5061f6/english_data/checkpoints/blocklm-roberta-large-blank04-14-03-19 \
        --save-interval 2500 \
        --train-iters 500000 \
        --resume-dataloader \
