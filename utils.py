@@ -344,7 +344,8 @@ def load_pretrained(model, checkpoint_path, args):
                     model.state_dict()["transformer.block_position_embeddings.weight"].data)
                 print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
     missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
-    print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
+    if missing_keys or unexpected_keys:
+        print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
 
 
 def load_checkpoint(model, optimizer, lr_scheduler, args):
@@ -358,8 +359,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
     if args.deepspeed:
 
         checkpoint_name, sd = model.load_checkpoint(load_dir, tag, load_optimizer_states=not args.no_load_optim,
-                                                    load_lr_scheduler_states=not args.no_load_optim)
-        if "client_lr_scheduler" in sd:
+                                                    load_lr_scheduler_states=not args.no_load_lr_scheduler)
+        if not args.no_load_lr_scheduler and "client_lr_scheduler" in sd:
             lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
             print_rank_0("Load lr scheduler state")
         if checkpoint_name is None:
@@ -384,7 +385,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
 
         # Model.
         missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
-        print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
+        if missing_keys or unexpected_keys:
+            print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
 
         # Optimizer.
         if not release and not args.finetune and not args.no_load_optim:
