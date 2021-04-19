@@ -233,16 +233,14 @@ def backward_step(optimizer, model, lm_loss, args, timers):
         else:
             loss.backward()
 
-    if args.deepspeed:
+    if args.deepspeed or args.DDP_impl == 'torch':
         # DeepSpeed backward propagation already addressed all reduce communication.
         # Reset the timer to avoid breaking timer logs below.
         timers('allreduce').reset()
     else:
-        if not args.DDP_impl == 'torch':
-            timers('allreduce').start()
-            model.allreduce_params(reduce_after=False,
-                                   fp32_allreduce=args.fp32_allreduce)
-            timers('allreduce').stop()
+        timers('allreduce').start()
+        model.allreduce_params(reduce_after=False, fp32_allreduce=args.fp32_allreduce)
+        timers('allreduce').stop()
 
     # Update master gradients.
     if not args.deepspeed:
