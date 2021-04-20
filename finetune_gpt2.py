@@ -304,14 +304,20 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         args.load = None
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
-        if args.fp16:
-            optimizer._model_params_to_master_params()
+        if args.fp16 and optimizer is not None:
+            if args.deepspeed:
+                optimizer.refresh_fp32_params()
+            else:
+                optimizer._model_params_to_master_params()
     if args.load is not None:
         load_checkpoint(model, optimizer, lr_scheduler, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
-        if args.fp16:
-            optimizer._model_params_to_master_params()
+        if args.fp16 and optimizer is not None:
+            if args.deepspeed:
+                optimizer.refresh_fp32_params()
+            else:
+                optimizer._model_params_to_master_params()
     torch.distributed.barrier()
     timers('pretrained checkpoint').stop()
     args.iteration = 0
