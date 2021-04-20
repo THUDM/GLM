@@ -120,7 +120,8 @@ class LambadaDataset(torch.utils.data.Dataset):
             if left_shift > 0:
                 tokens = tokens[left_shift:]
             data = build_input_from_ids(tokens, None, answer_tokens, self.max_seq_length, self.tokenizer,
-                                        args=self.args, add_cls=True, add_sep=False, add_piece=True)
+                                        args=self.args, add_cls=True, add_sep=False, add_piece=True,
+                                        mask_id=self.mask_id)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if self.unidirectional:
                 loss_masks = np.array(loss_masks, dtype=np.int64)
