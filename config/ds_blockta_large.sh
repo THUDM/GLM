@@ -25,6 +25,7 @@ gpt_options=" \
        --save-interval 2500 \
        --train-iters 500000 \
        --resume-dataloader \
+       --shuffle \
        --train-data wikibook cc-news openwebtext stories \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \
