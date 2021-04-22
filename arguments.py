@@ -338,6 +338,7 @@ def add_data_args(parser):
                        help='Maximum number of predictions to use per sequence.'
                             'Defaults to math.ceil(`--seq-length`*.15/10)*10.'
                             'MUST BE SPECIFIED IF `--use-tfrecords` is True.')
+    group.add_argument('--non-sentence-start', type=float, default=0.0)
     group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
     group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")
     group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")

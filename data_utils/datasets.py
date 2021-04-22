@@ -571,7 +571,7 @@ class BlockDataset(data.Dataset):
     def __init__(self, ds, tokenizer,
                  max_seq_len=1024,
                  sample_across_doc=True,
-                 sentence_start=True, filter_english=False, **kwargs):
+                 non_sentence_start=0.0, filter_english=False, **kwargs):
         """
         sentence_start: the stripped article must start with a complete sentence
         """
@@ -581,7 +581,7 @@ class BlockDataset(data.Dataset):
         self.max_seq_len = max_seq_len
         self.tokenizer = tokenizer
         self.sample_across_doc = sample_across_doc
-        self.sentence_start = sentence_start
+        self.non_sentence_start = non_sentence_start
         self.filter_english = filter_english
         self.weighting, self.total_len = None, None
         self.is_lazy = False
@@ -599,7 +599,8 @@ class BlockDataset(data.Dataset):
         else:
             lens = np.array([len(d['text']) if isinstance(d, dict) else len(d) for d in self.ds])
         self.total_len = np.sum(lens)
-        print_rank_0(f"Dataset document count {len(lens)}, token count {self.total_len}")
+        print_rank_0(
+            f"Dataset document count {len(lens)}, token count {self.total_len}, non sentence start{self.non_sentence_start}")
         self.weighting = list(accumulate(lens))
 
     def get_weighted_samples(self, np_rng):
@@ -632,7 +633,7 @@ class BlockDataset(data.Dataset):
         # randomly choose a position for start
         if tokens_to_strip > 0:
             strip_left_tokens = rng.randint(tokens_to_strip)
-            if self.sentence_start:
+            if rng.random() > self.non_sentence_start:
                 if rng.random() < 0.5:
                     while strip_left_tokens > 0 and not self.contains_sentence_end(tokens[strip_left_tokens - 1]):
                         strip_left_tokens -= 1
