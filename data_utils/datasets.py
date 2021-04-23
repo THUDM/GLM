@@ -632,15 +632,20 @@ class BlockDataset(data.Dataset):
 
         # randomly choose a position for start
         if tokens_to_strip > 0:
+            move_count = 0
             strip_left_tokens = rng.randint(tokens_to_strip)
             if rng.random() > self.non_sentence_start:
                 if rng.random() < 0.5:
-                    while strip_left_tokens > 0 and not self.contains_sentence_end(tokens[strip_left_tokens - 1]):
+                    while move_count < self.max_seq_len // 2 and strip_left_tokens > 0 and not self.contains_sentence_end(
+                            tokens[strip_left_tokens - 1]):
                         strip_left_tokens -= 1
+                        move_count += 1
                 else:
-                    while strip_left_tokens < len(tokens) and not self.contains_sentence_end(
+                    while move_count < self.max_seq_len // 2 and strip_left_tokens < len(
+                            tokens) and not self.contains_sentence_end(
                             tokens[strip_left_tokens - 1]):
                         strip_left_tokens += 1
+                        move_count += 1
             tokens = [self.tokenizer.get_command('ENC').Id] + tokens[strip_left_tokens:]
             loss_mask = [0] + loss_mask[strip_left_tokens:]
             if len(tokens) == 2 and tokens[1] == self.tokenizer.get_command('eos').Id:
