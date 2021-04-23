@@ -13,6 +13,7 @@ gpt_options=" \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
        --short-seq-prob 0.02 \
+       --non-sentence-start 0.02 \
        --experiment-name blocklm-roberta-1.25-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
@@ -21,6 +22,7 @@ gpt_options=" \
        --seq-length 512 \
        --max-position-embeddings 1024 \
        --save /dataset/fd5061f6/english_data/checkpoints \
+       --load /dataset/fd5061f6/english_data/checkpoints/blocklm-roberta-1.25-blank04-22-14-01 \
        --save-interval 2500 \
        --train-iters 500000 \
        --resume-dataloader \

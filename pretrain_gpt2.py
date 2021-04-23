@@ -20,6 +20,8 @@ from datetime import datetime
 import os
 import random
 import math
+
+import torch.distributed
 from filelock import FileLock
 import numpy as np
 import torch
@@ -37,7 +39,7 @@ from utils import load_checkpoint
 from utils import report_memory
 from utils import print_and_save_args
 from utils import print_rank_0
-from utils import get_sample_writer, get_log_dir
+from utils import get_sample_writer, get_log_dir, get_hostname
 import torch.distributed as dist
 
 
@@ -353,6 +355,13 @@ def train(model, optimizer, lr_scheduler,
             if report_memory_flag:
                 report_memory('after {} iterations'.format(args.iteration))
                 report_memory_flag = False
+            # for i in range(torch.distributed.get_world_size()):
+            #     if i == torch.distributed.get_rank():
+            #         print(get_hostname())
+            #         timers.log(['forward', 'backward', 'optimizer',
+            #                     'batch generator', 'data loader'],
+            #                    normalizer=args.log_interval, reset=False)
+            #     torch.distributed.barrier()
             if args.deepspeed or args.DDP_impl == 'torch':
                 timers.log(['forward', 'backward', 'optimizer',
                             'batch generator', 'data loader'],
