@@ -886,14 +886,6 @@ def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Uni
 
 
 PVPS = {
-    'agnews': AgnewsPVP,
-    'mnli': MnliPVP,
-    'yelp-polarity': YelpPolarityPVP,
-    'yelp-full': YelpFullPVP,
-    'yahoo': YahooPVP,
-    'xstance': XStancePVP,
-    'xstance-de': XStancePVP,
-    'xstance-fr': XStancePVP,
     'rte': RtePVP,
     'wic': WicPVP,
     'cb': CbPVP,

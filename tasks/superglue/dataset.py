@@ -706,9 +706,6 @@ class RecordProcessor(DataProcessor):
         return examples
 
 
-CLASSIFICATION_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
-MULTI_CHOICE_DATASETS = {"copa", "record"}
-
 PROCESSORS = {
     "wic": WicProcessor,
     "rte": RteProcessor,

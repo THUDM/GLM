@@ -1,5 +1,5 @@
 # Use GLM for your NLU tasks
-To use GLM for your own NLU tasks, you should implement a subclass of `DataProcessor` in [tasks/superglue/dataset.py](dataset.py) and a subclass of `PVP` in [tasks/superglue/pvp.py]. We will take the RTE and ReCoRD tasks in SuperGLUE as an example.
+To use GLM for your own NLU tasks, you should implement a subclass of `DataProcessor` in [tasks/superglue/dataset.py](dataset.py) and a subclass of `PVP` in [tasks/superglue/pvp.py](pvp.py). You should also specify the  We will take the RTE and ReCoRD tasks in SuperGLUE as an example.
 
 ## 1. Design your patterns
 RTE is an NLI task in which the model is required to predict text entailment between a premise and a hypothesis. The label can be `entailment` or `not_entailment` One sample from the training set is 
@@ -60,11 +60,18 @@ class RteProcessor(DataProcessor):
 
         return examples
 ```
+After that, you should add the implemented class to ``PROCESSORS`` at the end of [tasks/superglue/dataset.py](dataset.py):
+```python
+PROCESSORS = {
+    ...
+    "rte": RteProcessor
+}
+```
 
 ## 3. Implement subclass of `PVP`
 To implement a subclass of `PVP`, you should first decide your verbalizers is single-token or multi-token. The verbalizers in RTE, "Yes" and "No" are single-token. Instead, the verbalizers in ReCoRD are multi-token, as one entity can be tokenized into multiple tokens with WordPiece or BPE tokenizer.
 
-For single-token task, you should set `is_multi_token=False` in the class definition. You should implement `get_parts` to return the inputs to GLM given an example and `verbalize` to return the verbalizer given a label. Take `RTEPvP` as an example:
+For single-token task, you should set `is_multi_token=False` in the class definition. You should implement `get_parts` to return the inputs to GLM given an example and `verbalize` to return the verbalizer given a label. Take `RTEPVP` as an example:
 ```python
 class RtePVP(PVP):
     is_multi_token = False
@@ -88,7 +95,7 @@ class RtePVP(PVP):
 ```
 We use `PvP.shortenable` to mark the segments that can be truncated when exceeding the maximum sequence length.
 
-For multi-token task, you should set `is_multi_token=True` in the class definition. You should implement `get_parts` to return the inputs to GLM given an example and `get_answers` to return the candidates. Take `ReCoRDPvP` as an example:
+For multi-token task, you should set `is_multi_token=True` in the class definition. You should implement `get_parts` to return the inputs to GLM given an example and `get_answers` to return the candidates. Take `ReCoRDPVP` as an example:
 ```python
 class RecordPVP(PVP):
     is_multi_token = True
@@ -104,4 +111,27 @@ class RecordPVP(PVP):
         assert '@placeholder' in example.text_b, f'question "{example.text_b}" does not contain a @placeholder token'
         question_a, question_b = example.text_b.split('@placeholder')
         return [premise, " " + question_a.rstrip(), [self.mask], question_b], []
+```
+After that, you should implement the class to `PVPS` at the end of [tasks/superglue/pvp.py](pvp.py):
+```python
+PVPS = {
+    ...
+    'rte': RtePVP,
+    'record': RecordPVP
+}
+```
+## 4. Run the experiment
+To run the experiment for your new task, you should create a config file like [config_tasks/task_rte.sh](/config_tasks/task_rte.sh). You should also specify the evaluation metrics for the task in `DEFAULT_METRICS` of [tasks/superglue/finetune.py](finetune.py):
+```python
+DEFAULT_METRICS = {
+    ...
+    "record": [("EM", qa_exact_match), ("F1", qa_f1)],
+    "rte": [("accuracy", accuracy_metric)]
+}
+```
+Then you can run the experiment with [finetune_superglue.sh](/scripts/finetune_superglue.sh):
+```shell
+bash scripts/finetune_superglue.sh \
+     config_tasks/model_blocklm_large.sh \
+     config_tasks/task_rte.sh
 ```
