@@ -34,7 +34,6 @@ DEFAULT_METRICS = {
     "multirc": [("f1a", f1_metric), ("em", multirc_em), ("acc", accuracy_metric)]
 }
 
-MULTI_CHOICE_DATASETS = {"copa", "record", "wsc"}
 
 
 def train_valid_datasets_provider(args, tokenizer):
