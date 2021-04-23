@@ -12,7 +12,7 @@ Zhengxiao Du*, Yujie Qian*, Xiao Liu, Ming Ding, Jiezhong Qiu, Zhilin Yang, Jie 
 Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [PET](https://github.com/timoschick/pet).
 
 ## Pretrained Models
-You can download the pretrained models used in the paper from [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR)  
+You can download the pretrained models used in the paper [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR).
 
 | Name | Params | File | Config
 |  -----  | ----  | ---- | ----
@@ -56,6 +56,10 @@ bash scripts/finetune_superglue.sh \
   [tasks/superglue/dataset.py](tasks/superglue/dataset.py) for data loading and add a `PVP` in 
   [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. More details can be found 
   [here](tasks/superglue/README.md).
+  
+- The cloze questions (prompts) used in this work are written by human. We are also studying a P-tuning (prompt 
+  tuning) approach to search for the optimal continuous prompt. Please refer to our 
+  [paper](https://arxiv.org/abs/2103.10385) and [code](https://github.com/THUDM/P-tuning).
 
 ### Text Summarization
 
@@ -112,7 +116,6 @@ bash scripts/generate_block.sh \
      config_tasks/model_blocklm_large.sh
 ```
 Example:
-
 
 Context: Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.
 
