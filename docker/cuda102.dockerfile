@@ -101,6 +101,7 @@ RUN curl -o ~/miniconda.sh https://mirrors.tuna.tsinghua.edu.cn/anaconda/minicon
      /opt/conda/bin/conda clean -ya
 
 ENV PATH /opt/conda/bin:$PATH
+RUN echo "export PATH=/opt/conda/bin:\$PATH" >> /root/.bashrc
 RUN pip install --upgrade pip setuptools
 RUN wget https://tuna.moe/oh-my-tuna/oh-my-tuna.py && python oh-my-tuna.py
 
@@ -191,12 +192,6 @@ EXPOSE 8888
 ###############################################################################
 # Add a deepspeed user with user id 1001
 RUN echo 'root:baai2020keg' | chpasswd
-#RUN useradd --create-home --uid 1001 --shell /bin/bash deepspeed
-#RUN echo 'deepspeed:baai2020keg' | chpasswd
-#RUN usermod -aG sudo deepspeed
-#RUN echo "deepspeed ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-## # Change to non-root privilege
-#USER deepspeed
 
 ##############################################################################
 # Client Liveness & Uncomment Port 22 for SSH Daemon
@@ -208,7 +203,7 @@ RUN mkdir -p /var/run/sshd && cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config &
 ##############################################################################
 ## SSH daemon port inside container cannot conflict with host OS port
 ###############################################################################
-ARG SSH_PORT=2222
+ARG SSH_PORT=22
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
     sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
