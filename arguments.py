@@ -100,7 +100,7 @@ def add_fp16_config_args(parser):
                        help='Window over which to raise/lower dynamic scale')
     group.add_argument('--min-scale', type=float, default=1,
                        help='Minimum loss scale for dynamic loss scale')
-
+    group.add_argument('--attention-scale', type=float, default=1.0)
     return parser
 
 

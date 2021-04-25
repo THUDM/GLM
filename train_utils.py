@@ -56,7 +56,8 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
                           block_position_encoding=args.block_lm and not args.masked_lm,
                           output_predict=output_predict,
                           spell_length=spell_length,
-                          nonautoregressive=args.nonautoregressive)
+                          nonautoregressive=args.nonautoregressive,
+                          attention_scale=args.attention_scale)
         if model_type is not None:
             if model_type == 'multiple_choice':
                 if args.cloze_eval:

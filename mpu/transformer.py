@@ -181,7 +181,7 @@ class ParallelSelfAttention(torch.nn.Module):
     def __init__(self, hidden_size, num_attention_heads,
                  attention_dropout_prob, output_dropout_prob,
                  init_method, output_layer_init_method=None, relative_encoding=False,
-                 performer=False):
+                 performer=False, attention_scale=1.0):
         super(ParallelSelfAttention, self).__init__()
         self.performer = performer
         # Set output layer initialization if not provided.
@@ -195,6 +195,7 @@ class ParallelSelfAttention(torch.nn.Module):
         self.num_attention_heads_per_partition = divide(num_attention_heads,
                                                         world_size)
         self.relative_encoding = relative_encoding
+        self.attention_scale = attention_scale
         # Strided linear layer.
         self.query_key_value = ColumnParallelLinear(hidden_size, 3 * hidden_size,
                                                     stride=3,
@@ -286,14 +287,24 @@ class ParallelSelfAttention(torch.nn.Module):
             attention_scores = ac_score + bd_score
             attention_scores = attention_scores / math.sqrt(self.hidden_size_per_attention_head)
         else:
-            # Raw attention scores. [b, np, s, s]
-            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2) / math.sqrt(
-                self.hidden_size_per_attention_head))
+            if self.attention_scale > 1.0:
+                # Raw attention scores. [b, np, s, s]
+                attention_scores = torch.matmul(query_layer / math.sqrt(self.attention_scale),
+                                            key_layer.transpose(-1, -2) / math.sqrt(
+                                                self.hidden_size_per_attention_head * self.attention_scale))
+            else:
+                attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2) / math.sqrt(
+                    self.hidden_size_per_attention_head))
 
         # Apply the left to right attention mask.
         attention_scores = torch.mul(attention_scores, ltor_mask)
-        min_attention_scores = attention_scores.min().item()
-        attention_scores = attention_scores + (min_attention_scores - 1000.0) * (1.0 - ltor_mask)
+        if self.attention_scale > 1.0:
+            max_attention_scores = attention_scores.max(dim=-1, keepdim=True)[0]
+            attention_scores -= max_attention_scores
+            attention_scores *= self.attention_scale
+        # if torch.distributed.get_rank() == 0:
+        #     print(min_attention_scores, attention_scores.max().item())
+        attention_scores = attention_scores + (-65504.0) * (1.0 - ltor_mask)
         # Attention probabilities. [b, np, s, s]
         attention_probs = torch.nn.Softmax(dim=-1)(attention_scores)
         # This is actually dropping out entire tokens to attend to, which might
@@ -516,7 +527,8 @@ class ParallelTransformerLayer(torch.nn.Module):
                  init_method,
                  output_layer_init_method=None,
                  relative_encoding=False,
-                 performer=False):
+                 performer=False,
+                 attention_scale=1.0):
         super(ParallelTransformerLayer, self).__init__()
         # Set output layer initialization if not provided.
         if output_layer_init_method is None:
@@ -534,7 +546,8 @@ class ParallelTransformerLayer(torch.nn.Module):
             init_method,
             output_layer_init_method=output_layer_init_method,
             relative_encoding=relative_encoding,
-            performer=performer)
+            performer=performer,
+            attention_scale=attention_scale)
 
         # Layernorm on the input data.
         self.post_attention_layernorm = LayerNorm(hidden_size,
@@ -639,7 +652,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  relative_encoding=False,
                  block_position_encoding=False,
                  performer=False,
-                 use_decoder_layer=False
+                 use_decoder_layer=False,
+                 attention_scale=1.0,
                  ):
         super(GPT2ParallelTransformer, self).__init__()
         self.hidden_size = hidden_size
@@ -710,7 +724,8 @@ class GPT2ParallelTransformer(torch.nn.Module):
                     unscaled_init_method(init_method_std),
                     output_layer_init_method=output_layer_init_method,
                     relative_encoding=relative_encoding,
-                    performer=performer)
+                    performer=performer,
+                    attention_scale=attention_scale)
 
         # Transformer layers.
         self.layers = torch.nn.ModuleList(

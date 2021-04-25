@@ -59,7 +59,8 @@ class GPT2Model(torch.nn.Module):
                  block_position_encoding=False,
                  nonautoregressive=False,
                  output_predict=True,
-                 spell_length=None
+                 spell_length=None,
+                 attention_scale=1.0,
                  ):
         super(GPT2Model, self).__init__()
 
@@ -94,6 +95,7 @@ class GPT2Model(torch.nn.Module):
                                                        output_dropout_prob,
                                                        checkpoint_activations,
                                                        checkpoint_num_layers,
+                                                       attention_scale=attention_scale,
                                                        relative_encoding=relative_encoding,
                                                        block_position_encoding=block_position_encoding)
         if spell_length is not None:
