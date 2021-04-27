@@ -4,6 +4,7 @@ import mpu
 import random
 import copy
 import numpy as np
+import math
 from utils import print_rank_0
 from scipy.stats import poisson
 
@@ -44,7 +45,7 @@ class ConstructBlockStrategy:
         self.bert_prob = bert_prob
         self.gap_sentence_prob = gap_sentence_prob
         self.gpt_prob = 1 - bert_prob - gap_sentence_prob
-        assert self.gpt_prob >= 0.0
+        assert math.fabs(self.gpt_prob) <= 1e-10
         self.infill_prob = gpt_infill_prob
         self.gpt_min_ratio = gpt_min_ratio
         self.bert_ratio = bert_ratio
