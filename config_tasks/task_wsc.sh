@@ -12,11 +12,14 @@ EPOCH_SINGLE=50
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \
             --weight-decay 0.1 \
-            --length-penalty 1 \
             --loss-func mix \
-            --wsc-negative"
+            --wsc-negative \
+            --length-penalty 1"
 
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \
              --eval-interval 1000 \
              --eval-iters 100"
+
+PATTERN_IDS=(0 1 2)
+PROMPT_IDS=(1 2 3)

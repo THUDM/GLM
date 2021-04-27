@@ -17,3 +17,6 @@ COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \
              --eval-interval 1000 \
              --eval-iters 100"
+
+PATTERN_IDS=(0 1 2)
+PROMPT_IDS=(1 2 3)
