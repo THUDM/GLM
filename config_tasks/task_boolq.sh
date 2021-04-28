@@ -20,3 +20,5 @@ COMMON_ARGS="--save-interval 10000 \
 
 PATTERN_IDS=(0 1 2 3 4 5)
 PROMPT_IDS=(1 2 3)
+
+BATCH_SIZE=16

@@ -17,3 +17,5 @@ COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \
              --eval-interval 1000 \
              --eval-iters 100"
+
+BATCH_SIZE=16

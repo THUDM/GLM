@@ -19,3 +19,5 @@ COMMON_ARGS="--save-interval 10000 \
              --eval-iters 100"
 
 PATTERN_IDS=(0)
+
+BATCH_SIZE=64
