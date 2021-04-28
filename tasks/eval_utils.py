@@ -22,7 +22,7 @@ import torch
 import datetime
 
 import mpu
-from utils import print_rank_0
+from utils import print_rank_0, get_spare_port
 from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
 from collections import OrderedDict
@@ -115,7 +115,8 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
     model.eval()
-    store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000),
+    port = get_spare_port()
+    store = torch.distributed.TCPStore(args.master_ip, port,
                                        mpu.get_data_parallel_world_size(),
                                        torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
     with torch.no_grad():

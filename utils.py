@@ -57,6 +57,18 @@ def get_hostname():
     return master_addr
 
 
+def get_spare_port():
+    if torch.distributed.get_rank() == 0:
+        port = subprocess.check_output(["shuf -n 1 -i 10000-65535"], shell=True)
+        port = int(port.strip())
+        port = torch.cuda.LongTensor([port])
+    else:
+        port = torch.cuda.LongTensor([0])
+    torch.distributed.broadcast(port, 0)
+    port = port.item()
+    return port
+
+
 def print_and_save_args(args, verbose=True, log_dir=None):
     """Print arguments."""
     if verbose:
