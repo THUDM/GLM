@@ -8,4 +8,4 @@ MODEL_ARGS="--block-lm \
             --max-position-embeddings 1024 \
             --tokenizer-model-type roberta \
             --tokenizer-type GPT2BPETokenizer \
-            --load-pretrained /dataset/fd5061f6/english_data/checkpoints/blocklm-roberta-1.25-blank04-22-14-01"
+            --load-pretrained /dataset/c07bd62b/checkpoints/blocklm-roberta-1.25-blank04-22-14-01"

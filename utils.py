@@ -23,7 +23,6 @@ import torch
 import json
 import subprocess
 
-from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from fp16 import FP16_Optimizer
 import mpu
 from tensorboardX import SummaryWriter
@@ -227,8 +226,6 @@ def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, b
         save_ds_checkpoint(iteration, model, lr_scheduler, args, tag=tag)
     else:
         # Only rank zer0 of the data parallel writes to the disk.
-        if isinstance(model, torchDDP):
-            model = model.module
 
         if mpu.get_data_parallel_rank() == 0:
             checkpoint_name = get_checkpoint_name(args.save, tag)
@@ -318,48 +315,6 @@ def get_checkpoint_iteration(load_path):
     return load_path, iteration, release, True
 
 
-def load_pretrained(model, checkpoint_path, args):
-    load_dir, tag, release, success = get_checkpoint_iteration(checkpoint_path)
-    checkpoint_name = get_checkpoint_name(load_dir, tag, release)
-    if mpu.get_data_parallel_rank() == 0:
-        print('global rank {} is loading pretrained model {}'.format(
-            torch.distributed.get_rank(), checkpoint_name))
-    # Load the checkpoint.
-    sd = torch.load(checkpoint_name, map_location='cpu')
-    if args.deepspeed:
-        model = model.module
-    if isinstance(model, torchDDP):
-        model = model.module
-    if hasattr(model, "model"):
-        model = model.model
-
-    # Model.
-    def extend_embedding_weights(state_weights, model_weights):
-        original_length = state_weights.shape[0]
-        assert original_length <= args.max_position_embeddings + 1
-        new_weights = model_weights.clone()
-        new_weights[:original_length] = state_weights
-        return new_weights
-
-    if args.block_lm:
-        if "transformer.block_position_embeddings.weight" in sd["module"]:
-            position_weights = sd['module']["transformer.position_embeddings.weight"]
-            if args.max_position_embeddings + 1 > position_weights.shape[0]:
-                sd['module']["transformer.position_embeddings.weight"] = extend_embedding_weights(
-                    position_weights, model.state_dict()["transformer.position_embeddings.weight"].data)
-                print_rank_0(f"Extend position embedding to {args.max_position_embeddings + 1}")
-        if "transformer.block_position_embeddings.weight" in sd["module"]:
-            block_position_weights = sd['module']["transformer.block_position_embeddings.weight"]
-            if args.max_position_embeddings + 1 > block_position_weights.shape[0]:
-                sd['module']["transformer.block_position_embeddings.weight"] = extend_embedding_weights(
-                    block_position_weights,
-                    model.state_dict()["transformer.block_position_embeddings.weight"].data)
-                print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
-    missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
-    if missing_keys or unexpected_keys:
-        print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
-
-
 def load_checkpoint(model, optimizer, lr_scheduler, args):
     """Load a model checkpoint."""
 
@@ -391,9 +346,6 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
 
         # Load the checkpoint.
         sd = torch.load(checkpoint_name, map_location='cpu')
-
-        if isinstance(model, torchDDP):
-            model = model.module
 
         # Model.
         missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)

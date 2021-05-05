@@ -29,8 +29,8 @@ from configure_data import prepare_tokenizer
 
 from utils import print_rank_0
 from utils import Timers
-from train_utils import setup_model_and_optimizer, train_step
-from utils import load_checkpoint, save_checkpoint, load_pretrained
+from train_utils import setup_model_and_optimizer, train_step, load_pretrained
+from utils import load_checkpoint, save_checkpoint
 from pretrain_gpt2 import report_iteration_metrics
 from pretrain_gpt2 import evaluate_and_print_results
 from pretrain_gpt2 import initialize_distributed

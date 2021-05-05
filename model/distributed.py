@@ -91,10 +91,6 @@ class DistributedDataParallel(Module):
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         #[h.remove() for h in self.hook_handles]
         sd = self.module.state_dict(destination, prefix, keep_vars)
-       # for handle, hook in zip(self.hook_handles, self.hooks):
-       #     d = handle.hooks_dict_ref()
-       #     d[handle.id] = hook
-
         return sd
 
     def load_state_dict(self, state_dict, strict=True):
