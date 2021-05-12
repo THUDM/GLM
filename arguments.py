@@ -128,7 +128,7 @@ def add_training_args(parser):
                        help='Number of finetunning epochs. Zero results in evaluation only.')
     group.add_argument('--clip-grad', type=float, default=1.0,
                        help='gradient clipping')
-    group.add_argument('--train-iters', type=int, default=1000000,
+    group.add_argument('--train-iters', type=int, default=0,
                        help='total number of iterations to train over all training runs')
     group.add_argument('--label-smoothing', type=float, default=0.0)
     group.add_argument('--log-interval', type=int, default=100,

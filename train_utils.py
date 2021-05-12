@@ -130,7 +130,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
             sum([p.nelement() for p in model.parameters()])), flush=True)
 
     # To prevent OOM for model sizes that cannot fit in GPU memory in full precision
-    if hasattr(args, "deepspeed") and args.deepspeed and args.fp16:
+    if args.fp16:
         model.half()
 
     # GPU allocation.
@@ -141,7 +141,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
         model = FP16_Module(model)
 
     # Wrap model for distributed training.
-    if not args.deepspeed:
+    if not args.deepspeed and (args.train_iters > 0 or args.epochs > 0):
         if args.DDP_impl == 'torch':
             i = torch.cuda.current_device()
             model = TorchDDP(model, device_ids=[i], output_device=i,
@@ -242,7 +242,7 @@ def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_label
                       spell_length=spell_length)
     param_groups = get_optimizer_param_groups(model)
 
-    if args.train_data is not None or args.data_dir is not None:
+    if args.train_data is not None or args.data_dir is not None and (args.epochs > 0 or args.train_iters > 0):
         if args.deepspeed:
             print_rank_0("DeepSpeed is enabled.")
 
