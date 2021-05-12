@@ -35,8 +35,7 @@ class PVP(ABC):
     """
 
     def __init__(self, args, tokenizer, label_list, max_seq_length, pattern_id: int = 0, verbalizer_file: str = None,
-                 seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train',
-                 continuous_prompt=False, task_mask=False):
+                 seed: int = 42, is_multi_token=False, max_segment_length=0, fast_decode: bool = False, split='train'):
         """
         Create a new PVP.
 
@@ -57,8 +56,9 @@ class PVP(ABC):
         self.max_dec_seq_length = 16
         self._is_multi_token = is_multi_token
         self.max_segment_length = max_segment_length
-        self.continuous_prompt = continuous_prompt
-        self.task_mask = task_mask
+        self.task_mask = args.task_mask
+        self.continuous_prompt = args.continuous_prompt
+        self.prefix_prompt = args.prefix_prompt
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
@@ -132,25 +132,25 @@ class PVP(ABC):
         prompt_id = tokenizer.num_tokens
 
         def encode_input(raw_parts):
-            parts, flags = [], []
+            parts = []
             for x, s in raw_parts:
                 if isinstance(x, str):
                     x = tokenizer.EncodeAsIds(x)
-                    flag = [0] * len(x)
                 elif isinstance(x, int):
-                    flag = [1] * x
                     x = [prompt_id] * x
                 else:
-                    flag = [0] * len(x)
+                    pass
                 parts.append((x, s))
-                flags.append((flag, x))
-            return parts, flags
+            return parts
 
-        parts_a, flags_a = encode_input(raw_parts_a)
-        parts_b, flags_b = None, None
+        parts_a = encode_input(raw_parts_a)
+        if self.prefix_prompt > 0:
+            parts_a = [([prompt_id] * self.prefix_prompt, False)] + parts_a
+            
+        parts_b = None
         if raw_parts_b:
             raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
-            parts_b, flags_b = encode_input(raw_parts_b)
+            parts_b = encode_input(raw_parts_b)
 
         if self.is_multi_token:
             answers = self.get_answers(example)
@@ -359,7 +359,7 @@ class CopaPVP(PVP):
 
     @property
     def spell_length(self):
-        return self.pattern_id
+        return self.pattern_id + self.prefix_prompt
 
     @property
     def mask(self) -> str:
@@ -390,7 +390,7 @@ class CopaPVP(PVP):
             joiner = ' because'
         else:
             joiner = ', so'
-        if self.continuous_prompt:
+        if self.continuous_prompt and self.pattern_id > 0:
             if self.pattern_id == 1:
                 return [1, '"', choice1, '" or "', choice2, '"', premise, joiner, [self.mask], '.'], []
             elif self.pattern_id == 2:
@@ -462,7 +462,7 @@ class WscPVP(PVP):
 
     @property
     def spell_length(self):
-        return self.pattern_id
+        return self.pattern_id + self.prefix_prompt
 
     def get_answers(self, example: InputExample):
         target = " " + example.meta['span1_text']
@@ -484,7 +484,7 @@ class WscPVP(PVP):
         text_a = ' '.join(words_a)
         text_a = self.shortenable(text_a)
 
-        if self.continuous_prompt:
+        if self.continuous_prompt and self.pattern_id > 0:
             if self.pattern_id == 1:
                 return [1, text_a, " The pronoun '*" + pronoun + "*' refers to", [self.mask], '.'], []
             elif self.pattern_id == 2:
@@ -624,13 +624,13 @@ class RtePVP(PVP):
 
     @property
     def spell_length(self):
-        return self.pattern_id
+        return self.pattern_id + self.prefix_prompt
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         # switch text_a and text_b to get the correct order
         text_a = example.text_a
         text_b = example.text_b.rstrip(string.punctuation)
-        if self.continuous_prompt:
+        if self.continuous_prompt and self.pattern_id > 0:
             if self.pattern_id == 1:
                 return [1, '"', self.shortenable(text_b), '" ?'], [[self.mask], ',', ' "', self.shortenable(text_a),
                                                                    '"']
@@ -698,13 +698,13 @@ class BoolQPVP(PVP):
 
     @property
     def spell_length(self):
-        return self.pattern_id
+        return self.pattern_id + self.prefix_prompt
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         passage = example.text_a
         question = example.text_b
 
-        if self.continuous_prompt:
+        if self.continuous_prompt and self.pattern_id > 0:
             if self.pattern_id == 1:
                 return [1, self.shortenable(passage), ' Question:', self.shortenable(" " + question), '? Answer:',
                         [self.mask], '.'], []
@@ -742,13 +742,13 @@ class MultiRcPVP(PVP):
 
     @property
     def spell_length(self):
-        return self.pattern_id
+        return self.pattern_id + self.prefix_prompt
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         passage = self.remove_final_punc(self.shortenable(example.text_a.rstrip()))
         question = self.remove_final_punc(example.text_b.rstrip())
         answer = example.meta['answer']
-        if self.continuous_prompt:
+        if self.continuous_prompt and self.pattern_id > 0:
             if self.pattern_id == 1:
                 return [passage, '.', 1, ' Question:', " " + question, '? Is it', " " + answer, '?', [self.mask],
                         '.'], []
@@ -789,14 +789,14 @@ class WicPVP(PVP):
 
     @property
     def spell_length(self):
-        return self.pattern_id
+        return self.pattern_id + self.prefix_prompt
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         text_a = example.text_a
         text_b = example.text_b
         word = example.meta['word']
 
-        if self.continuous_prompt:
+        if self.continuous_prompt and self.pattern_id > 0:
             if self.pattern_id == 1:
                 return [self.shortenable('"' + text_a + '" / "' + text_b + '"'), 1, ' Similar sense of "' + word + '"?',
                         [self.mask], '.'], []

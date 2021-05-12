@@ -97,7 +97,8 @@ def finetune_forward_step(batch, model, args, timers, mems):
                     target_positions.append(i)
             print(target_positions)
             print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
-            print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
+            if args.multi_token:
+                print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
 
         if not args.fast_decode:

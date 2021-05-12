@@ -60,6 +60,7 @@ class GPT2Model(torch.nn.Module):
                  nonautoregressive=False,
                  output_predict=True,
                  spell_length=None,
+                 spell_func='lstm',
                  attention_scale=1.0,
                  ):
         super(GPT2Model, self).__init__()
@@ -101,15 +102,27 @@ class GPT2Model(torch.nn.Module):
         if spell_length is not None:
             self.spell_length = spell_length
             self.spell_embeddings = torch.nn.Embedding(self.spell_length, self.hidden_size)
-            self.lstm_head = torch.nn.LSTM(input_size=self.hidden_size,
-                                           hidden_size=self.hidden_size,
-                                           num_layers=2,
-                                           # dropout=self.lstm_dropout,
-                                           bidirectional=True,
-                                           batch_first=True)  # .to(torch.device("cuda"))
-            self.mlp_head = torch.nn.Sequential(torch.nn.Linear(2 * self.hidden_size, self.hidden_size),
-                                                torch.nn.ReLU(),
-                                                torch.nn.Linear(self.hidden_size, self.hidden_size))
+            self.spell_func = spell_func
+            if self.spell_func == "lstm":
+                self.lstm_head = torch.nn.LSTM(input_size=self.hidden_size,
+                                            hidden_size=self.hidden_size,
+                                            num_layers=2,
+                                            # dropout=self.lstm_dropout,
+                                            bidirectional=True,
+                                            batch_first=True)  # .to(torch.device("cuda"))
+                self.mlp_head = torch.nn.Sequential(torch.nn.Linear(2 * self.hidden_size, self.hidden_size),
+                                                    torch.nn.ReLU(),
+                                                    torch.nn.Linear(self.hidden_size, self.hidden_size))
+            elif self.spell_func == "mlp":
+                self.mlp_head = torch.nn.Sequential(torch.nn.Linear(self.hidden_size, self.hidden_size),
+                                                    torch.nn.ReLU(),
+                                                    torch.nn.Linear(self.hidden_size, self.hidden_size))
+            elif self.spell_func != "none":
+                raise NotImplementedError("Prompt function " + self.spell_func)
+
+    def freeze_transformer(self):
+        self.word_embeddings.requires_grad_(False)
+        self.transformer.requires_grad_(False)
 
     def forward(self, input_ids, position_ids, attention_mask, *mems, return_memory=False, detach_memory=True,
                 prompt_pos=None):
@@ -120,8 +133,10 @@ class GPT2Model(torch.nn.Module):
         if prompt_pos is not None:
             embeddings = embeddings.clone()
             prompt_embeds = self.spell_embeddings.weight.unsqueeze(0)
-            prompt_embeds = self.lstm_head(prompt_embeds)[0]
-            prompt_embeds = self.mlp_head(prompt_embeds)
+            if self.spell_func == "lstm":
+                prompt_embeds = self.lstm_head(prompt_embeds)[0]
+            if self.spell_func == "lstm" or self.spell_func == "mlp":
+                prompt_embeds = self.mlp_head(prompt_embeds)
             batch_index = torch.arange(batch_size, device=input_ids.device).unsqueeze(1)
             embeddings[batch_index, prompt_pos] = prompt_embeds
         # Transformer.
@@ -243,13 +258,13 @@ def gpt2_get_params_for_weight_decay_optimization(module):
         if isinstance(module_, (mpu.LayerNorm, torch.nn.LayerNorm)):
             no_weight_decay_params['params'].extend(
                 [p for p in list(module_._parameters.values())
-                 if p is not None])
+                 if p is not None and p.requires_grad])
         else:
             weight_decay_params['params'].extend(
                 [p for n, p in list(module_._parameters.items())
-                 if p is not None and n != 'bias'])
+                 if p is not None and p.requires_grad and n != 'bias'])
             no_weight_decay_params['params'].extend(
                 [p for n, p in list(module_._parameters.items())
-                 if p is not None and n == 'bias'])
+                 if p is not None and p.requires_grad and n == 'bias'])
 
     return weight_decay_params, no_weight_decay_params
