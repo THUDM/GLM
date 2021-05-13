@@ -78,7 +78,7 @@ class GPT2Model(torch.nn.Module):
 
         if nonautoregressive:
             self.na_layer = nn.Sequential(
-                nn.Linear(hidden_size*2, hidden_size),
+                nn.Linear(hidden_size * 2, hidden_size),
                 nn.GELU(),
                 nn.LayerNorm(hidden_size),
                 nn.Linear(hidden_size, hidden_size),
@@ -105,11 +105,11 @@ class GPT2Model(torch.nn.Module):
             self.spell_func = spell_func
             if self.spell_func == "lstm":
                 self.lstm_head = torch.nn.LSTM(input_size=self.hidden_size,
-                                            hidden_size=self.hidden_size,
-                                            num_layers=2,
-                                            # dropout=self.lstm_dropout,
-                                            bidirectional=True,
-                                            batch_first=True)  # .to(torch.device("cuda"))
+                                               hidden_size=self.hidden_size,
+                                               num_layers=2,
+                                               # dropout=self.lstm_dropout,
+                                               bidirectional=True,
+                                               batch_first=True)  # .to(torch.device("cuda"))
                 self.mlp_head = torch.nn.Sequential(torch.nn.Linear(2 * self.hidden_size, self.hidden_size),
                                                     torch.nn.ReLU(),
                                                     torch.nn.Linear(self.hidden_size, self.hidden_size))
@@ -164,7 +164,8 @@ class GPT2Model(torch.nn.Module):
 
     def compute_nonautoregressive(self, hidden, position_ids, attention_mask):
         position_ids, block_position_ids = position_ids[:, 0], position_ids[:, 1]  # batch * len
-        block_position_embeddings = self.transformer.block_position_embeddings(block_position_ids)  # batch * len * hidden
+        block_position_embeddings = self.transformer.block_position_embeddings(
+            block_position_ids)  # batch * len * hidden
 
         batch_ids = torch.arange(hidden.size(0), dtype=torch.long, device=hidden.device)
         batch_ids = batch_ids.unsqueeze(1).expand_as(block_position_ids)

@@ -218,7 +218,8 @@ def save_zero_checkpoint(args, iteration, optimizer):
     print('  successfully saved {}'.format(zero_checkpoint_name))
 
 
-def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, barrier=True):
+def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, barrier=True,
+                    only_changed_parameters=False):
     """Save a model checkpoint."""
     if tag is None:
         tag = str(iteration)
@@ -231,10 +232,14 @@ def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, b
             checkpoint_name = get_checkpoint_name(args.save, tag)
             print('global rank {} is saving checkpoint at iteration {:7d} to {}'.
                   format(torch.distributed.get_rank(), iteration, checkpoint_name))
-
-            sd = {}
-            sd['iteration'] = iteration
-            sd['module'] = model.state_dict()
+            sd = {'iteration': iteration}
+            state_dict = model.state_dict()
+            if only_changed_parameters:
+                requires_grad_dict = {}
+                for name, parameter in model.named_parameters():
+                    requires_grad_dict[name] = parameter.requires_grad
+                state_dict = {key: value for key, value in state_dict.items() if requires_grad_dict[key]}
+            sd['module'] = state_dict
 
             # Optimizer stuff.
             if not args.no_save_optim:
