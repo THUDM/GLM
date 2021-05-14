@@ -50,26 +50,26 @@ class GlueDataset(Dataset):
     def __init__(self, args, split, tokenizer, for_train=False):
         task_name = args.task.lower()
         data_dir = args.data_dir
-        processor = PROCESSORS[task_name](args)
+        self.processor = PROCESSORS[task_name](args)
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
         )
         self.dataset_name = f"{task_name}-{split}"
         if split == DEV_SET:
-            examples = processor.get_dev_examples(data_dir, for_train=for_train)
+            examples = self.processor.get_dev_examples(data_dir, for_train=for_train)
         elif split == TEST_SET:
-            examples = processor.get_test_examples(data_dir)
+            examples = self.processor.get_test_examples(data_dir)
         elif split == TRUE_DEV_SET:
-            examples = processor.get_true_dev_examples(data_dir)
+            examples = self.processor.get_true_dev_examples(data_dir)
         elif split == TRAIN_SET:
             if task_name == "wsc":
-                examples = processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
+                examples = self.processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
             else:
-                examples = processor.get_train_examples(data_dir)
+                examples = self.processor.get_train_examples(data_dir)
         elif split == UNLABELED_SET:
-            examples = processor.get_unlabeled_examples(data_dir)
+            examples = self.processor.get_unlabeled_examples(data_dir)
             for example in examples:
-                example.label = processor.get_labels()[0]
+                example.label = self.processor.get_labels()[0]
         else:
             raise ValueError(f"'split' must be one of {SPLIT_TYPES}, got '{split}' instead")
         if split == TEST_SET:
@@ -83,18 +83,19 @@ class GlueDataset(Dataset):
         self.samples = []
         examples.sort(key=lambda x: x.num_choices)
         if args.cloze_eval:
-            pvp = PVPS[task_name](args, tokenizer, processor.get_labels(), args.seq_length, pattern_id=args.pattern_id,
-                                  is_multi_token=args.multi_token, max_segment_length=args.segment_length,
-                                  fast_decode=args.fast_decode, split=split)
+            self.pvp = PVPS[task_name](args, tokenizer, self.processor.get_labels(), args.seq_length,
+                                       pattern_id=args.pattern_id,
+                                       is_multi_token=args.multi_token, max_segment_length=args.segment_length,
+                                       fast_decode=args.fast_decode, split=split)
             for example in examples:
-                sample = pvp.encode(example)
+                sample = self.pvp.encode(example)
                 self.samples.append(sample)
-            print_rank_0(f"Truncate {pvp.num_truncated} examples")
+            print_rank_0(f"Truncate {self.pvp.num_truncated} examples")
         else:
             for example in examples:
-                sample = processor.encode(example, tokenizer, args)
+                sample = self.processor.encode(example, tokenizer, args)
                 self.samples.append(sample)
-            print_rank_0(f"Truncate {processor.num_truncated} examples")
+            print_rank_0(f"Truncate {self.processor.num_truncated} examples")
         print_rank_0(f"Creating {len(self.samples)} samples")
         self.examples = {example.guid: example for example in examples}
 
@@ -180,7 +181,7 @@ class DataProcessor(ABC):
 
 class RteProcessor(DataProcessor):
     """Processor for the RTE data set."""
-    
+
     def get_train_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
 
@@ -379,12 +380,12 @@ class WscProcessor(DataProcessor):
                 meta['span1_index'], meta['span2_index'] = span1_index, span2_index
 
                 if self.args.task == 'wsc1':
-                    example = InputExample(guid=guid, text_a=text_a, text_b=span1_text, 
+                    example = InputExample(guid=guid, text_a=text_a, text_b=span1_text,
                                            label=label, meta=meta, idx=idx)
                     examples.append(example)
                     if set_type == 'train' and label == 'True':
                         for cand in candidates:
-                            example = InputExample(guid=guid, text_a=text_a, text_b=cand, 
+                            example = InputExample(guid=guid, text_a=text_a, text_b=cand,
                                                    label='False', meta=meta, idx=idx)
                             examples.append(example)
                     continue

@@ -377,7 +377,9 @@ def add_finetune_config_args(parser):
     group.add_argument('--continuous-prompt', action='store_true', help="Use continuous prompt for PET")
     group.add_argument('--prompt-func', default='lstm', choices=["lstm", "mlp", "none"])
     group.add_argument('--freeze-transformer', action='store_true', default=False)
+    group.add_argument('--tune-prefix-layers', type=int, default=None)
     group.add_argument('--prefix-prompt', type=int, default=0)
+    group.add_argument('--prompt-init', action='store_true', default=False)
     return parser
 
 

@@ -203,7 +203,7 @@ def build_decoder_input(enc_ids, answer_ids, max_seq_length, max_dec_seq_length,
     mask_position = enc_ids.index(mask_id)
     len_answer = len(answer_ids)
     ids = [sop_id] + answer_ids[:-1]
-    types = [0] * len_answer # not used
+    types = [0] * len_answer  # not used
     paddings = [1] * len_answer
     position_ids = [mask_position] * len_answer
     block_position_ids = list(range(1, len_answer + 1))
@@ -221,7 +221,7 @@ def build_decoder_input(enc_ids, answer_ids, max_seq_length, max_dec_seq_length,
         loss_masks.extend([0] * padding_length)
     position_ids = [position_ids, block_position_ids]
     return ids, types, paddings, position_ids, masks, target_ids, loss_masks
-    
+
 
 def build_sample(ids, types=None, paddings=None, positions=None, masks=None, label=None, unique_id=None, target=None,
                  logit_mask=None, segment_ids=None, prompt_ids=None):
@@ -257,6 +257,7 @@ def build_sample(ids, types=None, paddings=None, positions=None, masks=None, lab
         sample['uid'] = unique_id
     return sample
 
+
 def build_decoder_sample(sample, dec_ids, dec_position, dec_masks, dec_target, dec_logit_mask):
     sample['dec_text'] = np.array(dec_ids)
     sample['dec_position'] = np.array(dec_position)
@@ -264,6 +265,7 @@ def build_decoder_sample(sample, dec_ids, dec_position, dec_masks, dec_target, d
     sample['dec_target'] = np.array(dec_target)
     sample['dec_logit_mask'] = np.array(dec_logit_mask)
     return sample
+
 
 def my_collate(batch):
     new_batch = [{key: value for key, value in sample.items() if key != 'uid'} for sample in batch]

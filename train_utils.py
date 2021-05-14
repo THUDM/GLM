@@ -13,7 +13,7 @@ from model.modeling import BertForMultipleChoice, BertForSequenceClassification
 from utils import print_rank_0, get_checkpoint_name, get_checkpoint_iteration
 
 
-def load_pretrained(model, checkpoint_path, args):
+def load_pretrained(model, checkpoint_path, args, task_tokens=None):
     load_dir, tag, release, success = get_checkpoint_iteration(checkpoint_path)
     checkpoint_name = get_checkpoint_name(load_dir, tag, release)
     if mpu.get_data_parallel_rank() == 0:
@@ -55,6 +55,8 @@ def load_pretrained(model, checkpoint_path, args):
     missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
     if missing_keys or unexpected_keys:
         print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
+    if args.continuous_prompt and args.prompt_init:
+        model.prompt_spell.init_embedding(model.word_embeddings.weight.data, task_tokens)
 
 
 def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
@@ -104,7 +106,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
                           nonautoregressive=args.nonautoregressive,
                           attention_scale=args.attention_scale)
         if args.freeze_transformer:
-            model.freeze_transformer()
+            model.freeze_transformer(tune_prefix_layers=args.tune_prefix_layers)
         if model_type is not None:
             if model_type == 'multiple_choice':
                 if args.cloze_eval:

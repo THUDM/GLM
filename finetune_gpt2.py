@@ -302,7 +302,17 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # checkpoint.
     timers('pretrained checkpoint').start()
     if args.load_pretrained is not None and not args.pretrained_bert:
-        load_pretrained(model, args.load_pretrained, args)
+        task_tokens = None
+        if args.continuous_prompt and args.prompt_init:
+            dataset = train_dataloader.dataset
+            processor, pvp = dataset.processor, dataset.pvp
+            task_tokens = []
+            for label in processor.get_labels():
+                verbalizer = pvp.verbalize(label)[0]
+                verbalizer_ids = tokenizer.EncodeAsIds(verbalizer).tokenization
+                task_tokens += verbalizer_ids
+            print_rank_0("Task tokens: " + tokenizer.DecodeIds(task_tokens))
+        load_pretrained(model, args.load_pretrained, args, task_tokens=task_tokens)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:

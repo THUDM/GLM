@@ -791,10 +791,10 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 hidden_states = hidden_states + block_position_embeddings
         hidden_states = self.embedding_dropout(hidden_states)
 
-        def check_detach(hidden_states):
+        def check_detach(_hidden_states):
             if detach_memory:
-                return hidden_states.detach()
-            return hidden_states
+                return _hidden_states.detach()
+            return _hidden_states
 
         if self.max_memory_length > 0 or return_memory:
             mem_layers = [check_detach(hidden_states)]
