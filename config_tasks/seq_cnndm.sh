@@ -7,7 +7,7 @@ TRAIN_ARGS="--epochs 15 \
             --lr 3e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \
-            --weight-decay 1.0e-1
+            --weight-decay 1.0e-1 \
             --label-smoothing 0.1"
 
 COMMON_ARGS="--save-interval 10000 \
