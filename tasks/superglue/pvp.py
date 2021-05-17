@@ -530,25 +530,24 @@ class WscPVP(PVP):
         raw_parts_a = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_a]
 
         def encode_input(raw_parts):
-            parts, flags = [], []
+            parts = []
             for x, s in raw_parts:
                 if isinstance(x, str):
                     x = tokenizer.EncodeAsIds(x)
-                    flag = [0] * len(x)
                 elif isinstance(x, int):
-                    flag = [1] * x
                     x = [prompt_id] * x
                 else:
-                    flag = [0] * len(x)
+                    pass
                 parts.append((x, s))
-                flags.append((flag, x))
-            return parts, flags
+            return parts
 
-        parts_a, flags_a = encode_input(raw_parts_a)
-        parts_b, flags_b = None, None
+        parts_a = encode_input(raw_parts_a)
+        if self.prefix_prompt > 0:
+            parts_a = [([prompt_id] * self.prefix_prompt, False)] + parts_a
+        parts_b = None
         if raw_parts_b:
             raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
-            parts_b, flags_b = encode_input(raw_parts_b)
+            parts_b = encode_input(raw_parts_b)
         answer = self.get_answers(example)[0]
         answer_ids = get_verbalization_ids(answer, tokenizer, force_single_token=False)
         answer_ids = answer_ids + [tokenizer.get_command('eop').Id]

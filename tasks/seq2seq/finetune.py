@@ -31,7 +31,11 @@ def seq2seq_forward_step(data, model, args, timers, mems):
     """Forward step."""
 
     # Get the batch.
+    if timers is not None:
+        timers('batch generator').start()
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
+    if timers is not None:
+        timers('batch generator').stop()
     # Forward model.
     logits, *mems = model(tokens, position_ids, attention_mask, *mems)
     logits, loss_mask = logits[:, args.src_seq_length:], loss_mask[:, args.src_seq_length:]
@@ -62,6 +66,7 @@ def train_valid_datasets_provider(args, tokenizer):
 
 def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
+
     def single_dataset_provider(split):
         if args.task.lower() == 'blank':
             return BlankLMDataset(args, split=split, tokenizer=tokenizer)
@@ -75,7 +80,7 @@ def metrics_func_provider(args, tokenizer, is_test):
     else:
         evaluater = DecoderEvaluater(args, tokenizer)
         eval_func = evaluater.evaluate
-        if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original':
+        if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original' or args.task.lower() == 'squad_generation':
             dataset = 'cnn_dm'
         elif args.task.lower() == 'gigaword':
             dataset = 'gigaword'
@@ -83,7 +88,7 @@ def metrics_func_provider(args, tokenizer, is_test):
             raise NotImplementedError(args.task)
         metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
                                    "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
-                               "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
+                                   "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
 
     def output_func(predictions, examples, output_file):
         with open(output_file + ".hyps", "w", encoding='utf-8') as output:
@@ -94,6 +99,11 @@ def metrics_func_provider(args, tokenizer, is_test):
             for example in examples:
                 output.write(example.meta["ref"])
                 output.write("\n")
+        if args.task.lower() == 'squad_generation':
+            with open(output_file + ".source", "w", encoding='utf-8') as output:
+                for example in examples:
+                    output.write(example.text_a.replace("\n", " ") + " Answer: " + example.meta["answer"])
+                    output.write("\n")
 
     return accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=is_test, eval_func=eval_func,
                                   output_func=output_func, only_rank0=False)
@@ -102,7 +112,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank']:
+    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

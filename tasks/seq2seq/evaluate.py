@@ -214,7 +214,8 @@ class DecoderEvaluater:
         """Calculate correct over total answers and return prediction if the
         `output_predictions` is true."""
         model.eval()
-        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000), mpu.get_data_parallel_world_size(),
+        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000),
+                                           mpu.get_data_parallel_world_size(),
                                            torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
         print_rank_0("Distributed store created")
         with torch.no_grad():
@@ -333,11 +334,13 @@ def blanklm_fix_tokenization(text):
     text = text.replace("e . g .", "e.g.")
     return text
 
+
 class BlankLMEvaluater(DecoderEvaluater):
 
     def evaluate(self, model, dataloader, example_dict, args):
         model.eval()
-        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000), mpu.get_data_parallel_world_size(),
+        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000),
+                                           mpu.get_data_parallel_world_size(),
                                            torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
         print_rank_0("Distributed store created")
 
@@ -433,4 +436,3 @@ class BlankLMEvaluater(DecoderEvaluater):
             examples.append(example)
         torch.distributed.barrier()
         return predictions, [], examples
-

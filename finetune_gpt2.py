@@ -5,6 +5,8 @@ from tasks.data_utils import build_data_loader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
 from model import GPT2Model, VerbalizerModel
 from arguments import get_args
+from filelock import FileLock
+import pathlib
 
 # coding=utf-8
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
@@ -312,7 +314,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
                 verbalizer_ids = tokenizer.EncodeAsIds(verbalizer).tokenization
                 task_tokens += verbalizer_ids
             print_rank_0("Task tokens: " + tokenizer.DecodeIds(task_tokens))
-        load_pretrained(model, args.load_pretrained, args, task_tokens=task_tokens)
+        with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
+            load_pretrained(model, args.load_pretrained, args, task_tokens=task_tokens)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:
@@ -393,7 +396,7 @@ if __name__ == '__main__':
         from tasks.superglue.finetune import main
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
-    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank']:
+    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation']:
         from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))
