@@ -57,7 +57,11 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
     dataset = corpora.NAMED_CORPORA[name]
     path = dataset.PATH
     if issubclass(dataset, corpora.PromptReader):
-        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')) and not (
+                loader_scatter is not None and exists_scatter(path, data_type='prompt',
+                                                              scatter_num=loader_scatter) and exists_scatter(path,
+                                                                                                             data_type='text',
+                                                                                                             scatter_num=loader_scatter)):
             # create cached version of dataset for lazy loading if it doesn't exist
             if global_rank == 0:
                 print(f"Creating lazy loader for dataset {name}")
