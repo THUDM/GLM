@@ -31,6 +31,7 @@ from contextlib import ExitStack
 from arguments import get_args
 from configure_data import configure_data, prepare_tokenizer
 import mpu
+import pathlib
 
 from train_utils import setup_model_and_optimizer, train_step
 from utils import Timers
@@ -569,7 +570,7 @@ def main():
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
 
     if args.load is not None:
-        with FileLock("/root/checkpoint_lock", timeout=-1):
+        with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
             args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
     else:
         args.iteration = 0
