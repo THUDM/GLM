@@ -24,6 +24,7 @@ from collections import Counter
 from typing import List, Dict, Callable
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import pandas as pd
 
 from tasks.data_utils import InputExample
 from utils import print_rank_0
@@ -43,6 +44,10 @@ SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, TRUE_DEV_SET, UNLABELED_SET]
 
 def get_output_func(task_name, args):
     return PROCESSORS[task_name](args).output_prediction
+
+
+def read_tsv(path, **kwargs):
+    return pd.read_csv(path, sep='\t', quoting=csv.QUOTE_NONE, dtype=str, na_filter=False, **kwargs)
 
 
 class GlueDataset(Dataset):
@@ -138,7 +143,6 @@ class DataProcessor(ABC):
         """Get a collection of `InputExample`s for the test set."""
         pass
 
-    @abstractmethod
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the unlabeled set."""
         pass
@@ -757,13 +761,13 @@ class MnliProcessor(DataProcessor):
     """Processor for the MultiNLI data set (GLUE version)."""
 
     def get_train_examples(self, data_dir):
-        return self._create_examples(MnliProcessor._read_tsv(os.path.join(data_dir, "train.tsv")), "train")
+        return self._create_examples(os.path.join(data_dir, "train.tsv"), "train")
 
     def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(MnliProcessor._read_tsv(os.path.join(data_dir, "dev_matched.tsv")), "dev_matched")
+        return self._create_examples(os.path.join(data_dir, "dev_matched.tsv"), "dev_matched")
 
     def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
+        return self._create_examples(os.path.join(data_dir, "test_matched.tsv"), "test_matched")
 
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         return self.get_train_examples(data_dir)
@@ -772,40 +776,29 @@ class MnliProcessor(DataProcessor):
         return ["contradiction", "entailment", "neutral"]
 
     @staticmethod
-    def _create_examples(lines: List[List[str]], set_type: str) -> List[InputExample]:
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
         examples = []
+        df = read_tsv(path)
 
-        for (i, line) in enumerate(lines):
-            if i == 0:
-                continue
-            guid = "%s-%s" % (set_type, line[0])
-            text_a = punctuation_standardization(line[8])
-            text_b = punctuation_standardization(line[9])
-            label = line[-1]
-
+        for idx, row in df.iterrows():
+            guid = f"{set_type}-{idx}"
+            text_a = punctuation_standardization(row['sentence1'])
+            text_b = punctuation_standardization(row['sentence2'])
+            label = row.get('gold_label', None)
             example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
             examples.append(example)
 
         return examples
-
-    @staticmethod
-    def _read_tsv(input_file, quotechar=None):
-        with open(input_file, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                lines.append(line)
-            return lines
 
 
 class MnliMismatchedProcessor(MnliProcessor):
     """Processor for the MultiNLI mismatched data set (GLUE version)."""
 
     def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(self._read_tsv(os.path.join(data_dir, "dev_mismatched.tsv")), "dev_mismatched")
+        return self._create_examples(os.path.join(data_dir, "dev_mismatched.tsv"), "dev_mismatched")
 
     def get_test_examples(self, data_dir) -> List[InputExample]:
-        raise NotImplementedError()
+        return self._create_examples(os.path.join(data_dir, "test_mismatched.tsv"), "test_mismatched")
 
 
 class AgnewsProcessor(DataProcessor):
@@ -974,6 +967,125 @@ class XStanceProcessor(DataProcessor):
         return examples
 
 
+class Sst2Processor(DataProcessor):
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.tsv"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev.tsv"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        return self._create_examples(os.path.join(data_dir, "test.tsv"), "test")
+
+    def get_labels(self):
+        return ["0", "1"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        df = read_tsv(path)
+
+        for idx, row in df.iterrows():
+            guid = f"{set_type}-{idx}"
+            text_a = punctuation_standardization(row['sentence'])
+            label = row.get('label', None)
+            example = InputExample(guid=guid, text_a=text_a, label=label)
+            examples.append(example)
+
+        return examples
+
+
+class ColaProcessor(Sst2Processor):
+
+    def get_labels(self):
+        return ["0", "1"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        if set_type != 'test':
+            df = read_tsv(path, header=None)
+        else:
+            df = read_tsv(path)
+
+        for idx, row in df.iterrows():
+            guid = f"{set_type}-{idx}"
+            if set_type != 'test':
+                text_a = punctuation_standardization(row[3])
+                label = row[1]
+            else:
+                text_a = punctuation_standardization(row['sentence'])
+                label = None
+            example = InputExample(guid=guid, text_a=text_a, label=label)
+            examples.append(example)
+
+        return examples
+
+
+class MrpcProcessor(Sst2Processor):
+
+    def get_labels(self):
+        return ["0", "1"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        df = read_tsv(path)
+
+        for idx, row in df.iterrows():
+            guid = f"{set_type}-{idx}"
+            text_a = punctuation_standardization(row['#1 String'])
+            text_b = punctuation_standardization(row['#2 String'])
+            label = row.get('Quality', None)
+            example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            examples.append(example)
+
+        return examples
+
+
+class QqpProcessor(Sst2Processor):
+
+    def get_labels(self):
+        return ["0", "1"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        df = read_tsv(path)
+
+        for idx, row in df.iterrows():
+            guid = f"{set_type}-{idx}"
+            text_a = punctuation_standardization(row['question1'])
+            text_b = punctuation_standardization(row['question2'])
+            label = row.get('is_duplicate', None)
+            example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            examples.append(example)
+
+        return examples
+
+
+class QnliProcessor(Sst2Processor):
+
+    def get_labels(self):
+        return ["entailment", "not_entailment"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        df = read_tsv(path)
+
+        for idx, row in df.iterrows():
+            guid = f"{set_type}-{idx}"
+            text_a = punctuation_standardization(row['question'])
+            text_b = punctuation_standardization(row['sentence'])
+            label = row.get('label', None)
+            example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+            examples.append(example)
+
+        return examples
+
+
 CLASSIFICATION_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
 MULTI_CHOICE_DATASETS = {"copa", "record"}
 
@@ -998,4 +1110,9 @@ PROCESSORS = {
     "record": RecordProcessor,
     "ax-g": AxGProcessor,
     "ax-b": AxBProcessor,
+    "sst2": Sst2Processor,
+    "cola": ColaProcessor,
+    "mrpc": MrpcProcessor,
+    "qqp": QqpProcessor,
+    "qnli": QnliProcessor,
 }  # type: Dict[str,Callable[[],DataProcessor]]
