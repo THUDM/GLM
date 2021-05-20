@@ -97,7 +97,8 @@ def finetune_forward_step(batch, model, args, timers, mems):
                     target_positions.append(i)
             print(target_positions)
             print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
-            print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
+            if args.multi_token:
+                print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
             print(position_ids[batch_id][:, target_positions])
 
         if not args.fast_decode:
@@ -242,7 +243,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
         # Checkpointing at the end of each epoch.
         if args.save and (epoch + 1) % args.save_epoch == 0:
-            save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
+            save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args, only_changed_parameters=True)
 
         # Callback at the end of each epoch.
         if end_of_epoch_callback is not None and (epoch + 1) % args.eval_epoch == 0:
@@ -253,7 +254,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 best_iteration = args.iteration
                 best_score = validation_score
                 print_rank_0(f"Found best {validation_metric} {best_score} at {best_iteration}")
-                save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args, tag="best", barrier=False)
+                save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args, tag="best", barrier=False,
+                                only_changed_parameters=True)
                 if torch.distributed.get_rank() == 0:
                     score_dict.update({"type": "validation", "epoch": epoch})
                     with open(os.path.join(args.log_dir, "results.json"), "w") as output:
@@ -299,9 +301,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # any iteration (i.e., iteration is zero), then load the pretrained
     # checkpoint.
     timers('pretrained checkpoint').start()
-    if args.load_pretrained is not None and not args.pretrained_bert and not args.load:
+    if args.load_pretrained is not None and not args.pretrained_bert:
         load_pretrained(model, args.load_pretrained, args)
-        args.load = None
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:

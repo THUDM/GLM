@@ -51,7 +51,7 @@ class LMDataset(torch.utils.data.Dataset):
                                                            add_piece=True,
                                                            add_eos=False)
             data = build_input_from_ids(prompt, None, text, self.max_seq_len + num_special_tokens + 1, self.tokenizer,
-                                        args=self.args, add_cls=True, add_sep=False, add_piece=True, add_eos=False)
+                                        args=self.args, add_cls=True, add_sep=False, add_piece=True, add_eos=False, mask_id=self.mask_id)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if idx != 0 and self.unidirectional:
                 loss_masks = np.array(loss_masks, dtype=np.int64)

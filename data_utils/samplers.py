@@ -144,14 +144,6 @@ class DistributedBatchSampler(data.sampler.BatchSampler):
                 self.sampler.wrap_around -= (self.batch_size)
                 self.wrap_around += (len(batch))
                 self.wrap_around %= self.batch_size
-                if isinstance(self.sampler, TransposedSampler):
-                    for i, idx in enumerate(self.data_iterator(self.sampler, wrap_around=True)):
-                        if i == 0:
-                            continue
-                        batch.append(idx)
-                        new_batch_len = len(batch)
-                        if len(batch) == self.batch_size:
-                            break
             yield self._batch(batch)
         if self.wrap_last:
             self.sampler.wrap_around += self.batch_size
