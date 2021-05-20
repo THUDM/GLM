@@ -211,9 +211,11 @@ def forward_step(data_iterator, model, args, timers, mems):
     timers('batch generator').start()
     timers('data loader').start()
     data = next(data_iterator) if data_iterator else None
+    # print_rank_0("data iterator")
     timers('data loader').stop()
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
     timers('batch generator').stop()
+    # print_rank_0("get batch")
 
     def print_masked_text(batch_id):
         block_position_ids = position_ids[:, 1]

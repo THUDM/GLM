@@ -332,8 +332,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
         timers('forward').start()
         lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
         timers('forward').stop()
-
-        # print_rank_0("loss is {}".format(lm_loss))
+        # print_rank_0("Forward step")
         if not args.deepspeed:
             lm_loss /= args.gradient_accumulation_steps
 
@@ -349,7 +348,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
             timers('backward').start()
             backward_step(optimizer, model, lm_loss, args, timers)
             timers('backward').stop()
-
+            # print_rank_0("Backward step")
             # Update parameters.
             skipped_iter, complete = 0, False
             timers('optimizer').start()
@@ -372,6 +371,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
                         lr_scheduler.step()
                     else:
                         skipped_iter = 1
+            # print_rank_0("Optimizer step")
             timers('optimizer').stop()
             if complete:
                 break
