@@ -893,14 +893,14 @@ class YahooPVP(PVP):
 
 class MnliPVP(PVP):
     VERBALIZER_A = {
-        "contradiction": ["Wrong"],
-        "entailment": ["Right"],
-        "neutral": ["Maybe"]
+        "contradiction": [" Wrong"],
+        "entailment": [" Right"],
+        "neutral": [" Maybe"]
     }
     VERBALIZER_B = {
-        "contradiction": ["No"],
-        "entailment": ["Yes"],
-        "neutral": ["Maybe"]
+        "contradiction": [" No"],
+        "entailment": [" Yes"],
+        "neutral": [" Maybe"]
     }
 
     def get_parts(self, example: InputExample) -> FilledPattern:
@@ -977,6 +977,95 @@ class XStancePVP(PVP):
         return XStancePVP.VERBALIZERS[lang][label]
 
 
+class Sst2PVP(PVP):
+    VERBALIZER = {
+        "0": [" terrible"],
+        "1": [" great"]
+    }
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text = self.shortenable(example.text_a)
+        if self.pattern_id == 0:
+            return [text, 'It was', [self.mask], '.'], []
+        else:
+            raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        return Sst2PVP.VERBALIZER[label]
+
+
+class ColaPVP(PVP):
+    VERBALIZER = {
+        "0": [" incorrect"],
+        "1": [" correct"]
+    }
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text = self.shortenable(example.text_a)
+        if self.pattern_id == 0:
+            return [text, " This is", [self.mask], '.'], []
+        else:
+            raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        return ColaPVP.VERBALIZER[label]
+
+
+class MrpcPVP(PVP):
+    VERBALIZER = {
+        "0": [" No"],
+        "1": [" Yes"]
+    }
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text_a = self.shortenable(example.text_a)
+        text_b = self.shortenable(example.text_b)
+        if self.pattern_id == 0:
+            return [text_a], [[self.mask], ', ', text_b]
+        else:
+            raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        return MrpcPVP.VERBALIZER[label]
+
+
+class QqpPVP(PVP):
+    VERBALIZER = {
+        "0": [" No"],
+        "1": [" Yes"]
+    }
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text_a = self.shortenable(example.text_a)
+        text_b = self.shortenable(example.text_b)
+        if self.pattern_id == 0:
+            return [text_a], [[self.mask], ', ', text_b]
+        else:
+            raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        return QqpPVP.VERBALIZER[label]
+
+
+class QnliPVP(PVP):
+    VERBALIZER = {
+        "not_entailment": [" No"],
+        "entailment": [" Yes"]
+    }
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text_a = self.shortenable(example.text_a)
+        text_b = self.shortenable(example.text_b)
+        if self.pattern_id == 0:
+            return [text_a], [[self.mask], ', ', text_b]
+        else:
+            raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        return QnliPVP.VERBALIZER[label]
+
+
+
 def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Union[int, List[int]]:
     """
     Get the token ids corresponding to a verbalization
@@ -1012,11 +1101,15 @@ PVPS = {
     'wic': WicPVP,
     'cb': CbPVP,
     'wsc': WscPVP,
-    'wsc1': Wsc1PVP,
     'boolq': BoolQPVP,
     'copa': CopaPVP,
     'multirc': MultiRcPVP,
     'record': RecordPVP,
     'ax-b': RtePVP,
     'ax-g': RtePVP,
+    'sst2': Sst2PVP,
+    'cola': ColaPVP,
+    'mrpc': MrpcPVP,
+    'qqp': QqpPVP,
+    'qnli': QnliPVP
 }
