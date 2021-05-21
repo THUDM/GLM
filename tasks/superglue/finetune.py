@@ -33,7 +33,13 @@ default_metrics = {
     "wsc": [("accuracy", accuracy_metric)],
     "wsc1": [("accuracy", accuracy_metric)],
     "cb": [("accuracy", accuracy_metric), ("f1-macro", f1_macro_metric)],
-    "multirc": [("f1a", f1_metric), ("em", multirc_em), ("acc", accuracy_metric)]
+    "multirc": [("f1a", f1_metric), ("em", multirc_em), ("acc", accuracy_metric)],
+    "mnli": [("accuracy", accuracy_metric)],
+    "sst2": [("accuracy", accuracy_metric)],
+    "qnli": [("accuracy", accuracy_metric)],
+    "qqp": [("accuracy", accuracy_metric)],
+    "mrpc": [("accuracy", accuracy_metric)],
+    "cola": [("accuracy", accuracy_metric)],
 }
 
 

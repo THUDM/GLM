@@ -8,8 +8,8 @@
     "contiguous_gradients": false,
     "overlap_comm": true,
     "reduce_scatter": true,
-    "reduce_bucket_size": 50000000,
-    "allgather_bucket_size": 500000000,
+    "reduce_bucket_size": 5e7,
+    "allgather_bucket_size": 5e7,
     "cpu_offload": true
   },
   "zero_allow_untested_optimizer": true,
@@ -29,7 +29,7 @@
         0.95
       ],
       "eps": 1e-8,
-      "weight_decay": 1e-1
+      "weight_decay": 1e-2
     }
   },
   "activation_checkpointing": {
