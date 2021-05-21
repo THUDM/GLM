@@ -1,5 +1,5 @@
-DATA_ROOT=/dataset/fd5061f6/english_data
-CHECKPOINT_PATH="/root/data/checkpoints"
+DATA_ROOT=/dataset/c07bd62b
+CHECKPOINT_PATH="/dataset/c07bd62b/checkpoints"
 
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 DISTRIBUTED_ARGS="--nproc_per_node 1 --nnodes 1 --node_rank 0 --master_addr localhost --master_port $MASTER_PORT"
