@@ -13,7 +13,6 @@ gpt_options=" \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
        --short-seq-prob 0.02 \
-       --non-sentence-start 0.02 \
        --experiment-name blocklm-roberta-large-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
@@ -26,9 +25,11 @@ gpt_options=" \
        --save-interval 2500 \
        --train-iters 500000 \
        --resume-dataloader \
-       --shuffle \
        --train-data wikibook cc-news openwebtext stories \
+       --shuffle \
+       --filter-english \
        --loader-scatter 8 \
+       --no-lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \
        --split 949,50,1 \
