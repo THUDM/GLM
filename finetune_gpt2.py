@@ -7,6 +7,7 @@ from model import GPT2Model, VerbalizerModel
 from arguments import get_args
 from filelock import FileLock
 import pathlib
+import mpu
 
 # coding=utf-8
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
@@ -41,24 +42,32 @@ from pretrain_gpt2 import set_random_seed
 
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
-    new_batch = {'text': batch['text'].long().cuda().contiguous(), 'label': batch['label'].long().cuda().contiguous()}
-    for key in ['text', 'label', 'types', 'target', 'logit_mask', 'position', 'segment_id', 'prompt_pos',
-                'dec_text', 'dec_position', 'dec_mask', 'dec_target', 'dec_logit_mask']:
-        if key in batch:
-            new_batch[key] = batch[key].long().cuda().contiguous()
+    keys = ["text", "label"]
+    if args.pretrained_bert:
+        keys += ["padding_mask", "types"]
+    else:
+        keys += ["mask", "position"]
+        if args.cloze_eval:
+            if args.fast_decode:
+                keys += ["dec_text", "dec_position", "dec_mask", "dec_target", "dec_logit_mask"]
+            else:
+                keys += ["target", "logit_mask"]
+                if args.segment_length > 0:
+                    keys += ["segment_id"]
+                if args.continuous_prompt:
+                    keys += ["prompt_pos"]
+    if args.variable_num_choices or "loss_mask" in batch:
+        keys.append("loss_mask")
+    # Broadcast data.
+    datatype = torch.int64
+    data_b = mpu.broadcast_data(keys, batch, datatype)
+
     if "padding_mask" in batch:
-        attention_mask = batch['padding_mask'].float().cuda().contiguous()
+        attention_mask = data_b['padding_mask'].float().cuda().contiguous()
         if args.fp16:
             attention_mask = attention_mask.half()
-        new_batch["attention_mask"] = attention_mask
-    elif "mask" in batch:
-        attention_mask = batch['mask'].long().cuda().contiguous()
-        new_batch["attention_mask"] = attention_mask
-    if "loss_mask" in batch:
-        new_batch["loss_mask"] = batch["loss_mask"].float().cuda().contiguous()
-        if args.fp16:
-            new_batch['loss_mask'] = new_batch['loss_mask'].half()
-    return new_batch
+        data_b["padding_mask"] = attention_mask
+    return data_b
 
 
 tokenizer = None
@@ -78,11 +87,11 @@ def finetune_forward_step(batch, model, args, timers, mems):
 
     # Forward model.
     if args.pretrained_bert:
-        tokens, types, labels, attention_mask = data['text'], data['types'], data['label'], data['attention_mask']
+        tokens, types, labels, attention_mask = data['text'], data['types'], data['label'], data['padding_mask']
         logits = model(tokens, token_type_ids=types, attention_mask=attention_mask, checkpoint_activations=True)
     elif args.cloze_eval:
         tokens, labels, position_ids = data['text'], data['label'], data['position']
-        attention_mask = data['attention_mask']
+        attention_mask = data['mask']
 
         def print_masked_text(batch_id):
             output_tokens = []
@@ -121,8 +130,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
             logits, *mems = model(tokens, position_ids, attention_mask, dec_input_ids, dec_position_ids,
                                   dec_attention_mask, dec_target_ids, dec_logit_mask)
     else:
-        tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
-            'attention_mask']
+        tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data['mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
 
     if "segment_id" in data:

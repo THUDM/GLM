@@ -56,6 +56,7 @@ class GlueDataset(Dataset):
         task_name = args.task.lower()
         data_dir = args.data_dir
         self.processor = PROCESSORS[task_name](args)
+        args.variable_num_choices = self.processor.variable_num_choices
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
         )
@@ -127,6 +128,10 @@ class DataProcessor(ABC):
                 prediction = self.get_labels()[prediction]
                 data = {"idx": example.idx, "label": prediction}
                 output.write(json.dumps(data) + "\n")
+
+    @property
+    def variable_num_choices(self):
+        return False
 
     @abstractmethod
     def get_train_examples(self, data_dir) -> List[InputExample]:
@@ -298,6 +303,10 @@ class WicProcessor(DataProcessor):
 
 class WscProcessor(DataProcessor):
     """Processor for the WSC data set."""
+
+    @property
+    def variable_num_choices(self):
+        return self.args.wsc_negative
 
     def get_train_examples(self, data_dir, cloze_eval=True):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train", cloze_eval=cloze_eval)
@@ -621,6 +630,10 @@ class MultiRcProcessor(DataProcessor):
 
 class RecordProcessor(DataProcessor):
     """Processor for the ReCoRD data set."""
+
+    @property
+    def variable_num_choices(self):
+        return True
 
     def get_train_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")

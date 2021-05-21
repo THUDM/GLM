@@ -16,10 +16,9 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/ds_config.json"
 
-MASTER_PORT=${MASTER_PORT} python generate_samples.py \
+python -m torch.distributed.launch --nproc_per_node=$MPSIZE --master_port $MASTER_PORT generate_samples.py \
        --DDP-impl none \
        --model-parallel-size $MPSIZE \
-       --deepspeed_config ${config_json} \
        $MODEL_ARGS \
        --fp16 \
        --cache-dir cache \

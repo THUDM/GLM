@@ -65,8 +65,7 @@ def prepare_tokenizer(args):
         assert eod_token == tokenizer.get_command('pad').Id
         before = num_tokens
         after = before
-        multiple = args.make_vocab_size_divisible_by * \
-                   mpu.get_model_parallel_world_size()
+        multiple = args.make_vocab_size_divisible_by
         while (after % multiple) != 0:
             after += 1
         print_rank_0('> padded vocab (size: {}) with {} dummy '

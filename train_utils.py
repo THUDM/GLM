@@ -146,7 +146,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
         model = FP16_Module(model)
 
     # Wrap model for distributed training.
-    if not args.deepspeed and (args.train_iters > 0 or args.epochs > 0):
+    if not args.deepspeed and (args.train_iters or args.epochs):
         if args.DDP_impl == 'torch':
             i = torch.cuda.current_device()
             model = TorchDDP(model, device_ids=[i], output_device=i,

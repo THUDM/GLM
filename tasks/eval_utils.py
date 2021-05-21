@@ -117,7 +117,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
     model.eval()
     port = get_spare_port()
     store = torch.distributed.TCPStore(args.master_ip, port,
-                                       mpu.get_data_parallel_world_size(),
+                                       torch.distributed.get_world_size(),
                                        torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
     with torch.no_grad():
         # For all the batches in the dataset.
@@ -126,12 +126,11 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
             data = process_batch(batch, args)
             if args.pretrained_bert:
                 tokens, types, labels_, attention_mask = data['text'], data['types'], data['label'], data[
-                    'attention_mask']
+                    'padding_mask']
                 inputs = [tokens, types, attention_mask]
             elif args.cloze_eval:
                 tokens, labels_, position_ids = data['text'], data['label'], data['position']
-                attention_mask, target_ids, logit_mask = data['attention_mask'], data.get('target'), data.get(
-                    'logit_mask')
+                attention_mask, target_ids, logit_mask = data['mask'], data['target'], data['logit_mask']
                 if not args.fast_decode:
                     inputs = [tokens, position_ids, attention_mask, target_ids, logit_mask]
                     if args.continuous_prompt:
@@ -145,7 +144,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                               dec_target_ids, dec_logit_mask]
             else:
                 tokens, labels_, position_ids, attention_mask = data['text'], data['label'], data['position'], data[
-                    'attention_mask']
+                    'mask']
                 inputs = [tokens, position_ids, attention_mask]
             if len(inputs[0].shape) == 3 and inputs[0].size(1) > segment_length:
                 logit_list = []
@@ -186,8 +185,9 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
             labels = labels_.tolist()
             if args.task.lower() == 'wsc':
                 predicted = [1 if pred == 0 else 0 for pred in predicted]
-            for uid, prediction, label in zip(uid_list, predicted, labels):
-                store.set(uid, str((prediction, label)))
+            if mpu.get_model_parallel_rank() == 0:
+                for uid, prediction, label in zip(uid_list, predicted, labels):
+                    store.set(uid, str((prediction, label)))
     model.train()
     torch.distributed.barrier()
     predictions, labels, examples = [], [], []
