@@ -635,16 +635,16 @@ class RecordProcessor(DataProcessor):
         return True
 
     def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")[:2000]
+        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
 
     def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)[:200]
+        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)
 
     def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")[:200]
+        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
 
     def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")[:200]
+        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
         return ["0", "1"]
