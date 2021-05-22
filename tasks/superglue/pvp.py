@@ -854,10 +854,10 @@ class WicPVP(PVP):
 
 class AgnewsPVP(PVP):
     VERBALIZER = {
-        "1": ["World"],
-        "2": ["Sports"],
-        "3": ["Business"],
-        "4": ["Tech"]
+        "1": [" World"],
+        "2": [" Sports"],
+        "3": [" Business"],
+        "4": [" Tech"]
     }
 
     @staticmethod
@@ -890,16 +890,16 @@ class AgnewsPVP(PVP):
 
 class YahooPVP(PVP):
     VERBALIZER = {
-        "1": ["Society"],
-        "2": ["Science"],
-        "3": ["Health"],
-        "4": ["Education"],
-        "5": ["Computer"],
-        "6": ["Sports"],
-        "7": ["Business"],
-        "8": ["Entertainment"],
-        "9": ["Relationship"],
-        "10": ["Politics"],
+        "1": [" Society"],
+        "2": [" Science"],
+        "3": [" Health"],
+        "4": [" Education"],
+        "5": [" Computer"],
+        "6": [" Sports"],
+        "7": [" Business"],
+        "8": [" Entertainment"],
+        "9": [" Relationship"],
+        "10": [" Politics"],
     }
 
     @staticmethod
@@ -963,8 +963,8 @@ class MnliPVP(PVP):
 
 class YelpPolarityPVP(PVP):
     VERBALIZER = {
-        "1": ["bad"],
-        "2": ["good"]
+        "1": [" bad"],
+        "2": [" good"]
     }
 
     @staticmethod
@@ -991,11 +991,11 @@ class YelpPolarityPVP(PVP):
 
 class YelpFullPVP(YelpPolarityPVP):
     VERBALIZER = {
-        "1": ["terrible"],
-        "2": ["bad"],
-        "3": ["okay"],
-        "4": ["good"],
-        "5": ["great"]
+        "1": [" terrible"],
+        "2": [" bad"],
+        "3": [" okay"],
+        "4": [" good"],
+        "5": [" great"]
     }
 
     def verbalize(self, label) -> List[str]:
@@ -1113,7 +1113,7 @@ class QqpPVP(PVP):
         text_a = self.shortenable(example.text_a)
         text_b = self.shortenable(self.lowercase_first(example.text_b))
         if self.pattern_id == 0:
-            return [text_a], [" Do you mean ", text_b, [self.mask]]
+            return [text_a], [" Do you mean ", text_b, [self.mask], "."]
         elif self.pattern_id == 1:
             return [text_a], [[self.mask], ', ', text_b]
         else:
