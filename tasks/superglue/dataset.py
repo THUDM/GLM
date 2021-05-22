@@ -52,7 +52,8 @@ def read_tsv(path, **kwargs):
 
 class GlueDataset(Dataset):
 
-    def __init__(self, args, task_name, data_dir, seq_length, split, tokenizer, for_train=False):
+    def __init__(self, args, task_name, data_dir, seq_length, split, tokenizer, for_train=False,
+                 pattern_ensemble=False):
         self.processor = PROCESSORS[task_name](args)
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
@@ -61,6 +62,7 @@ class GlueDataset(Dataset):
         self.cloze_eval = args.cloze_eval
         self.seq_length = seq_length
         self.tokenizer = tokenizer
+        self.pattern_ensemble = pattern_ensemble
         self.args = args
         if split == DEV_SET:
             example_list = self.processor.get_dev_examples(data_dir, for_train=for_train)
@@ -91,19 +93,36 @@ class GlueDataset(Dataset):
         example_list.sort(key=lambda x: x.num_choices)
         self.example_list = example_list
         if self.cloze_eval:
-            self.pvp = PVPS[task_name](args, tokenizer, self.processor.get_labels(), seq_length,
-                                       pattern_id=args.pattern_id,
-                                       is_multi_token=args.multi_token, max_segment_length=args.segment_length,
-                                       fast_decode=args.fast_decode, split=split)
+            if self.pattern_ensemble:
+                pattern_ids = PVPS[task_name].available_patterns()
+                self.pvps = []
+                for pattern_id in pattern_ids:
+                    self.pvps.append(PVPS[task_name](args, tokenizer, self.processor.get_labels(), seq_length,
+                                                     pattern_id=pattern_id, is_multi_token=args.multi_token,
+                                                     max_segment_length=args.segment_length,
+                                                     fast_decode=args.fast_decode, split=split))
+            else:
+                self.pvp = PVPS[task_name](args, tokenizer, self.processor.get_labels(), seq_length,
+                                           pattern_id=args.pattern_id,
+                                           is_multi_token=args.multi_token, max_segment_length=args.segment_length,
+                                           fast_decode=args.fast_decode, split=split)
         self.examples = {example.guid: example for example in example_list}
 
     def __len__(self):
-        return len(self.example_list)
+        if self.cloze_eval and self.pattern_ensemble:
+            return len(self.example_list) * len(self.pvps)
+        else:
+            return len(self.example_list)
 
     def __getitem__(self, idx):
-        example = self.example_list[idx]
+        sample_idx = idx % len(self.example_list)
+        example = self.example_list[sample_idx]
         if self.cloze_eval:
-            sample = self.pvp.encode(example)
+            if self.pattern_ensemble:
+                pvp_idx = idx // len(self.example_list)
+                sample = self.pvps[pvp_idx].encode(example)
+            else:
+                sample = self.pvp.encode(example)
         else:
             sample = self.processor.encode(example, self.tokenizer, self.seq_length, self.args)
         return sample

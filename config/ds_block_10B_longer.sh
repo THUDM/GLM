@@ -37,7 +37,7 @@ gpt_options=" \
        --data-dir /mnt/glue_data \
        --cloze-eval \
        --multi-task-ratio 0.05 \
-       --multi-task-data cola mrpc qnli qqp sst2 mnli \
+       --multi-task-data agnews yelp-full cola mrpc qnli qqp sst2 mnli \
        --multi-batch-size 8 \
        --multi-seq-length 256 \
        --tokenizer-type GPT2BPETokenizer \

@@ -17,6 +17,8 @@
 
 import os
 import copy
+import random
+import numpy as np
 import torch
 import torch.utils.data
 import data_utils
@@ -31,15 +33,24 @@ import mpu
 
 
 class MultiTaskDataset(torch.utils.data.Dataset):
-    def __init__(self, datasets):
+    def __init__(self, tasks, datasets, reweight=True, temperature=0.5):
         super(MultiTaskDataset, self).__init__()
+        self.tasks = tasks
         self.datasets = datasets
+        self.reweight = reweight
+        self.temperature = temperature
         self.lens = [len(dataset) for dataset in datasets]
+        self.weights = np.array([l ** temperature for l in self.lens])
         self.total_len = sum(self.lens)
         self.cumulative_lens = list(accumulate(self.lens))
+        if self.reweight:
+            print_rank_0(list(zip(self.tasks, self.lens, self.weights)))
+        else:
+            print_rank_0(list(zip(self.tasks, self.lens)))
+        self.weights /= self.weights.sum()
 
     def __len__(self):
-        return self.total_len
+        return self.total_len * 1000
 
     @staticmethod
     def pet_wrapper(data):
@@ -63,12 +74,20 @@ class MultiTaskDataset(torch.utils.data.Dataset):
                 'attention_mask': attention_mask}
 
     def __getitem__(self, idx):
-        dataset_idx = bisect_right(self.cumulative_lens, idx)
-        if dataset_idx == 0:
-            sample_idx = idx
+        if self.reweight:
+            rng = random.Random(idx)
+            rng = np.random.RandomState(seed=[rng.randint(0, 2 ** 32 - 1) for _ in range(16)])
+            dataset_idx = rng.choice(np.arange(len(self.datasets)), p=self.weights)
+            dataset = self.datasets[dataset_idx]
+            sample_idx = rng.choice(np.arange(len(dataset)))
+            item = self.datasets[dataset_idx][sample_idx]
         else:
-            sample_idx = idx - self.cumulative_lens[dataset_idx - 1]
-        item = self.datasets[dataset_idx][sample_idx]
+            dataset_idx = bisect_right(self.cumulative_lens, idx)
+            if dataset_idx == 0:
+                sample_idx = idx
+            else:
+                sample_idx = idx - self.cumulative_lens[dataset_idx - 1]
+            item = self.datasets[dataset_idx][sample_idx]
         item = self.pet_wrapper(item)
         return item
 
@@ -132,7 +151,7 @@ def prepare_tokenizer(args):
     return tokenizer
 
 
-def make_data_loader(dataset, batch_size, num_iters, args, collate_fn=None, shuffle=False):
+def make_data_loader(dataset, tokenizer, batch_size, num_iters, args, shuffle=False, block_collate=False):
     world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
     if args.loader_scatter is not None:
@@ -162,6 +181,23 @@ def make_data_loader(dataset, batch_size, num_iters, args, collate_fn=None, shuf
             batch_sampler = torch.utils.data.BatchSampler(sampler,
                                                           batch_size,
                                                           drop_last)
+    collate_fn = None
+    if block_collate:
+        collate_fn = ConstructBlockStrategy(args, tokenizer, args.seq_length, bert_prob=args.bert_prob,
+                                            gap_sentence_prob=args.gap_sentence_prob,
+                                            gap_sentence_ratio=args.gap_sentence_ratio,
+                                            gpt_infill_prob=args.gpt_infill_prob,
+                                            average_block_length=args.avg_block_length,
+                                            gpt_min_ratio=args.gpt_min_ratio,
+                                            block_mask_prob=args.block_mask_prob,
+                                            context_mask_ratio=args.context_mask_ratio,
+                                            short_seq_prob=args.short_seq_prob,
+                                            shuffle_blocks=not args.no_shuffle_block,
+                                            block_position_encoding=not args.no_block_position,
+                                            sentinel_token=args.sentinel_token,
+                                            encoder_decoder=args.encoder_decoder,
+                                            task_mask=args.task_mask, random_position=args.random_position,
+                                            masked_lm=args.masked_lm).construct_blocks
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,
                                               num_workers=args.num_workers,
@@ -283,39 +319,24 @@ def make_loaders(args, tokenizer):
         test = data_utils.make_dataset(**eval_set_args)
 
     # wrap datasets with data loader
-    collate_fn = None
     use_block = args.block_lm or args.encoder_decoder
-    if use_block:
-        collate_fn = ConstructBlockStrategy(args, tokenizer, args.seq_length, bert_prob=args.bert_prob,
-                                            gap_sentence_prob=args.gap_sentence_prob,
-                                            gap_sentence_ratio=args.gap_sentence_ratio,
-                                            gpt_infill_prob=args.gpt_infill_prob,
-                                            average_block_length=args.avg_block_length,
-                                            gpt_min_ratio=args.gpt_min_ratio,
-                                            block_mask_prob=args.block_mask_prob,
-                                            context_mask_ratio=args.context_mask_ratio,
-                                            short_seq_prob=args.short_seq_prob,
-                                            shuffle_blocks=not args.no_shuffle_block,
-                                            block_position_encoding=not args.no_block_position,
-                                            sentinel_token=args.sentinel_token,
-                                            encoder_decoder=args.encoder_decoder,
-                                            task_mask=args.task_mask, random_position=args.random_position,
-                                            masked_lm=args.masked_lm).construct_blocks
+
     if train is not None and args.batch_size > 0:
-        train = make_data_loader(train, batch_size, args.train_iters, args, collate_fn=collate_fn, shuffle=args.shuffle)
+        train = make_data_loader(train, tokenizer, batch_size, args.train_iters, args, shuffle=args.shuffle,
+                                 block_collate=use_block)
         args.do_train = True
     else:
         args.do_train = False
     eval_batch_size = eval_batch_size if eval_batch_size != 0 else batch_size
     if valid is not None:
-        valid = make_data_loader(valid, eval_batch_size, args.train_iters, args, collate_fn=collate_fn,
-                                 shuffle=args.shuffle)
+        valid = make_data_loader(valid, tokenizer, eval_batch_size, args.train_iters, args, shuffle=args.shuffle,
+                                 block_collate=use_block)
         args.do_valid = True
     else:
         args.do_valid = False
     if test is not None:
-        test = make_data_loader(test, eval_batch_size, len(test) // eval_batch_size + 1, args, collate_fn=collate_fn,
-                                shuffle=args.shuffle)
+        test = make_data_loader(test, tokenizer, eval_batch_size, len(test) // eval_batch_size + 1, args,
+                                shuffle=args.shuffle, block_collate=use_block)
         args.do_test = True
     else:
         args.do_test = False
@@ -324,30 +345,31 @@ def make_loaders(args, tokenizer):
 
 
 def build_multi_task_dataset(args, tokenizer):
-    task_dirs = {"mnli": "MNLI", "cola": "CoLA", "mrpc": "MRPC", "qnli": "QNLI", "qqp": "QQP", "sst2": "SST-2"}
-    train, valid, test = None, None, None
+    task_dirs = {"mnli": "MNLI", "cola": "CoLA", "mrpc": "MRPC", "qnli": "QNLI", "qqp": "QQP", "sst2": "SST-2",
+                 "agnews": "Agnews", "yelp-polarity": "yelp_review_polarity_csv", "yelp-full": "yelp_review_full_csv",
+                 "yahoo": "Yahoo"}
+    train, valid = None, None
     if mpu.get_model_parallel_rank() == 0:
         multi_seq_length = args.seq_length
         if args.multi_seq_length is not None:
             multi_seq_length = args.multi_seq_length
-        train_datasets, valid_datasets, test_datasets = [], [], []
+        train_datasets, valid_datasets = [], []
         for task in args.multi_task_data:
             task = task.lower()
             data_dir = os.path.join(args.data_dir, task_dirs[task])
-            train_datasets.append(GlueDataset(args, task, data_dir, multi_seq_length, "train", tokenizer))
-            valid_datasets.append(GlueDataset(args, task, data_dir, multi_seq_length, "dev", tokenizer))
-            test_datasets.append(GlueDataset(args, task, data_dir, multi_seq_length, "test", tokenizer))
-        train = MultiTaskDataset(train_datasets)
-        valid = MultiTaskDataset(valid_datasets)
-        test = MultiTaskDataset(test_datasets)
+            train_datasets.append(
+                GlueDataset(args, task, data_dir, multi_seq_length, "train", tokenizer, pattern_ensemble=True))
+            valid_datasets.append(
+                GlueDataset(args, task, data_dir, multi_seq_length, "dev", tokenizer, pattern_ensemble=True))
+        train = MultiTaskDataset(args.multi_task_data, train_datasets)
+        valid = MultiTaskDataset(args.multi_task_data, valid_datasets)
         world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
         multi_batch_size = args.batch_size * world_size
         if args.multi_batch_size is not None:
             multi_batch_size = args.multi_batch_size * world_size
-        train = make_data_loader(train, multi_batch_size, args.train_iters, args, shuffle=True)
-        valid = make_data_loader(valid, multi_batch_size, args.train_iters, args, shuffle=True)
-        test = make_data_loader(test, multi_batch_size, args.train_iters, args, shuffle=True)
-    return train, valid, test
+        train = make_data_loader(train, tokenizer, multi_batch_size, args.train_iters, args, shuffle=True)
+        valid = make_data_loader(valid, tokenizer, multi_batch_size, args.train_iters, args, shuffle=True)
+    return train, valid
 
 
 def get_split(args):

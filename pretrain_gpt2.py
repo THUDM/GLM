@@ -581,9 +581,9 @@ def main():
     global tokenizer
     tokenizer = prepare_tokenizer(args)
     train_data, val_data, test_data, = get_train_val_test_data(args, tokenizer)
-    multi_train_data, multi_val_data, multi_test_data = None, None, None
+    multi_train_data, multi_val_data = None, None
     if args.multi_task_ratio > 0.0:
-        multi_train_data, multi_val_data, multi_test_data = build_multi_task_dataset(args, tokenizer)
+        multi_train_data, multi_val_data = build_multi_task_dataset(args, tokenizer)
 
     # Model, optimizer, and learning rate.
     model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
@@ -668,7 +668,7 @@ def main():
     if args.do_test:
         # Run on test data.
         prefix = 'the end of training for test data'
-        evaluate_and_print_results(prefix, test_data_iterator,
+        evaluate_and_print_results(prefix, (test_data_iterator, None),
                                    model, args, timers, verbose=True, forward_step_func=forward_step)
 
 

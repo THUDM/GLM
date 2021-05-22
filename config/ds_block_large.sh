@@ -28,7 +28,7 @@ gpt_options=" \
        --data-dir /dataset/c07bd62b/glue_data \
        --cloze-eval \
        --multi-task-ratio 0.5 \
-       --multi-task-data cola mrpc qnli qqp sst2 mnli \
+       --multi-task-data agnews yelp-full mnli cola mrpc qnli qqp sst2 \
        --multi-batch-size 32 \
        --multi-seq-length 256 \
        --distributed-backend nccl \
