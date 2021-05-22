@@ -10,6 +10,7 @@ gpt_options=" \
        --task-mask \
        --bert-prob 0.4 \
        --gap-sentence-prob 0.3 \
+       --single-span-prob 0.05 \
        --avg-block-length 3 \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
@@ -19,27 +20,34 @@ gpt_options=" \
        --num-layers 48 \
        --hidden-size 4096 \
        --num-attention-heads 64 \
-       --seq-length 1024 \
+       --seq-length 640 \
        --max-position-embeddings 1024 \
-       --save /dataset/fd5061f6/english_data/checkpoints \
-       --load /dataset/fd5061f6/english_data/checkpoints/blocklm-10b04-19-11-09 \
-       --log-interval 50 \
-       --eval-interval 1000 \
-       --save-interval 2000 \
+       --save /mnt/model_checkpoints \
+       --load /cache/blocklm-10b-latest \
+       --no-load-lr-scheduler \
+       --log-interval 25 \
+       --eval-interval 500 \
+       --save-interval 500 \
        --train-iters 250000 \
        --train-data pile cc-news \
        --resume-dataloader \
-       --shuffle \
        --filter-english \
        --loader-scatter 32 \
        --no-lazy-loader \
+       --half-lazy-loader \
+       --data-dir /mnt/glue_data \
+       --cloze-eval \
+       --multi-task-ratio 0.05 \
+       --multi-task-data agnews yelp-full cola mrpc qnli qqp sst2 mnli \
+       --multi-batch-size 8 \
+       --multi-seq-length 256 \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style linear \
        --lr-decay-ratio 0.1 \
        --lr-decay-iters 50000 \
-       --warmup 0.02 \
+       --warmup 0.005 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \

@@ -203,6 +203,7 @@ def add_training_args(parser):
     group.add_argument('--gap-sentence-ratio', type=float, default=0.15)
     group.add_argument('--avg-block-length', type=int, default=3)
     group.add_argument('--short-seq-prob', type=float, default=0.0)
+    group.add_argument('--single-span-prob', type=float, default=0.0)
     group.add_argument('--task-mask', action='store_true', help="Use different mask for generation and blank filling")
     group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
     group.add_argument('--no-block-position', action='store_true',
@@ -296,6 +297,7 @@ def add_data_args(parser):
 
     group.add_argument('--no-lazy-loader', action='store_true',
                        help='whether to lazy read the data set')
+    group.add_argument('--half-lazy-loader', action='store_true')
     group.add_argument('--loader-scatter', type=int, default=None, help='Number of scatters to use for dataloaders')
     group.add_argument('--loose-json', action='store_true',
                        help='Use loose json (one json-formatted string per '
@@ -343,6 +345,11 @@ def add_data_args(parser):
     group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")
     group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")
     group.add_argument('--save-test-data', type=str, default=None, help="The path to save the test data")
+    group.add_argument('--multi-task-data', nargs='*', default=None,
+                       help="Downsteam task names for multi-task pre-training")
+    group.add_argument('--multi-task-ratio', type=float, default=0.0, help="Ratio for multi-task pre-training")
+    group.add_argument('--multi-seq-length', type=int, default=None)
+    group.add_argument('--multi-batch-size', type=int, default=None)
     return parser
 
 

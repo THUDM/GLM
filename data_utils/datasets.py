@@ -587,7 +587,7 @@ class BlockDataset(data.Dataset):
         self.is_lazy = False
         if self.filter_english:
             import fasttext
-            self.model = fasttext.load_model('/dataset/fd5061f6/english_data/lid.176.bin')
+            self.model = fasttext.load_model('/mnt/lid.176.bin')
             print_rank_0("Load language detection model")
         if hasattr(self.ds, 'is_lazy') and self.ds.is_lazy:
             self.is_lazy = True
@@ -604,8 +604,18 @@ class BlockDataset(data.Dataset):
         self.weighting = list(accumulate(lens))
 
     def get_weighted_samples(self, np_rng):
-        idx = np_rng.randint(self.total_len)
-        return bisect_right(self.weighting, idx)
+        while True:
+            idx = np_rng.randint(self.total_len)
+            data_idx = bisect_right(self.weighting, idx)
+            tokens, loss_mask = self.getidx(data_idx)
+            if self.filter_english:
+                text = self.tokenizer.DecodeIds(tokens[:1024])
+                lang = self.model.predict(text.replace('\n', ''))[0][0]
+                if lang == '__label__en':
+                    break
+            else:
+                break
+        return tokens, loss_mask
 
     def __len__(self):
         return self.num_samples
@@ -616,16 +626,7 @@ class BlockDataset(data.Dataset):
         rng = np.random.RandomState(seed=[rng.randint(0, 2 ** 32 - 1) for _ in range(16)])
 
         # get possibly weighted random index from dataset
-        data_idx = self.get_weighted_samples(rng)
-        tokens, loss_mask = self.getidx(data_idx)
-        if self.filter_english:
-            while True:
-                text = self.tokenizer.DecodeIds(tokens[:1024])
-                lang = self.model.predict(text.replace('\n', ''))[0][0]
-                if lang == '__label__en':
-                    break
-                data_idx = self.get_weighted_samples(rng)
-                tokens, loss_mask = self.getidx(data_idx)
+        tokens, loss_mask = self.get_weighted_samples(rng)
         # truncate or pad tokens
         num_tokens = len(tokens)
         tokens_to_strip = num_tokens - self.max_seq_len + 1
@@ -642,34 +643,43 @@ class BlockDataset(data.Dataset):
                         move_count += 1
                 else:
                     while move_count < self.max_seq_len // 2 and strip_left_tokens < len(
-                            tokens) and not self.contains_sentence_end(
-                            tokens[strip_left_tokens - 1]):
+                            tokens) and not self.contains_sentence_end(tokens[strip_left_tokens - 1]):
                         strip_left_tokens += 1
                         move_count += 1
             tokens = [self.tokenizer.get_command('ENC').Id] + tokens[strip_left_tokens:]
             loss_mask = [0] + loss_mask[strip_left_tokens:]
             if len(tokens) == 2 and tokens[1] == self.tokenizer.get_command('eos').Id:
                 tokens, loss_mask = [], []
-            strip_right_rokens = len(tokens) - self.max_seq_len
-            if strip_right_rokens > 0:
-                tokens = tokens[:-strip_right_rokens]
-                loss_mask = loss_mask[:-strip_right_rokens]
+            tokens, loss_mask = self.right_strip_seq(tokens, loss_mask, self.max_seq_len)
         else:
             tokens = [self.tokenizer.get_command('ENC').Id] + tokens
             loss_mask = [0] + loss_mask
-        # Sample multiple documents
-        if self.sample_across_doc:
-            while len(tokens) < self.max_seq_len:
-                data_idx = self.get_weighted_samples(rng)
-                new_tokens, new_loss_mask = self.getidx(data_idx)
-                tokens += [self.tokenizer.get_command('ENC').Id] + new_tokens
-                loss_mask += [0] + new_loss_mask
-            tokens = tokens[:self.max_seq_len]
-            loss_mask = loss_mask[:self.max_seq_len]
-
-        tokens = self.pad_seq(tokens)
-        loss_mask = self.pad_seq(loss_mask, pad_id=0)
+            # Sample multiple documents
+            if self.sample_across_doc:
+                while len(tokens) < self.max_seq_len:
+                    new_tokens, new_loss_mask = self.get_weighted_samples(rng)
+                    new_tokens = [self.tokenizer.get_command('ENC').Id] + new_tokens
+                    new_loss_mask = [0] + new_loss_mask
+                    is_last = len(new_tokens) >= self.max_seq_len - len(tokens)
+                    new_tokens, new_loss_mask = self.right_strip_seq(new_tokens, new_loss_mask,
+                                                                     self.max_seq_len - len(tokens))
+                    tokens += new_tokens
+                    loss_mask += new_loss_mask
+                    if is_last:
+                        break
         return {'text': np.array(tokens), "loss_mask": np.array(loss_mask)}
+
+    def right_strip_seq(self, tokens, loss_mask, seq_length):
+        strip_right_tokens = len(tokens) - seq_length
+        if strip_right_tokens > 0:
+            while strip_right_tokens < len(tokens) - 1 and not self.contains_sentence_end(
+                    tokens[-strip_right_tokens - 1]):
+                strip_right_tokens += 1
+            if len(tokens) - strip_right_tokens < seq_length // 2:
+                strip_right_tokens = len(tokens) - seq_length
+            tokens = tokens[:-strip_right_tokens]
+            loss_mask = loss_mask[:-strip_right_tokens]
+        return tokens, loss_mask
 
     def getidx(self, data_idx):
         data = self.ds[data_idx]

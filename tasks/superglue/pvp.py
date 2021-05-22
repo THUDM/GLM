@@ -112,6 +112,10 @@ class PVP(ABC):
             return PVP.uppercase_first(s[0]), s[1]
         return s[0].upper() + s[1:]
 
+    @staticmethod
+    def available_patterns():
+        return [0]
+
     def encode(self, example: InputExample, priming: bool = False, labeled: bool = False):
         """
         Encode an input example using this pattern-verbalizer pair.
@@ -146,7 +150,7 @@ class PVP(ABC):
         parts_a = encode_input(raw_parts_a)
         if self.prefix_prompt > 0:
             parts_a = [([prompt_id] * self.prefix_prompt, False)] + parts_a
-            
+
         parts_b = None
         if raw_parts_b:
             raw_parts_b = [x if isinstance(x, tuple) else (x, False) for x in raw_parts_b]
@@ -353,6 +357,9 @@ class PVP(ABC):
 
 
 class CopaPVP(PVP):
+    @staticmethod
+    def available_patterns():
+        return [0, 1]
     @property
     def is_multi_token(self):
         return True
@@ -456,6 +463,10 @@ class CopaPVP(PVP):
 
 
 class WscPVP(PVP):
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2]
+
     @property
     def is_multi_token(self):
         return True
@@ -621,6 +632,10 @@ class RtePVP(PVP):
         "entailment": [" Yes"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3, 4]
+
     @property
     def spell_length(self):
         return self.pattern_id + self.prefix_prompt
@@ -671,6 +686,10 @@ class CbPVP(RtePVP):
         "neutral": [" Maybe"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3, 4]
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         if self.pattern_id == 4:
             text_a = self.shortenable(example.text_a)
@@ -694,6 +713,10 @@ class BoolQPVP(PVP):
         "false": [" false"],
         "true": [" true"]
     }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3, 4, 5]
 
     @property
     def spell_length(self):
@@ -738,6 +761,10 @@ class MultiRcPVP(PVP):
         0: [" No"],
         1: [" Yes"]
     }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3]
 
     @property
     def spell_length(self):
@@ -786,6 +813,10 @@ class WicPVP(PVP):
         "true": ["b"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2]
+
     @property
     def spell_length(self):
         return self.pattern_id + self.prefix_prompt
@@ -823,11 +854,15 @@ class WicPVP(PVP):
 
 class AgnewsPVP(PVP):
     VERBALIZER = {
-        "1": ["World"],
-        "2": ["Sports"],
-        "3": ["Business"],
-        "4": ["Tech"]
+        "1": [" World"],
+        "2": [" Sports"],
+        "3": [" Business"],
+        "4": [" Tech"]
     }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3, 4, 5]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
 
@@ -837,7 +872,7 @@ class AgnewsPVP(PVP):
         if self.pattern_id == 0:
             return [[self.mask], ':', text_a, text_b], []
         elif self.pattern_id == 1:
-            return [[self.mask], 'News:', text_a, text_b], []
+            return [[self.mask], ' News:', text_a, text_b], []
         elif self.pattern_id == 2:
             return [text_a, '(', [self.mask], ')', text_b], []
         elif self.pattern_id == 3:
@@ -855,17 +890,21 @@ class AgnewsPVP(PVP):
 
 class YahooPVP(PVP):
     VERBALIZER = {
-        "1": ["Society"],
-        "2": ["Science"],
-        "3": ["Health"],
-        "4": ["Education"],
-        "5": ["Computer"],
-        "6": ["Sports"],
-        "7": ["Business"],
-        "8": ["Entertainment"],
-        "9": ["Relationship"],
-        "10": ["Politics"],
+        "1": [" Society"],
+        "2": [" Science"],
+        "3": [" Health"],
+        "4": [" Education"],
+        "5": [" Computer"],
+        "6": [" Sports"],
+        "7": [" Business"],
+        "8": [" Entertainment"],
+        "9": [" Relationship"],
+        "10": [" Politics"],
     }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3, 4, 5]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
 
@@ -875,7 +914,7 @@ class YahooPVP(PVP):
         if self.pattern_id == 0:
             return [[self.mask], ':', text_a, text_b], []
         elif self.pattern_id == 1:
-            return [[self.mask], 'Question:', text_a, text_b], []
+            return [[self.mask], ' Question:', text_a, text_b], []
         elif self.pattern_id == 2:
             return [text_a, '(', [self.mask], ')', text_b], []
         elif self.pattern_id == 3:
@@ -903,6 +942,10 @@ class MnliPVP(PVP):
         "neutral": [" Maybe"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3]
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         text_a = self.shortenable(self.remove_final_punc(example.text_a))
         text_b = self.shortenable(example.text_b)
@@ -920,9 +963,13 @@ class MnliPVP(PVP):
 
 class YelpPolarityPVP(PVP):
     VERBALIZER = {
-        "1": ["bad"],
-        "2": ["good"]
+        "1": [" bad"],
+        "2": [" good"]
     }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         text = self.shortenable(example.text_a)
@@ -934,7 +981,7 @@ class YelpPolarityPVP(PVP):
         elif self.pattern_id == 2:
             return ['Just', [self.mask], "!"], [text]
         elif self.pattern_id == 3:
-            return [text], ['In summary, the restaurant is', [self.mask], '.']
+            return [text], [' In summary, the restaurant is', [self.mask], '.']
         else:
             raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
 
@@ -944,11 +991,11 @@ class YelpPolarityPVP(PVP):
 
 class YelpFullPVP(YelpPolarityPVP):
     VERBALIZER = {
-        "1": ["terrible"],
-        "2": ["bad"],
-        "3": ["okay"],
-        "4": ["good"],
-        "5": ["great"]
+        "1": [" terrible"],
+        "2": [" bad"],
+        "3": [" okay"],
+        "4": [" good"],
+        "5": [" great"]
     }
 
     def verbalize(self, label) -> List[str]:
@@ -961,6 +1008,10 @@ class XStancePVP(PVP):
         'de': {"FAVOR": ["Ja"], "AGAINST": ["Nein"]},
         'fr': {"FAVOR": ["Oui"], "AGAINST": ["Non"]}
     }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2, 3, 4, 5]
 
     def get_parts(self, example: InputExample) -> FilledPattern:
 
@@ -978,20 +1029,32 @@ class XStancePVP(PVP):
 
 
 class Sst2PVP(PVP):
-    VERBALIZER = {
+    VERBALIZER_A = {
         "0": [" terrible"],
         "1": [" great"]
     }
 
+    VERBALIZER_B = {
+        "0": [" bad"],
+        "1": [" good"]
+    }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1]
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         text = self.shortenable(example.text_a)
-        if self.pattern_id == 0:
-            return [text, 'It was', [self.mask], '.'], []
+        if self.pattern_id == 0 or self.pattern_id == 1:
+            return [text, ' It was', [self.mask], '.'], []
         else:
             raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
 
     def verbalize(self, label) -> List[str]:
-        return Sst2PVP.VERBALIZER[label]
+        if self.pattern_id == 0:
+            return Sst2PVP.VERBALIZER_A[label]
+        else:
+            return Sst2PVP.VERBALIZER_B[label]
 
 
 class ColaPVP(PVP):
@@ -1003,7 +1066,7 @@ class ColaPVP(PVP):
     def get_parts(self, example: InputExample) -> FilledPattern:
         text = self.shortenable(example.text_a)
         if self.pattern_id == 0:
-            return [text, " This is", [self.mask], '.'], []
+            return ['"', text, '"', " This is", [self.mask], '.'], []
         else:
             raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
 
@@ -1017,11 +1080,18 @@ class MrpcPVP(PVP):
         "1": [" Yes"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1]
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         text_a = self.shortenable(example.text_a)
-        text_b = self.shortenable(example.text_b)
         if self.pattern_id == 0:
+            text_b = self.shortenable(self.lowercase_first(example.text_b))
             return [text_a], [[self.mask], ', ', text_b]
+        elif self.pattern_id == 1:
+            text_b = self.shortenable(self.remove_final_punc(self.lowercase_first(example.text_b)))
+            return [text_a], [" Does it mean that", text_b, "?", [self.mask]]
         else:
             raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
 
@@ -1035,10 +1105,16 @@ class QqpPVP(PVP):
         "1": [" Yes"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1]
+
     def get_parts(self, example: InputExample) -> FilledPattern:
         text_a = self.shortenable(example.text_a)
-        text_b = self.shortenable(example.text_b)
+        text_b = self.shortenable(self.lowercase_first(example.text_b))
         if self.pattern_id == 0:
+            return [text_a], [" Do you mean ", text_b, [self.mask], "."]
+        elif self.pattern_id == 1:
             return [text_a], [[self.mask], ', ', text_b]
         else:
             raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
@@ -1053,11 +1129,23 @@ class QnliPVP(PVP):
         "entailment": [" Yes"]
     }
 
+    @staticmethod
+    def available_patterns():
+        return [0, 1, 2]
+
     def get_parts(self, example: InputExample) -> FilledPattern:
-        text_a = self.shortenable(example.text_a)
-        text_b = self.shortenable(example.text_b)
+        question = self.remove_final_punc(example.text_a)
+        passage = example.text_b
         if self.pattern_id == 0:
-            return [text_a], [[self.mask], ', ', text_b]
+            return [self.shortenable(passage), ' Question:', self.shortenable(" " + question),
+                    '? Do you know the answer?', [self.mask], '.'], []
+        elif self.pattern_id == 1:
+            return [self.shortenable(passage), ' Based on the previous passage, do you know the answer',
+                    self.shortenable(" " + question),
+                    '?', [self.mask], '.'], []
+        elif self.pattern_id == 2:
+            return ['Based on the following passage, do you know the answer', self.shortenable(" " + question), '?',
+                    [self.mask], '.', self.shortenable(" " + passage)], []
         else:
             raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
 

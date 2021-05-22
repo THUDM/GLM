@@ -6,7 +6,11 @@ script_dir=$(dirname $script_path)
 config_json="$script_dir/config_block_large.json"
 gpt_options=" \
        --block-lm \
-       --bert-prob 1.0 \
+       --task-mask \
+       --bert-prob 0.5 \
+       --gap-sentence-prob 0.3 \
+       --avg-block-length 3 \
+       --gpt-min-ratio 0.25 \
        --experiment-name blocklm-large-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
@@ -21,6 +25,12 @@ gpt_options=" \
        --tokenizer-type BertWordPieceTokenizer \
        --tokenizer-model-type bert-large-uncased \
        --split 949,50,1 \
+       --data-dir /dataset/c07bd62b/glue_data \
+       --cloze-eval \
+       --multi-task-ratio 0.5 \
+       --multi-task-data agnews yelp-full mnli cola mrpc qnli qqp sst2 \
+       --multi-batch-size 32 \
+       --multi-seq-length 256 \
        --distributed-backend nccl \
        --lr-decay-style cosine \
        --lr-decay-iters 160000 \

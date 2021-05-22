@@ -49,7 +49,8 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatter=None, no_lazy_loader=False):
+def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatter=None, no_lazy_loader=False,
+                half_lazy_loader=False):
     """gets dataset object based on keyword args and file at `path`"""
     global_rank = torch.distributed.get_rank()
     if not supported_corpus(name):
@@ -57,7 +58,11 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
     dataset = corpora.NAMED_CORPORA[name]
     path = dataset.PATH
     if issubclass(dataset, corpora.PromptReader):
-        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')) and not (
+                loader_scatter is not None and exists_scatter(path, data_type='prompt',
+                                                              scatter_num=loader_scatter) and exists_scatter(path,
+                                                                                                             data_type='text',
+                                                                                                             scatter_num=loader_scatter)):
             # create cached version of dataset for lazy loading if it doesn't exist
             if global_rank == 0:
                 print(f"Creating lazy loader for dataset {name}")
@@ -97,19 +102,19 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
                 else:
                     while not (
                             exists_scatter(path, data_type='prompt', scatter_num=loader_scatter) and exists_scatter(
-                            path, data_type='text', scatter_num=loader_scatter)):
+                        path, data_type='text', scatter_num=loader_scatter)):
                         time.sleep(1)
             scatter_path = get_scatter_path(path, scatter_rank=data_parallel_rank % loader_scatter)
             print(f"Rank {global_rank} is using scatter from {scatter_path}")
             prompts = LazyLoader(scatter_path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                                 is_array=pre_tokenize, load_memory=no_lazy_loader)
+                                 is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
             texts = LazyLoader(scatter_path, data_type='text', map_fn=map_fn, mem_map=True,
-                               is_array=pre_tokenize, load_memory=no_lazy_loader)
+                               is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
         else:
             prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                                 is_array=pre_tokenize, load_memory=no_lazy_loader)
+                                 is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
             texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
-                               is_array=pre_tokenize, load_memory=no_lazy_loader)
+                               is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
         text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
                                      to_tokenize=not pre_tokenize)
         if loader_scatter is None:
@@ -159,7 +164,7 @@ def supported_corpus(corpus_name):
 def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
                  save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None,
-                 filter_english=False, non_sentence_start=0.0, **kwargs):
+                 filter_english=False, non_sentence_start=0.0, half_lazy_loader=False, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
@@ -167,10 +172,12 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
         ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank)
+                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                         half_lazy_loader=half_lazy_loader)
     else:
         ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                          loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank) for p in path]
+                          loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                          half_lazy_loader=half_lazy_loader) for p in path]
         ds = ConcatDataset(ds)
 
     # Split dataset into train/val/test (and wrap bert dataset)

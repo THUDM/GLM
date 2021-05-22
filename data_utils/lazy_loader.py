@@ -139,7 +139,7 @@ class LazyLoader(object):
     """
 
     def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32,
-                 load_memory=False):
+                 load_memory=False, half_load=False):
         lazypath = get_lazy_path(path)
         datapath = os.path.join(lazypath, data_type)
         # get file where array entries are concatenated into one big string
@@ -150,13 +150,18 @@ class LazyLoader(object):
         # memory map file if necessary
         lenpath = os.path.join(lazypath, data_type + '.len.pkl')
         self.lens = pkl.load(open(lenpath, 'rb'))
+        if half_load:
+            self.lens = self.lens[:len(self.lens) // 2]
         self.ends = list(accumulate(self.lens))
         self.dumb_ends = list(self.ends)
         self.mem_map = mem_map
         self.load_memory = load_memory
         if self.load_memory:
             data_type_size = np.dtype(self.array_data_type).itemsize
-            self.file = self.file.read()
+            if half_load:
+                self.file = self.file.read(sum(self.lens) * data_type_size)
+            else:
+                self.file = self.file.read()
             self.file = np.ndarray(shape=(len(self.file) // data_type_size,), dtype=array_data_type, buffer=self.file,
                                    order='C')
         elif self.mem_map:
