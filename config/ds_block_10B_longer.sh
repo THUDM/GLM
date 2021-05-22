@@ -10,6 +10,7 @@ gpt_options=" \
        --task-mask \
        --bert-prob 0.4 \
        --gap-sentence-prob 0.3 \
+       --single-span-prob 0.05 \
        --avg-block-length 3 \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
@@ -46,7 +47,7 @@ gpt_options=" \
        --lr-decay-style linear \
        --lr-decay-ratio 0.1 \
        --lr-decay-iters 50000 \
-       --warmup 0.02 \
+       --warmup 0.005 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
        --fp16 \

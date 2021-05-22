@@ -31,8 +31,8 @@ class ConstructBlockStrategy:
     def __init__(self, args, tokenizer, max_seq_length, bert_prob=1.0, gap_sentence_prob=0.0, gpt_infill_prob=0.5,
                  gpt_min_ratio=0.5, bert_ratio=0.15, gap_sentence_ratio=0.15, average_block_length=3,
                  max_block_length=40, block_mask_prob=0.0, context_mask_ratio=0.0, context_mask_range=3,
-                 short_seq_prob=0.0, block_position_encoding=True, encoder_decoder=False, shuffle_blocks=True,
-                 sentinel_token=False, task_mask=False, random_position=False, masked_lm=False):
+                 short_seq_prob=0.0, single_span_prob=0.0, block_position_encoding=True, encoder_decoder=False,
+                 shuffle_blocks=True, sentinel_token=False, task_mask=False, random_position=False, masked_lm=False):
         self.eod_token = args.eod_token
         self.tokenizer = tokenizer
         self.count = 0
@@ -55,6 +55,7 @@ class ConstructBlockStrategy:
         self.context_mask_ratio = context_mask_ratio
         self.context_mask_range = context_mask_range
         self.short_seq_prob = short_seq_prob
+        self.single_span_prob = single_span_prob
         self.block_position_encoding = block_position_encoding
         self.encoder_decoder = encoder_decoder
         self.shuffle_blocks = shuffle_blocks
@@ -283,7 +284,8 @@ class ConstructBlockStrategy:
                 else:
                     random_start = rng.randrange(0, len(tokens) - target_length)
                     while random_start > 0 and (tokens[random_start] == eos_id or not (
-                            self.contains_sentence_end(tokens[random_start - 1]) or tokens[random_start - 1] == eos_id)):
+                            self.contains_sentence_end(tokens[random_start - 1]) or tokens[
+                        random_start - 1] == eos_id)):
                         random_start -= 1
                     random_end = random_start + target_length
                     while random_end > random_start and not (
@@ -310,16 +312,23 @@ class ConstructBlockStrategy:
         if rng.random() < self.short_seq_prob:
             samples = self.split_samples(samples, rng)
         rand = rng.random()
+        single_span = rand < self.single_span_prob
+        rand = 0.0 if single_span else rng.random()
         attention_mask = []
         if rand < self.bert_prob:
             mode = 'bert'
             for sample in samples:
-                masked_lengths, masked_count = [], 0
-                while masked_count < int(self.bert_ratio * len(sample['text'])):
-                    block_length = rng.choices(range(1, len(self.block_length_distribution) + 1),
-                                               weights=self.block_length_distribution)[0]
-                    masked_lengths.append(block_length)
-                    masked_count += block_length
+                if single_span:
+                    masked_lengths = [rng.choices(range(1, len(self.block_length_distribution) + 1),
+                                                  weights=self.block_length_distribution)[0]]
+                    masked_count = masked_lengths[0]
+                else:
+                    masked_lengths, masked_count = [], 0
+                    while masked_count < int(self.bert_ratio * len(sample['text'])):
+                        block_length = rng.choices(range(1, len(self.block_length_distribution) + 1),
+                                                   weights=self.block_length_distribution)[0]
+                        masked_lengths.append(block_length)
+                        masked_count += block_length
                 if self.masked_lm:
                     attention_mask.append(len(sample['text']))
                 else:
