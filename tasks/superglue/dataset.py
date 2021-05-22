@@ -143,14 +143,13 @@ class DataProcessor(ABC):
         """Get a collection of `InputExample`s for the dev set."""
         pass
 
-    @abstractmethod
     def get_test_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the test set."""
-        pass
+        return []
 
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the unlabeled set."""
-        pass
+        return []
 
     def get_true_dev_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the true dev set."""
@@ -636,16 +635,16 @@ class RecordProcessor(DataProcessor):
         return True
 
     def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
+        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")[:2000]
 
     def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)
+        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)[:200]
 
     def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
+        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")[:200]
 
     def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
+        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")[:200]
 
     def get_labels(self):
         return ["0", "1"]
@@ -1099,6 +1098,37 @@ class QnliProcessor(Sst2Processor):
         return examples
 
 
+class SquadProcessor(DataProcessor):
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train-v2.0.json"), "train")[:1000]
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev-v2.0.json"), "dev")[:1000]
+
+    def get_labels(self):
+        return ['0']
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        with open(path) as f:
+            data = json.load(f)['data']
+
+        for idx, passage in enumerate(data):
+            for pid, paragraph in enumerate(passage['paragraphs']):
+                context = paragraph['context']
+                for qid, qas in enumerate(paragraph['qas']):
+                    if len(qas['answers']) == 0:
+                        continue
+                    guid = f"{set_type}-{idx}-{pid}-{qid}"
+                    example = InputExample(guid=guid, text_a=context, text_b=qas['question'], label='0',
+                                           meta={'answer:': qas['answers'][0]})
+                    examples.append(example)
+
+        return examples
+
+
 CLASSIFICATION_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
 MULTI_CHOICE_DATASETS = {"copa", "record"}
 
@@ -1128,4 +1158,5 @@ PROCESSORS = {
     "mrpc": MrpcProcessor,
     "qqp": QqpProcessor,
     "qnli": QnliProcessor,
+    "squad": SquadProcessor
 }  # type: Dict[str,Callable[[],DataProcessor]]

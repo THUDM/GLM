@@ -2,8 +2,7 @@ MP_SIZE=4
 DATA_ROOT=/dataset/c07bd62b/superglue
 GLUE_DATA_ROOT=/dataset/c07bd62b/glue_data
 source config_tasks/model_blocklm_10B.sh
-#source config_tasks/model_blocklm_roberta_large.sh
-source $1
+source config_tasks/task_record.sh
 
 CHECKPOINT_PATH="/dataset/c07bd62b/finetune_checkpoints"
 
@@ -16,7 +15,7 @@ DATESTR=$(date +"%m-%d-%H-%M")
 mkdir logs
 run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
        --deepspeed \
-       --deepspeed_config config_tasks/config_blocklm_10B.json \
+       --deepspeed_config config_tasks/config_blocklm_10B_record.json \
        --finetune \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
@@ -24,7 +23,7 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
        --save ${CHECKPOINT_PATH} \
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
-       --eval-batch-size 16 \
+       --eval-batch-size 2 \
        --save-epoch 100 \
        --num-workers 1 \
        --no-load-optim \

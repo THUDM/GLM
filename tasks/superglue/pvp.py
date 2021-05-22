@@ -1065,6 +1065,24 @@ class QnliPVP(PVP):
         return QnliPVP.VERBALIZER[label]
 
 
+class SquadPVP(PVP):
+    @property
+    def is_multi_token(self):
+        return True
+
+    def get_answers(self, example: InputExample):
+        target = " " + example.label
+        answers = [target]
+        return answers
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        context = self.shortenable(example.text_a)
+        question = example.text_b
+        return [context, " " + question, [self.mask]], []
+
+    def verbalize(self, label) -> List[str]:
+        return []
+
 
 def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Union[int, List[int]]:
     """
@@ -1111,5 +1129,6 @@ PVPS = {
     'cola': ColaPVP,
     'mrpc': MrpcPVP,
     'qqp': QqpPVP,
-    'qnli': QnliPVP
+    'qnli': QnliPVP,
+    'squad': SquadPVP
 }

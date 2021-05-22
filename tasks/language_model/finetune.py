@@ -37,6 +37,8 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
     # Get the batch.
     if timers is not None:
         timers('batch generator').start()
+    if 'mask' in data:
+        data['attention_mask'] = data.pop('mask')
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
     if timers is not None:
         timers('batch generator').stop()

@@ -40,6 +40,7 @@ default_metrics = {
     "qqp": [("accuracy", accuracy_metric)],
     "mrpc": [("accuracy", accuracy_metric)],
     "cola": [("accuracy", accuracy_metric)],
+    "squad": [("accuracy", accuracy_metric)],
 }
 
 
@@ -59,7 +60,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     output_func = get_output_func(args.task.lower(), args)
     eval_func = None
-    if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
+    if args.task.lower() in ['wsc', 'squad'] and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import classify_evaluate
         eval_func = classify_evaluate
     metric_dict = OrderedDict(default_metrics[args.task.lower()])
@@ -74,7 +75,7 @@ def main(args):
                                   pattern_id=args.pattern_id, is_multi_token=args.multi_token)
     if args.continuous_prompt:
         model_kwargs["spell_length"] = pvp.spell_length
-    if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
+    if args.task.lower() in ['wsc', 'squad'] and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import lm_forward_step
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
