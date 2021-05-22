@@ -15,6 +15,7 @@
 
 """parses arguments and preps data loader"""
 
+import os
 import copy
 import torch
 import torch.utils.data
@@ -22,8 +23,54 @@ import data_utils
 from blocklm_utils import ConstructBlockStrategy
 from data_utils.tokenization import make_tokenizer
 from utils import print_rank_0
+from itertools import accumulate
+from bisect import bisect_right
+from tasks.superglue.dataset import GlueDataset
 
 import mpu
+
+
+class MultiTaskDataset(torch.utils.data.Dataset):
+    def __init__(self, datasets):
+        super(MultiTaskDataset, self).__init__()
+        self.datasets = datasets
+        self.lens = [len(dataset) for dataset in datasets]
+        self.total_len = sum(self.lens)
+        self.cumulative_lens = list(accumulate(self.lens))
+
+    def __len__(self):
+        return self.total_len
+
+    @staticmethod
+    def pet_wrapper(data):
+        text = data['text']
+        loss_mask = data['logit_mask']
+        target = data['target']
+        attention_mask = data['mask']
+        position_id = data['position']
+        label = data['label']
+        if len(text.shape) == 2:
+            text = text[label]
+            loss_mask = loss_mask[label]
+            target = target[label]
+            attention_mask = attention_mask[label]
+            position_id = position_id[label]
+        else:
+            target = target[label]
+        if not target.shape:
+            target = target.repeat(len(text))
+        return {'text': text, 'target': target, 'loss_mask': loss_mask, 'position_id': position_id,
+                'attention_mask': attention_mask}
+
+    def __getitem__(self, idx):
+        dataset_idx = bisect_right(self.cumulative_lens, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_lens[dataset_idx - 1]
+        item = self.datasets[dataset_idx][sample_idx]
+        item = self.pet_wrapper(item)
+        return item
 
 
 class DataConfig:
@@ -85,7 +132,7 @@ def prepare_tokenizer(args):
     return tokenizer
 
 
-def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
+def make_data_loader(dataset, batch_size, num_iters, args, collate_fn=None, shuffle=False):
     world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
     if args.loader_scatter is not None:
@@ -100,7 +147,6 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
                                                                          rank,
                                                                          world_size)
     else:
-        shuffle = args.shuffle
         if shuffle:
             sampler = data_utils.samplers.RandomSampler(dataset, replacement=True,
                                                         num_samples=batch_size * args.train_iters * args.gradient_accumulation_steps)
@@ -116,28 +162,11 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args):
             batch_sampler = torch.utils.data.BatchSampler(sampler,
                                                           batch_size,
                                                           drop_last)
-    use_block = args.block_lm or args.encoder_decoder
-    if use_block:
-        strategy = ConstructBlockStrategy(args, tokenizer, args.seq_length, bert_prob=args.bert_prob,
-                                          gap_sentence_prob=args.gap_sentence_prob,
-                                          gap_sentence_ratio=args.gap_sentence_ratio,
-                                          gpt_infill_prob=args.gpt_infill_prob,
-                                          average_block_length=args.avg_block_length,
-                                          gpt_min_ratio=args.gpt_min_ratio,
-                                          block_mask_prob=args.block_mask_prob,
-                                          context_mask_ratio=args.context_mask_ratio,
-                                          short_seq_prob=args.short_seq_prob,
-                                          shuffle_blocks=not args.no_shuffle_block,
-                                          block_position_encoding=not args.no_block_position,
-                                          sentinel_token=args.sentinel_token,
-                                          encoder_decoder=args.encoder_decoder,
-                                          task_mask=args.task_mask, random_position=args.random_position,
-                                          masked_lm=args.masked_lm)
     data_loader = torch.utils.data.DataLoader(dataset,
                                               batch_sampler=batch_sampler,
                                               num_workers=args.num_workers,
                                               pin_memory=True,
-                                              collate_fn=strategy.construct_blocks if use_block else None)
+                                              collate_fn=collate_fn)
 
     return data_loader
 
@@ -254,23 +283,70 @@ def make_loaders(args, tokenizer):
         test = data_utils.make_dataset(**eval_set_args)
 
     # wrap datasets with data loader
+    collate_fn = None
+    use_block = args.block_lm or args.encoder_decoder
+    if use_block:
+        collate_fn = ConstructBlockStrategy(args, tokenizer, args.seq_length, bert_prob=args.bert_prob,
+                                            gap_sentence_prob=args.gap_sentence_prob,
+                                            gap_sentence_ratio=args.gap_sentence_ratio,
+                                            gpt_infill_prob=args.gpt_infill_prob,
+                                            average_block_length=args.avg_block_length,
+                                            gpt_min_ratio=args.gpt_min_ratio,
+                                            block_mask_prob=args.block_mask_prob,
+                                            context_mask_ratio=args.context_mask_ratio,
+                                            short_seq_prob=args.short_seq_prob,
+                                            shuffle_blocks=not args.no_shuffle_block,
+                                            block_position_encoding=not args.no_block_position,
+                                            sentinel_token=args.sentinel_token,
+                                            encoder_decoder=args.encoder_decoder,
+                                            task_mask=args.task_mask, random_position=args.random_position,
+                                            masked_lm=args.masked_lm).construct_blocks
     if train is not None and args.batch_size > 0:
-        train = make_data_loader(train, tokenizer, batch_size, args.train_iters, args)
+        train = make_data_loader(train, batch_size, args.train_iters, args, collate_fn=collate_fn, shuffle=args.shuffle)
         args.do_train = True
     else:
         args.do_train = False
     eval_batch_size = eval_batch_size if eval_batch_size != 0 else batch_size
     if valid is not None:
-        valid = make_data_loader(valid, tokenizer, eval_batch_size, args.train_iters, args)
+        valid = make_data_loader(valid, eval_batch_size, args.train_iters, args, collate_fn=collate_fn,
+                                 shuffle=args.shuffle)
         args.do_valid = True
     else:
         args.do_valid = False
     if test is not None:
-        test = make_data_loader(test, tokenizer, eval_batch_size, len(test) // eval_batch_size + 1, args)
+        test = make_data_loader(test, eval_batch_size, len(test) // eval_batch_size + 1, args, collate_fn=collate_fn,
+                                shuffle=args.shuffle)
         args.do_test = True
     else:
         args.do_test = False
 
+    return train, valid, test
+
+
+def build_multi_task_dataset(args, tokenizer):
+    task_dirs = {"mnli": "MNLI", "cola": "CoLA", "mrpc": "MRPC", "qnli": "QNLI", "qqp": "QQP", "sst2": "SST-2"}
+    train, valid, test = None, None, None
+    if mpu.get_model_parallel_rank() == 0:
+        multi_seq_length = args.seq_length
+        if args.multi_seq_length is not None:
+            multi_seq_length = args.multi_seq_length
+        train_datasets, valid_datasets, test_datasets = [], [], []
+        for task in args.multi_task_data:
+            task = task.lower()
+            data_dir = os.path.join(args.data_dir, task_dirs[task])
+            train_datasets.append(GlueDataset(args, task, data_dir, multi_seq_length, "train", tokenizer))
+            valid_datasets.append(GlueDataset(args, task, data_dir, multi_seq_length, "dev", tokenizer))
+            test_datasets.append(GlueDataset(args, task, data_dir, multi_seq_length, "test", tokenizer))
+        train = MultiTaskDataset(train_datasets)
+        valid = MultiTaskDataset(valid_datasets)
+        test = MultiTaskDataset(test_datasets)
+        world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
+        multi_batch_size = args.batch_size * world_size
+        if args.multi_batch_size is not None:
+            multi_batch_size = args.multi_batch_size * world_size
+        train = make_data_loader(train, multi_batch_size, args.train_iters, args, shuffle=True)
+        valid = make_data_loader(valid, multi_batch_size, args.train_iters, args, shuffle=True)
+        test = make_data_loader(test, multi_batch_size, args.train_iters, args, shuffle=True)
     return train, valid, test
 
 

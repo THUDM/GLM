@@ -475,7 +475,7 @@ class BertBaseData(BertData):
 
 
 class BertLargeData(BertData):
-    PATH = '/root/data/formatted_one_article_per_line_large'
+    PATH = '/dataset/c07bd62b/cognitive/zhengxiao/formatted_one_article_per_line_large'
 
 
 NAMED_CORPORA = {

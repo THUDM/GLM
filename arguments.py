@@ -344,6 +344,11 @@ def add_data_args(parser):
     group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")
     group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")
     group.add_argument('--save-test-data', type=str, default=None, help="The path to save the test data")
+    group.add_argument('--multi-task-data', nargs='*', default=None,
+                       help="Downsteam task names for multi-task pre-training")
+    group.add_argument('--multi-task-ratio', type=float, default=0.0, help="Ratio for multi-task pre-training")
+    group.add_argument('--multi-seq-length', type=int, default=None)
+    group.add_argument('--multi-batch-size', type=int, default=None)
     return parser
 
 

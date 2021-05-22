@@ -172,10 +172,12 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
         ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank)
+                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                         half_lazy_loader=half_lazy_loader)
     else:
         ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                          loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank) for p in path]
+                          loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                          half_lazy_loader=half_lazy_loader) for p in path]
         ds = ConcatDataset(ds)
 
     # Split dataset into train/val/test (and wrap bert dataset)

@@ -52,28 +52,30 @@ def read_tsv(path, **kwargs):
 
 class GlueDataset(Dataset):
 
-    def __init__(self, args, split, tokenizer, for_train=False):
-        task_name = args.task.lower()
-        data_dir = args.data_dir
+    def __init__(self, args, task_name, data_dir, seq_length, split, tokenizer, for_train=False):
         self.processor = PROCESSORS[task_name](args)
         print_rank_0(
             f"Creating {task_name} dataset from file at {data_dir} (split={split})"
         )
         self.dataset_name = f"{task_name}-{split}"
+        self.cloze_eval = args.cloze_eval
+        self.seq_length = seq_length
+        self.tokenizer = tokenizer
+        self.args = args
         if split == DEV_SET:
-            examples = self.processor.get_dev_examples(data_dir, for_train=for_train)
+            example_list = self.processor.get_dev_examples(data_dir, for_train=for_train)
         elif split == TEST_SET:
-            examples = self.processor.get_test_examples(data_dir)
+            example_list = self.processor.get_test_examples(data_dir)
         elif split == TRUE_DEV_SET:
-            examples = self.processor.get_true_dev_examples(data_dir)
+            example_list = self.processor.get_true_dev_examples(data_dir)
         elif split == TRAIN_SET:
             if task_name == "wsc":
-                examples = self.processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
+                example_list = self.processor.get_train_examples(data_dir, cloze_eval=args.cloze_eval)
             else:
-                examples = self.processor.get_train_examples(data_dir)
+                example_list = self.processor.get_train_examples(data_dir)
         elif split == UNLABELED_SET:
-            examples = self.processor.get_unlabeled_examples(data_dir)
-            for example in examples:
+            example_list = self.processor.get_unlabeled_examples(data_dir)
+            for example in example_list:
                 example.label = self.processor.get_labels()[0]
         else:
             raise ValueError(f"'split' must be one of {SPLIT_TYPES}, got '{split}' instead")
@@ -82,33 +84,29 @@ class GlueDataset(Dataset):
         else:
             self.labeled = True
 
-        label_distribution = Counter(example.label for example in examples)
+        label_distribution = Counter(example.label for example in example_list)
         print_rank_0(
-            f"Returning {len(examples)} {split} examples with label dist.: {list(label_distribution.items())}")
+            f"Returning {len(example_list)} {split} examples with label dist.: {list(label_distribution.items())}")
         self.samples = []
-        examples.sort(key=lambda x: x.num_choices)
-        if args.cloze_eval:
-            self.pvp = PVPS[task_name](args, tokenizer, self.processor.get_labels(), args.seq_length,
+        example_list.sort(key=lambda x: x.num_choices)
+        self.example_list = example_list
+        if self.cloze_eval:
+            self.pvp = PVPS[task_name](args, tokenizer, self.processor.get_labels(), seq_length,
                                        pattern_id=args.pattern_id,
                                        is_multi_token=args.multi_token, max_segment_length=args.segment_length,
                                        fast_decode=args.fast_decode, split=split)
-            for example in examples:
-                sample = self.pvp.encode(example)
-                self.samples.append(sample)
-            print_rank_0(f"Truncate {self.pvp.num_truncated} examples")
-        else:
-            for example in examples:
-                sample = self.processor.encode(example, tokenizer, args)
-                self.samples.append(sample)
-            print_rank_0(f"Truncate {self.processor.num_truncated} examples")
-        print_rank_0(f"Creating {len(self.samples)} samples")
-        self.examples = {example.guid: example for example in examples}
+        self.examples = {example.guid: example for example in example_list}
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.example_list)
 
     def __getitem__(self, idx):
-        return self.samples[idx]
+        example = self.example_list[idx]
+        if self.cloze_eval:
+            sample = self.pvp.encode(example)
+        else:
+            sample = self.processor.encode(example, self.tokenizer, self.seq_length, self.args)
+        return sample
 
 
 class DataProcessor(ABC):
@@ -159,15 +157,15 @@ class DataProcessor(ABC):
     def get_classifier_input(self, example: InputExample, tokenizer):
         return example.text_a, example.text_b
 
-    def encode(self, example: InputExample, tokenizer, args):
+    def encode(self, example: InputExample, tokenizer, seq_length, args):
         text_a, text_b = self.get_classifier_input(example, tokenizer)
         tokens_a = tokenizer.EncodeAsIds(text_a).tokenization
         tokens_b = tokenizer.EncodeAsIds(text_b).tokenization
         num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
                                                        add_piece=False)
-        if len(tokens_a) + len(tokens_b) + num_special_tokens > args.seq_length:
+        if len(tokens_a) + len(tokens_b) + num_special_tokens > seq_length:
             self.num_truncated += 1
-        data = build_input_from_ids(tokens_a, tokens_b, None, args.seq_length, tokenizer, args=args,
+        data = build_input_from_ids(tokens_a, tokens_b, None, seq_length, tokenizer, args=args,
                                     add_cls=True, add_sep=True, add_piece=False)
         ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
         label = 0
@@ -467,7 +465,7 @@ class CopaProcessor(DataProcessor):
     def get_labels(self):
         return [0, 1]
 
-    def encode(self, example: InputExample, tokenizer, args):
+    def encode(self, example: InputExample, tokenizer, seq_length, args):
         if args.pretrained_bert:
             ids_list, types_list, paddings_list = [], [], []
         else:
@@ -481,9 +479,9 @@ class CopaProcessor(DataProcessor):
             tokens_b = tokenizer.EncodeAsIds(choice).tokenization
             num_special_tokens = num_special_tokens_to_add(tokens_a, tokens_b, None, add_cls=True, add_sep=True,
                                                            add_piece=False)
-            if len(tokens_a) + len(tokens_b) + num_special_tokens > args.seq_length:
+            if len(tokens_a) + len(tokens_b) + num_special_tokens > seq_length:
                 self.num_truncated += 1
-            data = build_input_from_ids(tokens_a, tokens_b, None, args.seq_length, tokenizer, args,
+            data = build_input_from_ids(tokens_a, tokens_b, None, seq_length, tokenizer, args,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if args.pretrained_bert:
@@ -644,7 +642,7 @@ class RecordProcessor(DataProcessor):
                 data = {"idx": example.idx, "label": prediction}
                 output.write(json.dumps(data) + "\n")
 
-    def encode(self, example: InputExample, tokenizer, args):
+    def encode(self, example: InputExample, tokenizer, seq_length, args):
         if args.pretrained_bert:
             ids_list, types_list, paddings_list = [], [], []
         else:
@@ -656,9 +654,9 @@ class RecordProcessor(DataProcessor):
             total_length = len(tokens_a) + len(tokens_b) + len(answer_ids)
             total_length += num_special_tokens_to_add(tokens_a, tokens_b + answer_ids, None, add_cls=True, add_sep=True,
                                                       add_piece=False)
-            if total_length > args.seq_length:
+            if total_length > seq_length:
                 self.num_truncated += 1
-            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, args.seq_length, tokenizer, args,
+            data = build_input_from_ids(tokens_a, tokens_b + answer_ids, None, seq_length, tokenizer, args,
                                         add_cls=True, add_sep=True, add_piece=False)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             if args.pretrained_bert:

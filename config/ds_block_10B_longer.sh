@@ -22,7 +22,7 @@ gpt_options=" \
        --seq-length 640 \
        --max-position-embeddings 1024 \
        --save /mnt/model_checkpoints \
-       --load /cache/blocklm-10b-1024 \
+       --load /cache/blocklm-10b-latest \
        --no-load-lr-scheduler \
        --log-interval 25 \
        --eval-interval 500 \
@@ -30,11 +30,16 @@ gpt_options=" \
        --train-iters 250000 \
        --train-data pile cc-news \
        --resume-dataloader \
-       --shuffle \
        --filter-english \
        --loader-scatter 32 \
        --no-lazy-loader \
        --half-lazy-loader \
+       --data-dir /mnt/glue_data \
+       --cloze-eval \
+       --multi-task-ratio 0.05 \
+       --multi-task-data cola mrpc qnli qqp sst2 mnli \
+       --multi-batch-size 8 \
+       --multi-seq-length 256 \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
