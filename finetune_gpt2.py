@@ -307,10 +307,15 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
                     self.num_iters = num_iters
 
                 def __iter__(self):
-                    for _ in range(self.num_iters):
-                        yield None
+                    if self.num_iters is not None:
+                        for _ in range(self.num_iters):
+                            yield None
+                    else:
+                        while True:
+                            yield None
 
             train_dataloader = FakeDataloader(args.train_iters_per_epoch)
+            valid_dataloader = FakeDataloader(None)
 
     timers('train/valid/test dataset/dataloder').stop()
     # Build calback function.
