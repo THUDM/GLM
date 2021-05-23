@@ -246,7 +246,7 @@ def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_label
     model = get_model(args, model_type=model_type, multi_token=multi_token, num_labels=num_labels,
                       spell_length=spell_length)
     param_groups = get_optimizer_param_groups(model)
-    
+
     if args.train_data is not None or args.data_dir is not None and (args.epochs > 0 or args.train_iters > 0):
         if args.deepspeed:
             print_rank_0("DeepSpeed is enabled.")
@@ -321,13 +321,15 @@ def see_memory_usage(message, force=False):
         # input("Press Any Key To Continue ..")
 
 
-def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forward_step_func, mems=None):
+def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forward_step_func, mems=None,
+               single_step=False):
     """Single training step."""
     lm_loss_total, count = 0.0, 0
     mems = [] if mems is None else mems
     if not args.deepspeed:
         optimizer.zero_grad()
     while True:
+        skipped_iter, complete = 0, False
         # Forward model for one step.
         timers('forward').start()
         lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
@@ -350,7 +352,6 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
             timers('backward').stop()
             # print_rank_0("Backward step")
             # Update parameters.
-            skipped_iter, complete = 0, False
             timers('optimizer').start()
             if args.deepspeed:
                 if model.is_gradient_accumulation_boundary():
@@ -379,6 +380,8 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
             print_rank_0("Found NaN loss, skip backward")
             del lm_loss, reduced_loss
             mems = []
+        if single_step:
+            break
     if args.deepspeed:
         lm_loss_total = lm_loss_total / count
     return lm_loss_total, skipped_iter, mems

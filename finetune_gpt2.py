@@ -229,7 +229,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
             # Train for one step.
             lm_loss, skipped_iter, _ = train_step(batch, model, optimizer, lr_scheduler, args, timers,
-                                                  forward_step_func=forward_step)
+                                                  forward_step_func=forward_step, single_step=True)
             args.iteration += 1
             total_lm_loss += lm_loss.data.detach().float()
 
