@@ -56,13 +56,13 @@ def process_batch(batch, args):
                     keys += ["segment_id"]
                 if args.continuous_prompt:
                     keys += ["prompt_pos"]
-    if args.variable_num_choices or "loss_mask" in batch:
+    if args.variable_num_choices:
         keys.append("loss_mask")
     # Broadcast data.
     datatype = torch.int64
     data_b = mpu.broadcast_data(keys, batch, datatype)
 
-    if "padding_mask" in batch:
+    if "padding_mask" in data_b:
         attention_mask = data_b['padding_mask'].float().cuda().contiguous()
         if args.fp16:
             attention_mask = attention_mask.half()
@@ -215,7 +215,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
         print_rank_0('working on epoch {} ...'.format(epoch))
 
         # Set the data loader epoch to shuffle the index iterator.
-        train_dataloader.sampler.set_epoch(args.seed + epoch)
+        if mpu.get_model_parallel_rank() == 0:
+            train_dataloader.sampler.set_epoch(args.seed + epoch)
 
         # For all the batches in the dataset.
         for iteration_, batch in enumerate(train_dataloader):
@@ -289,9 +290,28 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     timers('train/valid/test dataset/dataloder').start()
     train_dataloader, valid_dataloader = None, None
     if train_valid_datasets_provider is not None and args.epochs > 0:
-        train_dataset, valid_dataset = train_valid_datasets_provider(args, tokenizer)
-        train_dataloader, valid_dataloader = _build_train_valid_dataloaders(
-            train_dataset, valid_dataset, args)
+        if mpu.get_model_parallel_rank() == 0:
+            train_dataset, valid_dataset = train_valid_datasets_provider(args, tokenizer)
+            train_dataloader, valid_dataloader = _build_train_valid_dataloaders(train_dataset, valid_dataset, args)
+            train_iters = torch.cuda.LongTensor([len(train_dataloader)])
+        else:
+            train_iters = torch.cuda.LongTensor([0])
+        torch.distributed.broadcast(train_iters, mpu.get_model_parallel_src_rank(),
+                                    group=mpu.get_model_parallel_group())
+        if mpu.get_model_parallel_rank() != 0:
+            args.train_iters_per_epoch = train_iters[0].item()
+            args.train_iters = args.epochs * args.train_iters_per_epoch
+
+            class FakeDataloader:
+                def __init__(self, num_iters):
+                    self.num_iters = num_iters
+
+                def __iter__(self):
+                    for _ in range(self.num_iters):
+                        yield None
+
+            train_dataloader = FakeDataloader(args.train_iters_per_epoch)
+
     timers('train/valid/test dataset/dataloder').stop()
     # Build calback function.
     timers('callback function').start()
