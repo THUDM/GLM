@@ -320,7 +320,7 @@ class WicProcessor(SuperGLUEProcessor):
         return text_a, example.text_b
 
 
-class WscProcessor(DataProcessor):
+class WscProcessor(SuperGLUEProcessor):
     """Processor for the WSC data set."""
 
     @property
@@ -432,7 +432,7 @@ class WscProcessor(DataProcessor):
         return examples
 
 
-class BoolQProcessor(DataProcessor):
+class BoolQProcessor(SuperGLUEProcessor):
     """Processor for the BoolQ data set."""
 
     def get_labels(self):
@@ -456,7 +456,7 @@ class BoolQProcessor(DataProcessor):
         return examples
 
 
-class CopaProcessor(DataProcessor):
+class CopaProcessor(SuperGLUEProcessor):
     """Processor for the COPA data set."""
 
     def get_labels(self):
@@ -536,7 +536,7 @@ class CopaProcessor(DataProcessor):
         return examples
 
 
-class MultiRcProcessor(DataProcessor):
+class MultiRcProcessor(SuperGLUEProcessor):
     """Processor for the MultiRC data set."""
 
     def get_labels(self):
@@ -602,7 +602,7 @@ class MultiRcProcessor(DataProcessor):
         return text_a, text_b
 
 
-class RecordProcessor(DataProcessor):
+class RecordProcessor(SuperGLUEProcessor):
     """Processor for the ReCoRD data set."""
 
     @property
