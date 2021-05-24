@@ -136,7 +136,7 @@ def finetune_forward_step(batch, model, args, timers, mems):
     if args.adapet:
         batch_size, num_classes = logits.size()[:2]
         label_mask = torch.ones(batch_size, num_classes, device=logits.device)
-        label_mask.scatter_(1, labels.unsqueeze(1), 1.0)
+        label_mask.scatter_(1, labels.unsqueeze(1), -1.0)
         if "loss_mask" in data:
             loss_mask = data["loss_mask"]
             label_mask = label_mask * loss_mask
