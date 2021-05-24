@@ -204,20 +204,35 @@ class DataProcessor(ABC):
         return sample
 
 
-class RteProcessor(DataProcessor):
-    """Processor for the RTE data set."""
+class SuperGLUEProcessor(DataProcessor):
+    def __init__(self, args):
+        super(SuperGLUEProcessor, self).__init__(args)
+        self.few_superglue = args.few_superglue
 
     def get_train_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
 
     def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
+        if self.few_superglue:
+            return self._create_examples(os.path.join(data_dir, "dev32.jsonl"), "dev")
+        else:
+            return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
 
     def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
+        if self.few_superglue:
+            return self._create_examples(os.path.join(data_dir, "val.jsonl"), "test")
+        else:
+            return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
 
     def get_unlabeled_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
+
+    def _create_examples(self, *args, **kwargs):
+        pass
+
+
+class RteProcessor(SuperGLUEProcessor):
+    """Processor for the RTE data set."""
 
     def get_labels(self):
         return ["entailment", "not_entailment"]
@@ -276,20 +291,8 @@ class CbProcessor(RteProcessor):
         return ["entailment", "contradiction", "neutral"]
 
 
-class WicProcessor(DataProcessor):
+class WicProcessor(SuperGLUEProcessor):
     """Processor for the WiC data set."""
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
-
-    def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
-
-    def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
-
-    def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
         return ["false", "true"]
@@ -326,15 +329,6 @@ class WscProcessor(DataProcessor):
 
     def get_train_examples(self, data_dir, cloze_eval=True):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train", cloze_eval=cloze_eval)
-
-    def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
-
-    def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
-
-    def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
         return ["False", "True"]
@@ -441,18 +435,6 @@ class WscProcessor(DataProcessor):
 class BoolQProcessor(DataProcessor):
     """Processor for the BoolQ data set."""
 
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
-
-    def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
-
-    def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
-
-    def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
-
     def get_labels(self):
         return ["false", "true"]
 
@@ -476,18 +458,6 @@ class BoolQProcessor(DataProcessor):
 
 class CopaProcessor(DataProcessor):
     """Processor for the COPA data set."""
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
-
-    def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
-
-    def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
-
-    def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
         return [0, 1]
@@ -569,18 +539,6 @@ class CopaProcessor(DataProcessor):
 class MultiRcProcessor(DataProcessor):
     """Processor for the MultiRC data set."""
 
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
-
-    def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
-
-    def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
-
-    def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
-
     def get_labels(self):
         return [0, 1]
 
@@ -650,18 +608,6 @@ class RecordProcessor(DataProcessor):
     @property
     def variable_num_choices(self):
         return True
-
-    def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
-
-    def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)
-
-    def get_test_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
-
-    def get_unlabeled_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
 
     def get_labels(self):
         return ["0", "1"]
@@ -954,8 +900,8 @@ class YelpFullProcessor(YelpPolarityProcessor):
 class XStanceProcessor(DataProcessor):
     """Processor for the X-Stance data set."""
 
-    def __init__(self, language: str = None):
-        super().__init__()
+    def __init__(self, args, language: str = None):
+        super().__init__(args)
         if language is not None:
             assert language in ['de', 'fr']
         self.language = language
