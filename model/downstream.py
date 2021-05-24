@@ -116,26 +116,24 @@ class FastClozeModel(torch.nn.Module):
 
 
 class VerbalizerModel(torch.nn.Module):
-    def __init__(self, language_model, hidden_size=None, vocab_size=None, num_class=None):
+    def __init__(self, language_model, take_softmax=False):
         super().__init__()
         self.model = language_model
-        # self.dense = torch.nn.Linear(hidden_size, hidden_size)
-        # self.layer_norm = torch.nn.LayerNorm(hidden_size)
-        # self.final = torch.nn.Linear(hidden_size, num_class)
+        self.take_softmax = take_softmax
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask, prompt_pos=None):
         assert len(input_ids.shape) == 2
         outputs, *mems = self.model(input_ids, position_ids, attention_mask, prompt_pos=prompt_pos)
         batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)
-        target_output = outputs[batch_ids, attention_mask]
+        target_logits = outputs[batch_ids, attention_mask]
+        if self.take_softmax:
+            target_prob = torch.nn.functional.log_softmax(target_logits, dim=-1)
+        else:
+            target_prob = target_logits
         batch_ids = batch_ids.unsqueeze(1).expand_as(target_ids)
-        output = target_output[batch_ids, target_ids]
+        output = target_prob[batch_ids, target_ids]
 
-        # output = self.layer_norm(self.dense(output))
-        # output = self.final(output)
-        lm_logits = target_output
-
-        return (output, lm_logits, *mems)
+        return (output, target_logits, *mems)
 
 
 class PoolingModel(torch.nn.Module):

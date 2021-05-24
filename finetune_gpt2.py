@@ -133,31 +133,41 @@ def finetune_forward_step(batch, model, args, timers, mems):
         tokens, labels, position_ids, attention_mask = data['text'], data['label'], data['position'], data['mask']
         logits, *mems = model(tokens, position_ids, attention_mask)
 
-    if "segment_id" in data:
-        from torch_scatter import scatter_sum
+    if args.adapet:
+        batch_size, num_classes = logits.size()[:2]
+        label_mask = torch.ones(batch_size, num_classes, device=logits.device)
+        label_mask.scatter_(dim=1, index=labels.unsqueeze(1), src=-1.0)
         if "loss_mask" in data:
-            logits = logits * data["loss_mask"]
-        logits = scatter_sum(logits, data["segment_id"], dim=1)
-    elif "loss_mask" in data:
-        loss_mask = data["loss_mask"]
-        logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
-    if args.loss_func == "cross_entropy":
-        # Cross-entropy loss.
-        loss_func = torch.nn.CrossEntropyLoss()
-        loss = loss_func(logits.contiguous().float(), labels)
-    elif args.loss_func == "hinge":
-        correct_logits = logits[range(logits.size(0)), labels]
-        hinge_loss = 1 + logits - correct_logits.unsqueeze(1)
-        hinge_loss[hinge_loss < 0.0] = 0.0
-        loss = hinge_loss.sum(dim=1).mean() - 1.0
-    elif args.loss_func == "generative" or args.loss_func == "mix":
-        batch_size = logits.size(0)
-        loss = - logits[range(batch_size), labels].mean()
-        if args.loss_func == "mix":
-            loss_func = torch.nn.CrossEntropyLoss()
-            loss = loss + loss_func(logits.contiguous().float(), labels)
+            loss_mask = data["loss_mask"]
+            label_mask = label_mask * loss_mask
+        loss = logits.contiguous().float() * label_mask
+        loss = loss.sum() / batch_size
     else:
-        raise NotImplementedError
+        if "segment_id" in data:
+            from torch_scatter import scatter_sum
+            if "loss_mask" in data:
+                logits = logits * data["loss_mask"]
+            logits = scatter_sum(logits, data["segment_id"], dim=1)
+        elif "loss_mask" in data:
+            loss_mask = data["loss_mask"]
+            logits = logits * loss_mask - 10000.0 * (1.0 - loss_mask)
+        if args.loss_func == "cross_entropy":
+            # Cross-entropy loss.
+            loss_func = torch.nn.CrossEntropyLoss()
+            loss = loss_func(logits.contiguous().float(), labels)
+        elif args.loss_func == "hinge":
+            correct_logits = logits[range(logits.size(0)), labels]
+            hinge_loss = 1 + logits - correct_logits.unsqueeze(1)
+            hinge_loss[hinge_loss < 0.0] = 0.0
+            loss = hinge_loss.sum(dim=1).mean() - 1.0
+        elif args.loss_func == "generative" or args.loss_func == "mix":
+            batch_size = logits.size(0)
+            loss = - logits[range(batch_size), labels].mean()
+            if args.loss_func == "mix":
+                loss_func = torch.nn.CrossEntropyLoss()
+                loss = loss + loss_func(logits.contiguous().float(), labels)
+        else:
+            raise NotImplementedError
 
     # Reduce loss for logging.
 
