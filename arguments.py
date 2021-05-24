@@ -357,6 +357,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--segment-length', type=int, default=0, help="The maximum segment length for cloze evaluation")
     group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge", "generative", "mix"],
                        default="cross_entropy")
+    group.add_argument('--adapet', action='store_true', help="Use the decoupled cross entropy loss in AdaPET")
     group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--fast-decode', action='store_true',
                        help="Fast decode for multi-token cloze. Can only be used without checkpoint activation.")

@@ -116,8 +116,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
                         else:
                             model = ClozeModel(model, length_penalty=args.length_penalty)
                     else:
-                        model = VerbalizerModel(model, hidden_size=args.hidden_size, vocab_size=args.vocab_size,
-                                                num_class=num_labels)
+                        model = VerbalizerModel(model, take_softmax=args.adapet)
                 else:
                     model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
                                          num_class=num_labels)
