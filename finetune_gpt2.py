@@ -339,14 +339,30 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     if args.load_pretrained is not None and not args.pretrained_bert:
         task_tokens = None
         if args.continuous_prompt and args.prompt_init:
-            dataset = train_dataloader.dataset
-            processor, pvp = dataset.processor, dataset.pvp
-            task_tokens = []
-            for label in processor.get_labels():
-                verbalizer = pvp.verbalize(label)[0]
-                verbalizer_ids = tokenizer.EncodeAsIds(verbalizer).tokenization
-                task_tokens += verbalizer_ids
-            print_rank_0("Task tokens: " + tokenizer.DecodeIds(task_tokens))
+            if mpu.get_model_parallel_rank() == 0:
+                dataset = train_dataloader.dataset
+                processor, pvp = dataset.processor, dataset.pvp
+                task_tokens = []
+                for label in processor.get_labels():
+                    verbalizer = pvp.verbalize(label)[0]
+                    verbalizer_ids = tokenizer.EncodeAsIds(verbalizer).tokenization
+                    task_tokens += verbalizer_ids
+                print_rank_0("Task tokens: " + tokenizer.DecodeIds(task_tokens))
+                num_task_tokens = len(task_tokens)
+            else:
+                num_task_tokens, task_tokens = 0, []
+            num_task_tokens = torch.cuda.LongTensor([num_task_tokens])
+            torch.distributed.broadcast(num_task_tokens, mpu.get_model_parallel_src_rank(),
+                                        group=mpu.get_model_parallel_group())
+            num_task_tokens = num_task_tokens.item()
+            if num_task_tokens > 0:
+                if mpu.get_model_parallel_rank() == 0:
+                    task_tokens = torch.cuda.LongTensor(task_tokens)
+                else:
+                    task_tokens = torch.empty(num_task_tokens, device=torch.cuda.current_device(), dtype=torch.long)
+                torch.distributed.broadcast(task_tokens, mpu.get_model_parallel_src_rank(),
+                                           group=mpu.get_model_parallel_group())
+                task_tokens = task_tokens.tolist()
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
             load_pretrained(model, args.load_pretrained, args, task_tokens=task_tokens)
         # This is critical when only model is loaded. We should make sure
