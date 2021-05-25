@@ -219,11 +219,11 @@ def save_zero_checkpoint(args, iteration, optimizer):
 
 
 def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, barrier=True,
-                    only_changed_parameters=False):
+                    only_changed_parameters=False, no_deepspeed=False, no_save_optim=False):
     """Save a model checkpoint."""
     if tag is None:
         tag = str(iteration)
-    if args.deepspeed:
+    if args.deepspeed and not no_deepspeed:
         save_ds_checkpoint(iteration, model, lr_scheduler, args, tag=tag)
     else:
         # Only rank zer0 of the data parallel writes to the disk.
@@ -242,7 +242,7 @@ def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, b
             sd['module'] = state_dict
 
             # Optimizer stuff.
-            if not args.no_save_optim:
+            if not args.no_save_optim and not no_save_optim:
                 if optimizer is not None:
                     sd['optimizer'] = optimizer.state_dict()
                 if lr_scheduler is not None:
@@ -320,7 +320,7 @@ def get_checkpoint_iteration(load_path):
     return load_path, iteration, release, True
 
 
-def load_checkpoint(model, optimizer, lr_scheduler, args):
+def load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=False):
     """Load a model checkpoint."""
 
     load_dir, tag, release, success = get_checkpoint_iteration(args.load)
@@ -330,7 +330,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
 
     if args.deepspeed:
 
-        checkpoint_name, sd = model.load_checkpoint(load_dir, tag, load_optimizer_states=not args.no_load_optim,
+        checkpoint_name, sd = model.load_checkpoint(load_dir, tag,
+                                                    load_optimizer_states=not args.no_load_optim and not no_load_optim,
                                                     load_lr_scheduler_states=not args.no_load_lr_scheduler)
         if not args.no_load_lr_scheduler and "client_lr_scheduler" in sd:
             lr_scheduler.load_state_dict(sd["client_lr_scheduler"])
@@ -358,7 +359,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args):
             print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
 
         # Optimizer.
-        if not release and not args.finetune and not args.no_load_optim:
+        if not release and not args.finetune and not args.no_load_optim and not no_load_optim:
             try:
                 if optimizer is not None:
                     optimizer.load_state_dict(sd['optimizer'])

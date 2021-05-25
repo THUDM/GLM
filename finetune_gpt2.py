@@ -276,7 +276,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
                 best_score = validation_score
                 print_rank_0(f"Found best {validation_metric} {best_score} at {best_iteration}")
                 save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args, tag="best", barrier=False,
-                                only_changed_parameters=True)
+                                only_changed_parameters=True, no_deepspeed=True, no_save_optim=True)
                 if torch.distributed.get_rank() == 0:
                     score_dict.update({"type": "validation", "epoch": epoch})
                     with open(os.path.join(args.log_dir, "results.json"), "w") as output:
@@ -418,7 +418,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         if best_iteration is not None and end_of_train_callback is not None:
             with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
                 args.load = os.path.join(args.save, "best")
-                load_checkpoint(model, optimizer, lr_scheduler, args)
+                load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True)
                 args.load = None
         torch.distributed.barrier()
         if end_of_train_callback is not None:
