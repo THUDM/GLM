@@ -202,7 +202,7 @@ def get_checkpoint_name(checkpoints_path, iteration, release=False, zero=False):
 def ensure_directory_exists(filename):
     dirname = os.path.dirname(filename)
     if not os.path.exists(dirname):
-        os.makedirs(dirname)
+        os.makedirs(dirname, exist_ok=True)
 
 
 def get_checkpoint_tracker_filename(checkpoints_path):
@@ -233,6 +233,8 @@ def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, b
             print('global rank {} is saving checkpoint at iteration {:7d} to {}'.
                   format(torch.distributed.get_rank(), iteration, checkpoint_name))
             sd = {'iteration': iteration}
+            if args.deepspeed:
+                model = model.module
             state_dict = model.state_dict()
             if only_changed_parameters:
                 requires_grad_dict = {}
@@ -320,7 +322,7 @@ def get_checkpoint_iteration(load_path):
     return load_path, iteration, release, True
 
 
-def load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=False):
+def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no_load_optim=False):
     """Load a model checkpoint."""
 
     load_dir, tag, release, success = get_checkpoint_iteration(args.load)
@@ -328,7 +330,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=False):
     if not success:
         return 0
 
-    if args.deepspeed:
+    if args.deepspeed and not no_deepspeed:
 
         checkpoint_name, sd = model.load_checkpoint(load_dir, tag,
                                                     load_optimizer_states=not args.no_load_optim and not no_load_optim,
@@ -354,6 +356,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=False):
         sd = torch.load(checkpoint_name, map_location='cpu')
 
         # Model.
+        if args.deepspeed:
+            model = model.module
         missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
         if missing_keys or unexpected_keys:
             print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
@@ -384,7 +388,6 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=False):
             except KeyError:
                 print_rank_0('A metadata file exists but Unable to load iteration '
                              ' from checkpoint {}, exiting'.format(checkpoint_name))
-                exit()
 
     # rng states.
     if not release and not args.finetune and not args.no_load_rng:

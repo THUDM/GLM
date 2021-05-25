@@ -384,7 +384,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
                 optimizer._model_params_to_master_params()
     if args.load is not None:
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-            load_checkpoint(model, optimizer, lr_scheduler, args)
+            load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=True, no_load_optim=True)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:
@@ -418,7 +418,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
         if best_iteration is not None and end_of_train_callback is not None:
             with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
                 args.load = os.path.join(args.save, "best")
-                load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True)
+                load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True, no_deepspeed=True)
                 args.load = None
         torch.distributed.barrier()
         if end_of_train_callback is not None:
