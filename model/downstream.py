@@ -29,8 +29,7 @@ class ClozeModel(torch.nn.Module):
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
         if target_ids == None:
-            outputs, *mems = self.model(input_ids, position_ids, attention_mask)
-            return (outputs, *mems)
+            return self.model(input_ids, position_ids, attention_mask)
         num_choices = None
         if len(input_ids.shape) == 3:
             batch_size, num_choices = input_ids.shape[:2]
@@ -121,7 +120,9 @@ class VerbalizerModel(torch.nn.Module):
         self.model = language_model
         self.take_softmax = take_softmax
 
-    def forward(self, input_ids, position_ids, attention_mask, target_ids, logit_mask, prompt_pos=None):
+    def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
+        if target_ids is None:
+            return self.model(input_ids, position_ids, attention_mask)
         assert len(input_ids.shape) == 2
         outputs, *mems = self.model(input_ids, position_ids, attention_mask, prompt_pos=prompt_pos)
         batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)

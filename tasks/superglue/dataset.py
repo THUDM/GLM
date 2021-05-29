@@ -25,6 +25,7 @@ from typing import List, Dict, Callable
 from torch.utils.data import Dataset
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 
 from tasks.data_utils import InputExample
 from utils import print_rank_0
@@ -53,7 +54,7 @@ def read_tsv(path, **kwargs):
 class GlueDataset(Dataset):
 
     def __init__(self, args, task_name, data_dir, seq_length, split, tokenizer, for_train=False,
-                 pattern_ensemble=False):
+                 pattern_ensemble=False, pattern_text=False):
         self.processor = PROCESSORS[task_name](args)
         args.variable_num_choices = self.processor.variable_num_choices
         print_rank_0(
@@ -64,6 +65,9 @@ class GlueDataset(Dataset):
         self.seq_length = seq_length
         self.tokenizer = tokenizer
         self.pattern_ensemble = pattern_ensemble
+        self.pattern_text = pattern_text
+        if pattern_text:
+            assert self.cloze_eval, "Labeled examples only exist in cloze evaluation"
         self.args = args
         if split == DEV_SET:
             example_list = self.processor.get_dev_examples(data_dir, for_train=for_train)
@@ -119,11 +123,19 @@ class GlueDataset(Dataset):
         sample_idx = idx % len(self.example_list)
         example = self.example_list[sample_idx]
         if self.cloze_eval:
+            kwargs = {}
+            if self.pattern_text:
+                kwargs = {"labeled": True, "priming": True}
             if self.pattern_ensemble:
                 pvp_idx = idx // len(self.example_list)
-                sample = self.pvps[pvp_idx].encode(example)
+                sample = self.pvps[pvp_idx].encode(example, **kwargs)
             else:
-                sample = self.pvp.encode(example)
+                sample = self.pvp.encode(example, **kwargs)
+            if self.pattern_text:
+                eos_id = self.tokenizer.get_command('eos').Id
+                cls_id = self.tokenizer.get_command('ENC').Id
+                input_ids = [cls_id] + sample + [eos_id]
+                sample = {'text': input_ids, 'loss_mask': np.array([1] * len(input_ids))}
         else:
             sample = self.processor.encode(example, self.tokenizer, self.seq_length, self.args)
         return sample

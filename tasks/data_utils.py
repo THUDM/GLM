@@ -306,6 +306,19 @@ def my_collate(batch):
     return new_batch
 
 
+class FakeDataloader:
+    def __init__(self, num_iters):
+        self.num_iters = num_iters
+
+    def __iter__(self):
+        if self.num_iters is not None:
+            for _ in range(self.num_iters):
+                yield None
+        else:
+            while True:
+                yield None
+
+
 def build_data_loader(dataset, batch_size, num_workers, drop_last, shuffle=True, only_rank0=False):
     """Data loader. Note that batch-size is the local (per GPU) batch-size."""
 

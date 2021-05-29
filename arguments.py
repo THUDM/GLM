@@ -364,6 +364,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--segment-length', type=int, default=0, help="The maximum segment length for cloze evaluation")
     group.add_argument('--loss-func', type=str, choices=["cross_entropy", "hinge", "generative", "mix"],
                        default="cross_entropy")
+    group.add_argument('--block-lm-ratio', type=float, default=0.0)
     group.add_argument('--adapet', action='store_true', help="Use the decoupled cross entropy loss in AdaPET")
     group.add_argument('--pattern-id', type=int, default=0)
     group.add_argument('--fast-decode', action='store_true',
@@ -381,7 +382,6 @@ def add_finetune_config_args(parser):
     group.add_argument('--wsc-negative', action='store_true')
     group.add_argument('--overwrite', action='store_true')
     group.add_argument('--no-validation', action='store_true')
-    group.add_argument('--start-validation', action='store_true')
     # Continuous prompt arguments
     group.add_argument('--continuous-prompt', action='store_true', help="Use continuous prompt for PET")
     group.add_argument('--prompt-func', default='lstm', choices=["lstm", "mlp", "none"])

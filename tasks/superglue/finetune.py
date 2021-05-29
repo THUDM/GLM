@@ -44,12 +44,14 @@ default_metrics = {
 }
 
 
-def train_valid_datasets_provider(args, tokenizer):
+def train_valid_datasets_provider(args, tokenizer, pattern_text=False):
     """Provide train and validation datasets."""
     task_name = args.task.lower()
     data_dir = args.data_dir
-    train_dataset = GlueDataset(args, task_name, data_dir, args.seq_length,  "train", tokenizer)
-    valid_dataset = GlueDataset(args, task_name, data_dir, args.seq_length, "dev", tokenizer, for_train=True)
+    train_dataset = GlueDataset(args, task_name, data_dir, args.seq_length, "train", tokenizer,
+                                pattern_text=pattern_text)
+    valid_dataset = GlueDataset(args, task_name, data_dir, args.seq_length, "dev", tokenizer, for_train=True,
+                                pattern_text=pattern_text)
 
     return train_dataset, valid_dataset
 

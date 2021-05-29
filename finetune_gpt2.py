@@ -1,11 +1,15 @@
 import os
 import json
 
-from tasks.data_utils import build_data_loader
+import random
+
+from tasks.data_utils import build_data_loader, FakeDataloader
 from utils import get_sample_writer, get_log_dir, print_and_save_args
 from model import GPT2Model, VerbalizerModel
 from arguments import get_args
 from filelock import FileLock
+import pretrain_gpt2
+from pretrain_gpt2 import forward_step as lm_forward_step
 import pathlib
 import mpu
 
@@ -38,6 +42,7 @@ from pretrain_gpt2 import report_iteration_metrics
 from pretrain_gpt2 import evaluate_and_print_results
 from pretrain_gpt2 import initialize_distributed
 from pretrain_gpt2 import set_random_seed
+from configure_data import make_data_loader
 
 
 def process_batch(batch, args):
@@ -71,6 +76,22 @@ def process_batch(batch, args):
 
 
 tokenizer = None
+
+
+def mix_forward_step(batch_and_dataloader, model, args, times, mems):
+    use_blocklm = 0
+    if args.block_lm_ratio > 0.0:
+        if mpu.get_model_parallel_rank() == 0:
+            if random.random() > 1 / (1 + args.block_lm_ratio):
+                use_blocklm = 1
+        use_blocklm = torch.cuda.LongTensor([use_blocklm])
+        torch.distributed.broadcast(use_blocklm, mpu.get_model_parallel_src_rank(),
+                                    group=mpu.get_model_parallel_group())
+        use_blocklm = use_blocklm.item()
+    if use_blocklm:
+        return lm_forward_step((batch_and_dataloader[1], None), model, args, times, mems)
+    else:
+        return finetune_forward_step(batch_and_dataloader[0], model, args, times, mems)
 
 
 def finetune_forward_step(batch, model, args, timers, mems):
@@ -226,10 +247,10 @@ def _train(model, optimizer, lr_scheduler, forward_step,
 
         # Set the data loader epoch to shuffle the index iterator.
         if mpu.get_model_parallel_rank() == 0:
-            train_dataloader.sampler.set_epoch(args.seed + epoch)
+            train_dataloader[0].sampler.set_epoch(args.seed + epoch)
 
         # For all the batches in the dataset.
-        for iteration_, batch in enumerate(train_dataloader):
+        for iteration_, batch in enumerate(train_dataloader[0]):
 
             # Ignore the iterations before starting value
             if iteration_ < start_iteration:
@@ -238,8 +259,12 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             start_iteration = 0
 
             # Train for one step.
-            lm_loss, skipped_iter, _ = train_step(batch, model, optimizer, lr_scheduler, args, timers,
-                                                  forward_step_func=forward_step, single_step=True)
+            if args.block_lm_ratio > 0.0:
+                data = (batch, train_dataloader[1])
+            else:
+                data = batch
+            lm_loss, skipped_iter, _ = train_step(data, model, optimizer, lr_scheduler, args,
+                                                  timers, forward_step_func=forward_step, single_step=True)
             args.iteration += 1
             total_lm_loss += lm_loss.data.detach().float()
 
@@ -294,11 +319,13 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     global tokenizer
     timers = Timers()
     tokenizer = prepare_tokenizer(args)
+    pretrain_gpt2.tokenizer = tokenizer
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
     # Train and validation data loaders.
     timers('train/valid/test dataset/dataloder').start()
     train_dataloader, valid_dataloader = None, None
+    train_block_dataloader, valid_block_dataloader = None, None
     if train_valid_datasets_provider is not None and args.epochs > 0:
         if mpu.get_model_parallel_rank() == 0:
             train_dataset, valid_dataset = train_valid_datasets_provider(args, tokenizer)
@@ -312,20 +339,22 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             args.train_iters_per_epoch = train_iters[0].item()
             args.train_iters = args.epochs * args.train_iters_per_epoch
 
-            class FakeDataloader:
-                def __init__(self, num_iters):
-                    self.num_iters = num_iters
-
-                def __iter__(self):
-                    if self.num_iters is not None:
-                        for _ in range(self.num_iters):
-                            yield None
-                    else:
-                        while True:
-                            yield None
-
             train_dataloader = FakeDataloader(args.train_iters_per_epoch)
             valid_dataloader = FakeDataloader(None)
+        if args.block_lm_ratio > 0.0:
+            if mpu.get_model_parallel_rank() == 0:
+                train_block_dataset, valid_block_dataset = train_valid_datasets_provider(args, tokenizer,
+                                                                                         pattern_text=True)
+                train_block_dataloader = make_data_loader(train_block_dataset, tokenizer, args.batch_size,
+                                                          args.train_iters, args, shuffle=True,
+                                                          block_collate=True)
+                valid_block_dataloader = make_data_loader(valid_block_dataset, tokenizer, args.batch_size, (
+                        args.train_iters // args.eval_interval + 1) * args.eval_iters, args, shuffle=True,
+                                                          block_collate=True)
+            else:
+                train_block_dataloader = FakeDataloader(args.train_iters)
+                valid_block_dataloader = FakeDataloader(None)
+            train_block_dataloader, valid_block_dataloader = iter(train_block_dataloader), iter(valid_block_dataloader)
 
     timers('train/valid/test dataset/dataloder').stop()
     # Build calback function.
@@ -371,7 +400,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
                 else:
                     task_tokens = torch.empty(num_task_tokens, device=torch.cuda.current_device(), dtype=torch.long)
                 torch.distributed.broadcast(task_tokens, mpu.get_model_parallel_src_rank(),
-                                           group=mpu.get_model_parallel_group())
+                                            group=mpu.get_model_parallel_group())
                 task_tokens = task_tokens.tolist()
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
             load_pretrained(model, args.load_pretrained, args, task_tokens=task_tokens)
@@ -412,8 +441,11 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
     # Finetune the model.
     score_dict = None
     if train_dataloader is not None and args.epochs > 0:
+        if args.block_lm_ratio > 0.0:
+            forward_step = mix_forward_step
         best_iteration = _train(model, optimizer, lr_scheduler, forward_step,
-                                train_dataloader, valid_dataloader, end_of_epoch_callback, args, timers,
+                                (train_dataloader, train_block_dataloader), (valid_dataloader, valid_block_dataloader),
+                                end_of_epoch_callback, args, timers,
                                 summary_writer=summary_writer)
         if best_iteration is not None and end_of_train_callback is not None:
             with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
