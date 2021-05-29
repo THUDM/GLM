@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import torch
 import torch.utils.data
 import numpy as np
@@ -154,7 +155,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         self.split = split
         self.tokenizer = tokenizer
         self.dataset_name = split
-        if self.task in ["gigaword", "cnn_dm"]:
+        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original"]:
             self.processor = SummmaryProcessor(self.task, self.data_dir, tokenizer)
         elif self.task in "squad_generation":
             self.processor = SQuADProcessor(self.data_dir, tokenizer)
@@ -177,7 +178,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         pad_id = self.tokenizer.get_command('pad').Id
         sop_id = self.tokenizer.get_command('sop').Id
         eop_id = self.tokenizer.get_command('eop').Id
-        if self.task in ["gigaword", "cnn_dm"]:
+        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original"]:
             source_text, target_text = example.text_a, example.text_b
             source_tokens = self.tokenizer.EncodeAsIds(" " + source_text).tokenization
             prompt = [cls_id, mask_id] + self.tokenizer.EncodeAsIds(" Content:").tokenization
