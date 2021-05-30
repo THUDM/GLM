@@ -239,7 +239,8 @@ def _train(model, optimizer, lr_scheduler, forward_step,
     # Starting epoch and iteration
     start_epoch = args.iteration // args.train_iters_per_epoch
     start_iteration = args.iteration % args.train_iters_per_epoch
-
+    if not args.block_lm_ratio:
+        valid_dataloader = valid_dataloader[0]
     # For each remaining epoch
     timers('interval time').start()
     for epoch in range(start_epoch, args.epochs):
