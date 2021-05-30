@@ -415,6 +415,8 @@ class CopaPVP(PVP):
                 return [1, '"', choice1, '" or "', choice2, '"', premise, joiner, [self.mask], '.'], []
             elif self.pattern_id == 2:
                 return [1, '"', choice1, '" or "', choice2, '"', 1, premise, joiner, [self.mask], '.'], []
+            elif self.pattern_id == 3:
+                return [1, '"', choice1, '" or "', choice2, '"', 1, premise, joiner, [self.mask], '.', 1], []
         if self.pattern_id == 0:
             return ['"', choice1, '" or "', choice2, '"?', premise, joiner, [self.mask], '.'], []
         elif self.pattern_id == 1:
