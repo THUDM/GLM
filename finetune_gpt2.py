@@ -345,12 +345,14 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
             if mpu.get_model_parallel_rank() == 0:
                 train_block_dataset, valid_block_dataset = train_valid_datasets_provider(args, tokenizer,
                                                                                          pattern_text=True)
-                train_block_dataloader = make_data_loader(train_block_dataset, tokenizer, args.batch_size,
+                train_block_dataloader = make_data_loader(train_block_dataset, tokenizer,
+                                                          args.batch_size * mpu.get_data_parallel_world_size(),
                                                           args.train_iters, args, shuffle=True,
                                                           block_collate=True)
-                valid_block_dataloader = make_data_loader(valid_block_dataset, tokenizer, args.batch_size, (
-                        args.train_iters // args.eval_interval + 1) * args.eval_iters, args, shuffle=True,
-                                                          block_collate=True)
+                valid_block_dataloader = make_data_loader(valid_block_dataset, tokenizer,
+                                                          args.batch_size * mpu.get_data_parallel_world_size(), (
+                                                                      args.train_iters // args.eval_interval + 1) * args.eval_iters,
+                                                          args, shuffle=True, block_collate=True)
             else:
                 train_block_dataloader = FakeDataloader(args.train_iters)
                 valid_block_dataloader = FakeDataloader(None)
