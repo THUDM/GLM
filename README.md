@@ -22,7 +22,7 @@ You can download the pretrained models used in the paper [here](https://mailstsi
 | GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2 | model_blocklm_1.25_generation.sh
 | GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
 | GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2 | model_blocklm_roberta_large.sh
-
+| GLM-XXLarge | 10B | to be released | to be released
 ## Installation
 Clone this repo
 ```shell
