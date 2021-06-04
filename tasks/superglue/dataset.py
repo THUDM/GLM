@@ -616,6 +616,8 @@ class MultiRcProcessor(SuperGLUEProcessor):
 
 class RecordProcessor(SuperGLUEProcessor):
     """Processor for the ReCoRD data set."""
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)
 
     @property
     def variable_num_choices(self):
