@@ -465,3 +465,25 @@ def move_weights(our, oai, dst2src=False):
 
     for our_layer, oai_layer in zip(our.transformer.layers, oai.transformer.h):
         load_transformer_layer(our_layer, oai_layer, dst2src)
+
+
+def debug_finetune_data(local_vars, batch_id, tokenizer):
+    tokens, target_ids = local_vars["tokens"], local_vars["target_ids"]
+    attention_mask, logit_mask, position_ids = local_vars["attention_mask"], local_vars["logit_mask"], local_vars[
+        "position_ids"]
+    output_tokens = []
+    sep = attention_mask[batch_id].item()
+    for i, token in enumerate(tokens[batch_id][:sep].tolist()):
+        token = tokenizer.IdToToken(token)
+        if token == '[MASK]':
+            token = f"[{position_ids[batch_id][0, i].item()}]"
+        output_tokens.append(token)
+    print(" ".join(output_tokens))
+    target_positions = []
+    for i in range(sep, tokens.size(-1)):
+        if logit_mask[batch_id][i]:
+            target_positions.append(i)
+    print(target_positions)
+    print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
+    print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
+    print(position_ids[batch_id][:, target_positions])

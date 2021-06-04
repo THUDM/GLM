@@ -4,7 +4,7 @@ import json
 import random
 
 from tasks.data_utils import build_data_loader, FakeDataloader
-from utils import get_sample_writer, get_log_dir, print_and_save_args
+from utils import get_sample_writer, get_log_dir, print_and_save_args, debug_finetune_data
 from model import GPT2Model, VerbalizerModel
 from arguments import get_args
 from filelock import FileLock
@@ -113,25 +113,6 @@ def finetune_forward_step(batch, model, args, timers, mems):
     elif args.cloze_eval:
         tokens, labels, position_ids = data['text'], data['label'], data['position']
         attention_mask = data['mask']
-
-        def print_masked_text(batch_id):
-            output_tokens = []
-            sep = attention_mask[batch_id].item()
-            for i, token in enumerate(tokens[batch_id][:sep].tolist()):
-                token = tokenizer.IdToToken(token)
-                if token == '[MASK]':
-                    token = f"[{position_ids[batch_id][0, i].item()}]"
-                output_tokens.append(token)
-            print(" ".join(output_tokens))
-            target_positions = []
-            for i in range(sep, tokens.size(-1)):
-                if logit_mask[batch_id][i]:
-                    target_positions.append(i)
-            print(target_positions)
-            print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
-            if args.multi_token:
-                print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
-            print(position_ids[batch_id][:, target_positions])
 
         if not args.fast_decode:
             target_ids, logit_mask = data['target'], data['logit_mask']

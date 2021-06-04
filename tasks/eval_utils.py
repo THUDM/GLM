@@ -22,7 +22,7 @@ import torch
 import datetime
 
 import mpu
-from utils import print_rank_0, get_spare_port
+from utils import print_rank_0, get_spare_port, debug_finetune_data
 from tasks.data_utils import build_data_loader
 from finetune_gpt2 import process_batch
 from collections import OrderedDict
@@ -47,10 +47,15 @@ def f1_macro_metric(predictions, labels, examples):
     return f1_score(labels, predictions, average='macro')
 
 
+global_tokenizer = None
+
+
 def accuracy_func_provider(single_dataset_provider, metric_dict, args, is_test=False, eval_func=None, output_func=None,
-                           only_rank0=True):
+                           only_rank0=True, tokenizer=None):
     """Provide function that calculates accuracies."""
     # Build dataloaders.
+    global global_tokenizer
+    global_tokenizer = tokenizer
     if only_rank0 and torch.distributed.is_initialized() and torch.distributed.get_rank() != 0:
         return None
     if is_test and not args.eval_valid:
