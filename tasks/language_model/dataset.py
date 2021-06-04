@@ -177,6 +177,7 @@ def build_wikitext103_dataset(tokenizer, args):
         entire_data = reader.read().decode('utf-8')
     num_original_tokens = len(entire_data.strip().split(" "))
     entire_data = get_detokenizer('wikitext')(entire_data)
+    print_rank_0(entire_data[:1024])
     tokenized_data = tokenizer.EncodeAsIds(entire_data).tokenization
     num_tokenized_tokens = len(tokenized_data)
 

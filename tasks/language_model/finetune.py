@@ -144,6 +144,9 @@ def evaluate(model, dataloader, eval_metric, args):
             total_output += output.item()
             total_count += count.item()
             total_tokens += batch['loss_mask'].sum().item()
+    totals = torch.cuda.FloatTensor([total_output, total_tokens])
+    torch.distributed.all_reduce(totals, group=mpu.get_data_parallel_group())
+    total_output, total_tokens = totals.tolist()
     print(total_tokens)
     return {eval_metric: total_output}, total_count
 
