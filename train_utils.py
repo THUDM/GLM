@@ -225,6 +225,8 @@ def get_learning_rate_scheduler(optimizer, args):
         num_iters = args.lr_decay_iters
     else:
         num_iters = args.train_iters
+    if args.finetune:
+        num_iters = num_iters // args.gradient_accumulation_steps
     num_iters = max(1, num_iters)
     init_step = -1
     warmup_iter = args.warmup * num_iters
