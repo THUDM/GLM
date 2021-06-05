@@ -303,23 +303,22 @@ def get_checkpoint_iteration(load_path):
         print_rank_0('    will not load any checkpoints and will start from '
                      'random')
         return load_path, 0, False, False
-    iteration = 0
-    release = False
     with open(tracker_filename, 'r') as f:
         metastring = f.read().strip()
-        try:
-            iteration = int(metastring)
-        except ValueError:
-            release = metastring == 'release'
-            if not release:
-                print_rank_0('ERROR: Invalid metadata file {}. Exiting'.format(
-                    tracker_filename))
-                exit()
+        release = metastring == 'release'
+        # try:
+        #     iteration = int(metastring)
+        # except ValueError:
+        #     release = metastring == 'release'
+        #     if not release:
+        #         print_rank_0('ERROR: Invalid metadata file {}. Exiting'.format(
+        #             tracker_filename))
+        #         exit()
 
-    assert iteration > 0 or release, 'error parsing metadata file {}'.format(
-        tracker_filename)
+    # assert iteration > 0 or release, 'error parsing metadata file {}'.format(
+    #     tracker_filename)
 
-    return load_path, iteration, release, True
+    return load_path, metastring, release, True
 
 
 def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no_load_optim=False):
@@ -387,7 +386,8 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
                 iteration = sd['total_iters']
             except KeyError:
                 print_rank_0('A metadata file exists but Unable to load iteration '
-                             ' from checkpoint {}, exiting'.format(checkpoint_name))
+                             ' from checkpoint {}, starting from zero'.format(checkpoint_name))
+                iteration = 0
 
     # rng states.
     if not release and not args.finetune and not args.no_load_rng:
