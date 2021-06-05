@@ -690,6 +690,7 @@ class RecordProcessor(SuperGLUEProcessor):
                     entities.add(entity)
 
                 entities = list(entities)
+                entities.sort()
 
                 text = text.replace("@highlight\n", "- ")  # we follow the GPT-3 paper wrt @highlight annotations
                 questions = example_json['qas']
