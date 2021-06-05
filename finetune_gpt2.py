@@ -397,7 +397,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs,
                 optimizer._model_params_to_master_params()
     if args.load is not None:
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-            load_checkpoint(model, optimizer, lr_scheduler, args)
+            load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=True)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:
