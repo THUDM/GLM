@@ -103,12 +103,13 @@ class GlueDataset(Dataset):
                 self.pvps = []
                 for pattern_id in pattern_ids:
                     self.pvps.append(PVPS[task_name](args, tokenizer, self.processor.get_labels(), seq_length,
-                                                     pattern_id=pattern_id, is_multi_token=args.multi_token,
+                                                     pattern_id=pattern_id, num_prompt_tokens=args.num_prompt_tokens,
+                                                     is_multi_token=args.multi_token,
                                                      max_segment_length=args.segment_length,
                                                      fast_decode=args.fast_decode, split=split))
             else:
                 self.pvp = PVPS[task_name](args, tokenizer, self.processor.get_labels(), seq_length,
-                                           pattern_id=args.pattern_id,
+                                           pattern_id=args.pattern_id, num_prompt_tokens=args.num_prompt_tokens,
                                            is_multi_token=args.multi_token, max_segment_length=args.segment_length,
                                            fast_decode=args.fast_decode, split=split)
         self.examples = {example.guid: example for example in example_list}
@@ -616,6 +617,7 @@ class MultiRcProcessor(SuperGLUEProcessor):
 
 class RecordProcessor(SuperGLUEProcessor):
     """Processor for the ReCoRD data set."""
+
     def get_dev_examples(self, data_dir, for_train=False):
         return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev", for_train=for_train)
 

@@ -76,7 +76,8 @@ def main(args):
     model_kwargs = {}
     processor = PROCESSORS[args.task.lower()](args)
     pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
-                                  pattern_id=args.pattern_id, is_multi_token=args.multi_token)
+                                  pattern_id=args.pattern_id, is_multi_token=args.multi_token,
+                                  num_prompt_tokens=args.num_prompt_tokens)
     if args.continuous_prompt:
         model_kwargs["spell_length"] = pvp.spell_length
     if args.task.lower() in ['wsc', 'squad'] and args.cloze_eval and not args.wsc_negative:
