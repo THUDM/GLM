@@ -485,5 +485,8 @@ def debug_finetune_data(local_vars, batch_id, tokenizer):
             target_positions.append(i)
     print(target_positions)
     print(tokenizer.DecodeIds(tokens[batch_id][target_positions].tolist()))
-    print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
+    if len(target_ids.shape) > 2:
+        print(tokenizer.DecodeIds(target_ids[batch_id][target_positions].tolist()))
+    else:
+        print(tokenizer.DecodeIds(target_ids[batch_id].tolist()))
     print(position_ids[batch_id][:, target_positions])

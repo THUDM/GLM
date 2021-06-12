@@ -1,5 +1,5 @@
-DATA_ROOT=/dataset/fd5061f6/english_data/superglue
-source config_tasks/model_blocklm_10B.sh
+DATA_ROOT=/dataset/c07bd62b/superglue
+source config_tasks/model_blocklm_large.sh
 source $1
 
 CHECKPOINT_PATH="/dataset/fd5061f6/finetune_checkpoints"
@@ -29,6 +29,9 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        $TRAIN_ARGS \
        $COMMON_ARGS \
        --fp16 \
+       --continuous-prompt \
+       --pattern-id $2 \
+       --num-prompt-tokens 3 \
        --batch-size ${PER_GPU_BS} \
        --epochs ${EPOCH_SINGLE} \
        --lr ${LR_SINGLE} \
