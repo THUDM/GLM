@@ -5,7 +5,6 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/config_gpt_10B.json"
 gpt_options=" \
-       --seed 5678 \
        --block-lm \
        --task-mask \
        --bert-prob 0.5 \
@@ -14,15 +13,14 @@ gpt_options=" \
        --gpt-min-ratio 0.25 \
        --block-mask-prob 0.1 \
        --short-seq-prob 0.02 \
-       --experiment-name blocklm-10b \
+       --experiment-name blocklm-2b \
        --model-parallel-size ${MP_SIZE} \
-       --num-layers 48 \
-       --hidden-size 4096 \
-       --num-attention-heads 64 \
+       --num-layers 36 \
+       --hidden-size 2048 \
+       --num-attention-heads 32 \
        --seq-length 512 \
        --max-position-embeddings 1024 \
-       --save /dataset/fd5061f6/english_data/checkpoints \
-       --load /dataset/fd5061f6/english_data/checkpoints/blocklm-10b03-30-16-42 \
+       --save ./checkpoints \
        --log-interval 50 \
        --eval-interval 1000 \
        --save-interval 2000 \
@@ -31,7 +29,6 @@ gpt_options=" \
        --resume-dataloader \
        --shuffle \
        --filter-english \
-       --loader-scatter 32 \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
