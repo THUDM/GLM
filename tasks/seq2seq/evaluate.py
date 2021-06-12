@@ -29,6 +29,8 @@ cnndm_tok_dict = {"(": "-LRB-", ")": "-RRB-",
 
 
 def fix_tokenization(text, dataset):
+    if dataset == 'cnn_dm_org':
+        return text
     if dataset == 'gigaword':
         text = text.replace('[UNK]', 'UNK')
         return text

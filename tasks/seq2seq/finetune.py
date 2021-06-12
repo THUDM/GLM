@@ -80,12 +80,12 @@ def metrics_func_provider(args, tokenizer, is_test):
     else:
         evaluater = DecoderEvaluater(args, tokenizer)
         eval_func = evaluater.evaluate
-        if args.task.lower() == 'cnn_dm' or args.task.lower() == 'cnn_dm_original' or args.task.lower() == 'squad_generation':
+        if args.tokenizer_type == "BertWordPieceTokenizer":
             dataset = 'cnn_dm'
         elif args.task.lower() == 'gigaword':
             dataset = 'gigaword'
         else:
-            raise NotImplementedError(args.task)
+            dataset = 'cnn_dm_org'
         metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
                                    "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
                                    "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
@@ -112,7 +112,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation']:
+    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

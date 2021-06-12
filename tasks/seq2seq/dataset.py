@@ -147,6 +147,56 @@ class SQuADProcessor:
         return example_list
 
 
+# class XSumProcessor:
+#     def __init__(self, data_dir, tokenizer):
+#         self.data_dir = data_dir
+#         self.tokenizer = tokenizer
+#
+#     def create_examples(self, split):
+#         if split == "train":
+#             key = "train"
+#         elif split == "dev":
+#             key = "validation"
+#         elif split == "test":
+#             key = "test"
+#         else:
+#             raise NotImplementedError(split)
+#         print_rank_0(f"Creating XSUM-{split} dataset from {self.data_dir}")
+#         with open(os.path.join(self.data_dir, "XSum-TRAINING-DEV-TEST-SPLIT-90-5-5.json")) as file:
+#             id_list = json.load(file)
+#         id_list = id_list[key]
+#         source_texts, target_texts = [], []
+#         for idx in id_list:
+#             with open(os.path.join(self.data_dir, f"{idx}.summary")) as file:
+#                 key, sentences = None, []
+#                 source_text, target_text = None, None
+#                 for line in file:
+#                     line = line.strip()
+#                     if line.startswith("[SN]"):
+#                         if key is not None:
+#                             if key == "RESTBODY":
+#                                 source_text = " ".join(sentences)
+#                             elif key == "FIRST-SENTENCE":
+#                                 target_text = " ".join(sentences)
+#                         key = line[4:-4]
+#                     elif line:
+#                         sentences.append(line)
+#                 source_texts.append(source_text)
+#                 target_texts.append(target_text)
+#         assert len(source_texts) == len(target_texts)
+#         example_list = []
+#         for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+#             if (idx + 1) % 20000 == 0:
+#                 print_rank_0(f"Complete {idx + 1} examples")
+#             guid = "%s-%s" % (split, idx)
+#             meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
+#             example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+#             if idx < 10:
+#                 print_rank_0((source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
+#             example_list.append(example)
+#         return example_list
+
+
 class Seq2SeqDataset(torch.utils.data.Dataset):
     def __init__(self, args, split, tokenizer):
         self.args = args
@@ -155,7 +205,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         self.split = split
         self.tokenizer = tokenizer
         self.dataset_name = split
-        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original"]:
+        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original", "xsum"]:
             self.processor = SummmaryProcessor(self.task, self.data_dir, tokenizer)
         elif self.task in "squad_generation":
             self.processor = SQuADProcessor(self.data_dir, tokenizer)
@@ -178,7 +228,7 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         pad_id = self.tokenizer.get_command('pad').Id
         sop_id = self.tokenizer.get_command('sop').Id
         eop_id = self.tokenizer.get_command('eop').Id
-        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original"]:
+        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original", "xsum"]:
             source_text, target_text = example.text_a, example.text_b
             source_tokens = self.tokenizer.EncodeAsIds(" " + source_text).tokenization
             prompt = [cls_id, mask_id] + self.tokenizer.EncodeAsIds(" Content:").tokenization
