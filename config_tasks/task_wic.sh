@@ -15,7 +15,7 @@ TRAIN_ARGS="--lr-decay-style linear \
 
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \
-             --eval-interval 1000 \
+             --eval-interval 10000000 \
              --eval-iters 100"
 
 PATTERN_IDS=(0 1 2)

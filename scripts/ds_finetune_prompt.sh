@@ -60,7 +60,7 @@ run_cmd="${OPTIONS_NCCL} python -m torch.distributed.launch $DISTRIBUTED_ARGS fi
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
        --eval-batch-size 16 \
-       --save-epoch 100 \
+       --save-epoch 10000 \
        --num-workers 1 \
        --no-load-optim \
        --no-load-lr-scheduler \
