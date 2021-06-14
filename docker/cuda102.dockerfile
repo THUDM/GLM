@@ -136,6 +136,7 @@ RUN pip install psutil \
                 nltk \
                 rouge \
                 filelock \
+                fasttext \
                 rouge_score \
                 cupy-cuda102
 
