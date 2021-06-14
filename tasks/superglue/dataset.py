@@ -1139,4 +1139,4 @@ PROCESSORS = {
     "qqp": QqpProcessor,
     "qnli": QnliProcessor,
     "squad": SquadProcessor
-}  # type: Dict[str,Callable[[],DataProcessor]]
+}  # type: Dict[str,Callable[[1],DataProcessor]]

@@ -20,7 +20,7 @@ def main():
     args.seq_length = 10
     args.eod_token = 0
 
-    strategy = ConstructBlockStrategy(args, None, bert_ratio=0.4)
+    strategy = ConstructBlockStrategy(args, None, bert_ratio=0.4, max_seq_length=128)
     counts = np.array([0] * 10)
     for _ in range(10000):
         spans = strategy.sample_span_in_document(np.array([1, 2, 3, 0, 4, 5, 6, 7, 9, 0], dtype=np.long), [1, 1],

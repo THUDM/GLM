@@ -35,6 +35,7 @@ class RandomSampler(data.sampler.Sampler):
     """
 
     def __init__(self, data_source, replacement=False, num_samples=None):
+        super(RandomSampler, self).__init__(data_source)
         self.data_source = data_source
         self.replacement = replacement
         self._num_samples = num_samples
