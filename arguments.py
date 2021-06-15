@@ -176,6 +176,7 @@ def add_training_args(parser):
                        help='Do not load rng state when loading checkpoint.')
     group.add_argument('--no-load-lr-scheduler', action='store_true',
                        help='Do not load lr scheduler when loading checkpoint.')
+    group.add_argument('--no-deepspeed-load', action='store_true', help='Not use deepspeed when loading checkpoint')
     group.add_argument('--finetune', action='store_true',
                        help='Load model for finetuning. Do not load optimizer '
                             'or rng state from checkpoint and set iteration to 0. '
