@@ -457,6 +457,9 @@ class CopaPVP(PVP):
         elif self.pattern_id == 1:
             parts_a, parts_b = [None, choice1, ' or', " " + choice2, '?', None, premise, joiner, None, [self.mask],
                                 '.'], []
+        elif self.pattern_id == 2:
+            parts_a, parts_b = [None, '"', choice1, '" or "', choice2, '"', None, premise, joiner, [self.mask], '.',
+                                None], []
         else:
             raise NotImplementedError(self.pattern_id)
         parts_a, parts_b = self.replace_prompt_tokens(parts_a, parts_b)
