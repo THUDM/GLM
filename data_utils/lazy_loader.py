@@ -151,7 +151,7 @@ class LazyLoader(object):
         lenpath = os.path.join(lazypath, data_type + '.len.pkl')
         self.lens = pkl.load(open(lenpath, 'rb'))
         if half_load:
-            self.lens = self.lens[:len(self.lens) // 2]
+            self.lens = self.lens[:2 * len(self.lens) // 3]
         self.ends = list(accumulate(self.lens))
         self.dumb_ends = list(self.ends)
         self.mem_map = mem_map

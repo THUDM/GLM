@@ -19,6 +19,8 @@ import json
 import os
 import random
 import copy
+import glob
+import re
 from abc import ABC, abstractmethod
 from collections import Counter
 from typing import List, Dict, Callable
@@ -615,6 +617,66 @@ class MultiRcProcessor(SuperGLUEProcessor):
         return text_a, text_b
 
 
+class RaceProcessor(DataProcessor):
+    @property
+    def variable_num_choices(self):
+        return True
+
+    def get_labels(self):
+        return ["A", "B", "C", "D"]
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev"), "dev", for_train=for_train)
+
+    def get_test_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "test"), "test")
+
+    @staticmethod
+    def _create_examples(path, set_type, for_train=False) -> List[InputExample]:
+        examples = []
+
+        def clean_text(text):
+            """Remove new lines and multiple spaces and adjust end of sentence dot."""
+
+            text = text.replace("\n", " ")
+            text = re.sub(r'\s+', ' ', text)
+            for _ in range(3):
+                text = text.replace(' . ', '. ')
+
+            return text
+
+        filenames = glob.glob(os.path.join(path, "middle", '*.txt')) + glob.glob(os.path.join(path, "high", "*.txt"))
+        for filename in filenames:
+            with open(filename, 'r') as f:
+                for line in f:
+                    data = json.loads(line)
+                    idx = data["id"]
+                    context = data["article"]
+                    questions = data["questions"]
+                    choices = data["options"]
+                    answers = data["answers"]
+                    # Check the length.
+                    assert len(questions) == len(answers)
+                    assert len(questions) == len(choices)
+
+                    context = clean_text(context)
+                    for question_idx, question in enumerate(questions):
+                        answer = answers[question_idx]
+                        choice = choices[question_idx]
+                        guid = f'{set_type}-p{idx}-q{question_idx}'
+                        ex_idx = [set_type, idx, question_idx]
+                        meta = {
+                            "choices": choice
+                        }
+                        example = InputExample(guid=guid, text_a=context, text_b=question, label=answer, meta=meta,
+                                               idx=ex_idx)
+                        examples.append(example)
+        return examples
+
+
 class RecordProcessor(SuperGLUEProcessor):
     """Processor for the ReCoRD data set."""
 
@@ -1081,10 +1143,10 @@ class QnliProcessor(Sst2Processor):
 class SquadProcessor(DataProcessor):
 
     def get_train_examples(self, data_dir):
-        return self._create_examples(os.path.join(data_dir, "train-v2.0.json"), "train")[:1000]
+        return self._create_examples(os.path.join(data_dir, "train-v2.0.json"), "train")
 
     def get_dev_examples(self, data_dir, for_train=False):
-        return self._create_examples(os.path.join(data_dir, "dev-v2.0.json"), "dev")[:1000]
+        return self._create_examples(os.path.join(data_dir, "dev-v2.0.json"), "dev")
 
     def get_labels(self):
         return ['0']
@@ -1103,7 +1165,7 @@ class SquadProcessor(DataProcessor):
                         continue
                     guid = f"{set_type}-{idx}-{pid}-{qid}"
                     example = InputExample(guid=guid, text_a=context, text_b=qas['question'], label='0',
-                                           meta={'answer:': qas['answers'][0]})
+                                           meta={'answer': qas['answers'][0]})
                     examples.append(example)
 
         return examples
@@ -1138,5 +1200,7 @@ PROCESSORS = {
     "mrpc": MrpcProcessor,
     "qqp": QqpProcessor,
     "qnli": QnliProcessor,
+    "squad": SquadProcessor,
+    "race": RaceProcessor,
     "squad": SquadProcessor
 }  # type: Dict[str,Callable[[1],DataProcessor]]

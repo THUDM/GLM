@@ -33,14 +33,14 @@ import mpu
 
 
 class MultiTaskDataset(torch.utils.data.Dataset):
-    def __init__(self, tasks, datasets, reweight=True, temperature=0.5):
+    def __init__(self, tasks, datasets, reweight=True, temperature=0.8, max_limit=200000):
         super(MultiTaskDataset, self).__init__()
         self.tasks = tasks
         self.datasets = datasets
         self.reweight = reweight
         self.temperature = temperature
         self.lens = [len(dataset) for dataset in datasets]
-        self.weights = np.array([l ** temperature for l in self.lens])
+        self.weights = np.array([min(l, max_limit) ** temperature for l in self.lens])
         self.total_len = sum(self.lens)
         self.cumulative_lens = list(accumulate(self.lens))
         if self.reweight:
@@ -347,7 +347,7 @@ def make_loaders(args, tokenizer):
 def build_multi_task_dataset(args, tokenizer):
     task_dirs = {"mnli": "MNLI", "cola": "CoLA", "mrpc": "MRPC", "qnli": "QNLI", "qqp": "QQP", "sst2": "SST-2",
                  "agnews": "Agnews", "yelp-polarity": "yelp_review_polarity_csv", "yelp-full": "yelp_review_full_csv",
-                 "yahoo": "Yahoo"}
+                 "yahoo": "Yahoo", "squad": "SQuAD", "race": "RACE"}
     train, valid = None, None
     if mpu.get_model_parallel_rank() == 0:
         multi_seq_length = args.seq_length

@@ -658,6 +658,45 @@ class RecordPVP(PVP):
         return []
 
 
+class RacePVP(PVP):
+    @property
+    def is_multi_token(self):
+        return True
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1]
+
+    def get_answers(self, example: InputExample):
+        choices = example.meta['choices']
+        choices = [" " + choice for choice in choices]
+        return choices
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        context = self.shortenable(example.text_a)
+        question = " " + example.text_b
+
+        if "_" in question:
+            left, right = question.split('_', maxsplit=1)
+            if self.pattern_id == 0:
+                return [context], [self.shortenable(left.rstrip()), [self.mask], self.shortenable(right)]
+            else:
+                left = left.rstrip()
+                if left:
+                    left = self.lowercase_first(left)
+                return [context], [" Based on the previous passage,",
+                                   self.shortenable(left), [self.mask],
+                                   self.shortenable(right)]
+        else:
+            if self.pattern_id == 0:
+                return [context], [" Question:", self.shortenable(question), " Answer:", [self.mask]]
+            else:
+                return [context], [" Based on the previous passage,", self.shortenable(question), [self.mask]]
+
+    def verbalize(self, label) -> List[str]:
+        return []
+
+
 class RtePVP(PVP):
     VERBALIZER = {
         "not_entailment": [" No"],
@@ -1166,14 +1205,14 @@ class SquadPVP(PVP):
         return True
 
     def get_answers(self, example: InputExample):
-        target = " " + example.label
+        target = " " + example.meta['answer']['text']
         answers = [target]
         return answers
 
     def get_parts(self, example: InputExample) -> FilledPattern:
         context = self.shortenable(example.text_a)
         question = example.text_b
-        return [context, " " + question, [self.mask]], []
+        return [context, " " + question, [self.mask], "."], []
 
     def verbalize(self, label) -> List[str]:
         return []
@@ -1225,5 +1264,6 @@ PVPS = {
     'mrpc': MrpcPVP,
     'qqp': QqpPVP,
     'qnli': QnliPVP,
-    'squad': SquadPVP
+    'squad': SquadPVP,
+    'race': RacePVP,
 }
