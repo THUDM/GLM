@@ -56,10 +56,13 @@ def get_hostname():
     return master_addr
 
 
-def get_spare_port():
+def get_spare_port(args):
     if torch.distributed.get_rank() == 0:
         port = subprocess.check_output(["shuf -n 1 -i 10000-65535"], shell=True)
         port = int(port.strip())
+        if port == args.master_port:
+            port = subprocess.check_output(["shuf -n 1 -i 10000-65535"], shell=True)
+            port = int(port.strip())
         port = torch.cuda.LongTensor([port])
     else:
         port = torch.cuda.LongTensor([0])
