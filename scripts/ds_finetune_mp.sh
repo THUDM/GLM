@@ -36,7 +36,6 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
        $COMMON_ARGS \
        --model-parallel-size ${MP_SIZE} \
        --epochs ${EPOCH_SINGLE} \
-       --lr ${LR_SINGLE} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
 

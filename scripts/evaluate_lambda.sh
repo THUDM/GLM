@@ -20,4 +20,4 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
        --overwrite \
        $MODEL_ARGS \
        $EVALUATE_ARGS \
-       2>&1 | tee logs/log-${EXPERIMENT_NAME}_{DATESTR}.txt
+       2>&1 | tee logs/log-${EXPERIMENT_NAME}_${DATESTR}.txt

@@ -1,4 +1,4 @@
-MP_SIZE=4
+MP_SIZE=1
 DATA_ROOT=/dataset/c07bd62b/superglue
 GLUE_DATA_ROOT=/dataset/c07bd62b/glue_data
 source config_tasks/model_blocklm_10B.sh
@@ -11,6 +11,8 @@ MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2"
 DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --num_gpus 4 --num_nodes 1 --master_port $MASTER_PORT"
 DATESTR=$(date +"%m-%d-%H-%M")
+
+EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 
 mkdir logs
 run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
@@ -34,7 +36,6 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
        $COMMON_ARGS \
        --model-parallel-size ${MP_SIZE} \
        --epochs ${EPOCH_SINGLE} \
-       --lr ${LR_SINGLE} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
 
