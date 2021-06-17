@@ -27,6 +27,17 @@ class ClozeModel(torch.nn.Module):
         self.take_softmax = take_softmax
         self.length_penalty = length_penalty
 
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        # [h.remove() for h in self.hook_handles]
+        sd = self.model.state_dict(destination, prefix, keep_vars)
+        return sd
+
+    def load_state_dict(self, state_dict, strict=True):
+        return self.model.load_state_dict(state_dict, strict=strict)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.model.named_parameters(prefix=prefix, recurse=recurse)
+
     def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
         if target_ids == None:
             return self.model(input_ids, position_ids, attention_mask)
@@ -119,6 +130,17 @@ class VerbalizerModel(torch.nn.Module):
         super().__init__()
         self.model = language_model
         self.take_softmax = take_softmax
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        # [h.remove() for h in self.hook_handles]
+        sd = self.model.state_dict(destination, prefix, keep_vars)
+        return sd
+
+    def load_state_dict(self, state_dict, strict=True):
+        return self.model.load_state_dict(state_dict, strict=strict)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.model.named_parameters(prefix=prefix, recurse=recurse)
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
         if target_ids is None:
