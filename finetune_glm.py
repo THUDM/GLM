@@ -1,3 +1,5 @@
+"""Finetune utilities."""
+
 import os
 import json
 
@@ -5,15 +7,13 @@ import random
 
 from tasks.data_utils import build_data_loader, FakeDataloader
 from utils import get_sample_writer, get_log_dir, print_and_save_args, debug_finetune_data
-from model import GLMModel, GLMForMultiTokenCloze
 from arguments import get_args
 from filelock import FileLock
-import pretrain_gpt2
-from pretrain_gpt2 import forward_step as lm_forward_step
+import pretrain_glm
+from pretrain_glm import forward_step as lm_forward_step
 import pathlib
 import mpu
 
-"""Finetune utilities."""
 
 import torch
 import torch.utils.data
