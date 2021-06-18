@@ -15,7 +15,7 @@ RUN  sed -i s@/security.ubuntu.com/@/mirrors.tuna.tsinghua.edu.cn/@g /etc/apt/so
 #     libnccl2=2.8.3-1+cuda10.2 libnccl-dev=2.8.3-1+cuda10.2
 RUN rm /etc/apt/sources.list.d/nvidia-ml.list && rm /etc/apt/sources.list.d/cuda.list && apt-get clean
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+    DEBIAN_FRONTEND="noninteractive" apt-get install -y --no-install-recommends \
         software-properties-common build-essential autotools-dev \
         nfs-common pdsh \
         cmake g++ gcc \

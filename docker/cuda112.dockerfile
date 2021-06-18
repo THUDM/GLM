@@ -50,9 +50,9 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 #ENV NV_PEER_MEM_VERSION=1.1
 #ENV NV_PEER_MEM_TAG=1.1-0
-#RUN mkdir -p ${STAGE_DIR} && \
-#    git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory && \
-#    cd ${STAGE_DIR}/nv_peer_memory && \
+#COPY nv_peer_memory ${STAGE_DIR}/nv_peer_memory
+##RUN git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory
+#RUN cd ${STAGE_DIR}/nv_peer_memory && \
 #    ./build_module.sh && \
 #    cd ${STAGE_DIR} && \
 #    tar xzf ${STAGE_DIR}/nvidia-peer-memory_${NV_PEER_MEM_VERSION}.orig.tar.gz && \
@@ -67,8 +67,10 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 #ENV OPENMPI_BASEVERSION=4.0
 #ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.5
+#COPY openmpi-4.0.5.tar.gz ${STAGE_DIR}/openmpi-4.0.5.tar.gz
+##RUN wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf -
 #RUN cd ${STAGE_DIR} && \
-#    wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf - && \
+#    tar --no-same-owner -xzf openmpi-4.0.5.tar.gz && \
 #    cd openmpi-${OPENMPI_VERSION} && \
 #    ./configure --prefix=/usr/local/openmpi-${OPENMPI_VERSION} && \
 #    make -j"$(nproc)" install && \
@@ -94,7 +96,7 @@ RUN cd ${STAGE_DIR} && \
 #     ~/miniconda.sh -b -p /opt/conda && \
 #     rm ~/miniconda.sh && \
 #     /opt/conda/bin/conda install -y python=$PYTHON_VERSION numpy pyyaml scipy ipython mkl mkl-include ninja cython typing && \
-#     /opt/conda/bin/conda install -y -c pytorch magma-cuda110 && \
+#     /opt/conda/bin/conda install -y -c pytorch magma-cuda112 && \
 #     /opt/conda/bin/conda clean -ya
 
 ENV PATH /opt/conda/bin:$PATH
@@ -130,24 +132,26 @@ RUN pip install psutil \
                 mpi4py \
                 nltk \
                 rouge \
-                filelock
+                filelock \
+                fasttext \
+                rouge_score
 
 ##############################################################################
 # PyTorch
 ##############################################################################
-#RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
 #ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
 #COPY pytorch /opt/pytorch
-#RUN cd /opt/pytorch && git checkout 33cf7fd && \
-#    git submodule sync && git submodule update --init --recursive
+##RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
+#RUN cd /opt/pytorch && git checkout -f v1.8.1 && \
+#    git submodule sync && git submodule update -f --init --recursive
 #ENV NCCL_LIBRARY=/usr/lib/x86_64-linux-gnu
 #ENV NCCL_INCLUDE_DIR=/usr/include
 #RUN cd /opt/pytorch && TORCH_NVCC_FLAGS="-Xfatbin -compress-all" \
 #    CMAKE_PREFIX_PATH="$(dirname $(which conda))/../" USE_SYSTEM_NCCL=1 \
 #    pip install -v . && rm -rf /opt/pytorch
 #COPY vision /opt/vision
-#RUN cd /opt/vision && git checkout v0.8.0 && pip install -v .
-#RUN conda install pytorch torchvision torchaudio cudatoolkit=11.0 -c pytorch
+##RUN git clone https://github.com/pytorch/vision.git /opt/vision
+#RUN cd /opt/vision && git checkout v0.9.0 && pip install -v . && rm -rf /opt/vision
 
 ENV TENSORBOARDX_VERSION=1.8
 RUN pip install tensorboardX==${TENSORBOARDX_VERSION}
@@ -178,40 +182,27 @@ RUN cd ${STAGE_DIR}/DeepSpeed && \
 RUN rm -rf ${STAGE_DIR}/DeepSpeed
 RUN python -c "import deepspeed; print(deepspeed.__version__)"
 
-## Install Jupyter Notebook
-RUN pip install jupyter notebook && python -m ipykernel install --user --name base --display-name "Python3.6"
+##############################################################################
+# Jupyter
+##############################################################################
+RUN pip install jupyter notebook && python -m ipykernel install --user --name base --display-name "Python3.8"
 COPY prepare.sh /root/.jupyter/prepare.sh
-RUN chmod +x /root/.jupyter/prepare.sh && mkdir /dataset /logs /model
+RUN chmod +x /root/.jupyter/prepare.sh && mkdir -p /dataset /workspace /logs /model
 EXPOSE 8888
 
 ##############################################################################
-## Add deepspeed user
-###############################################################################
-# Add a deepspeed user with user id 1001
-RUN echo 'root:baai2020keg' | chpasswd
-#RUN useradd --create-home --uid 1001 --shell /bin/bash deepspeed
-#RUN echo 'deepspeed:baai2020keg' | chpasswd
-#RUN usermod -aG sudo deepspeed
-#RUN echo "deepspeed ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-## # Change to non-root privilege
-#USER deepspeed
-
+# SSH Config
 ##############################################################################
+ARG SSH_PORT=22
+RUN echo 'root:NdjeS+-4gEPmq}D' | chpasswd
 # Client Liveness & Uncomment Port 22 for SSH Daemon
-##############################################################################
-# Keep SSH client alive froGm server side
 RUN echo "ClientAliveInterval 30" >> /etc/ssh/sshd_config
 RUN mkdir -p /var/run/sshd && cp /etc/ssh/sshd_config ${STAGE_DIR}/sshd_config && \
     sed "0,/^#Port 22/s//Port 22/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config
-##############################################################################
-## SSH daemon port inside container cannot conflict with host OS port
-###############################################################################
-ARG SSH_PORT=22
 RUN cat /etc/ssh/sshd_config > ${STAGE_DIR}/sshd_config && \
     sed "0,/^Port 22/s//Port ${SSH_PORT}/" ${STAGE_DIR}/sshd_config > /etc/ssh/sshd_config && \
     sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
 EXPOSE ${SSH_PORT}
-
 # Set SSH KEY
 RUN printf "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null" >> /etc/ssh/ssh_config && \
  ssh-keygen -t rsa -f ~/.ssh/id_rsa -N "" && cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys && \
@@ -219,4 +210,5 @@ RUN printf "StrictHostKeyChecking no\nUserKnownHostsFile /dev/null" >> /etc/ssh/
 # Set SSH config
 COPY ssh-env-config.sh /usr/local/bin/ssh-env-config.sh
 RUN chmod +x /usr/local/bin/ssh-env-config.sh
+
 CMD /etc/init.d/ssh start && ssh-env-config.sh /bin/bash
