@@ -54,6 +54,7 @@ def read_tsv(path, **kwargs):
 
 
 class GlueDataset(Dataset):
+class SuperGlueDataset(Dataset):
 
     def __init__(self, args, task_name, data_dir, seq_length, split, tokenizer, for_train=False,
                  pattern_ensemble=False, pattern_text=False):
@@ -182,10 +183,6 @@ class DataProcessor(ABC):
     def get_unlabeled_examples(self, data_dir) -> List[InputExample]:
         """Get a collection of `InputExample`s for the unlabeled set."""
         return []
-
-    def get_true_dev_examples(self, data_dir) -> List[InputExample]:
-        """Get a collection of `InputExample`s for the true dev set."""
-        return self._create_examples(os.path.join(data_dir, "true_dev.jsonl"), "true_dev")
 
     @abstractmethod
     def get_labels(self) -> List[str]:

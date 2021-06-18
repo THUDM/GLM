@@ -3,11 +3,8 @@ TASK_NAME=COPA
 DATA_PATH="${DATA_ROOT}/COPA"
 MAX_SEQ_LEN=256
 
-LR_RANGE=(5e-6 1e-5 2e-5)
-EPOCH_RANGE=(50)
-
 LR_SINGLE=1e-5
-EPOCH_SINGLE=50
+EPOCH_SINGLE=20
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \

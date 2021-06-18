@@ -1,4 +1,4 @@
-MODEL_TYPE="blocklm-roberta-large-250k"
+MODEL_TYPE="blocklm-roberta-large"
 MODEL_ARGS="--block-lm \
             --cloze-eval \
             --task-mask \

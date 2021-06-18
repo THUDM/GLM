@@ -7,4 +7,4 @@ MODEL_ARGS="--block-lm \
             --max-position-embeddings 512 \
             --tokenizer-model-type bert-large-uncased \
             --tokenizer-type BertWordPieceTokenizer \
-            --load-pretrained /root/data/checkpoints/blocklm-1.25-generation"
+            --load-pretrained ${CHECKPOINT_PATH}/blocklm-1.25-generation01-24-21-51"

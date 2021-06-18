@@ -7,8 +7,6 @@ import mpu
 from utils import print_rank_0
 from generation_utils import BeamSearchScorer, LogitsProcessorList, MinLengthLogitsProcessor, \
     NoRepeatNGramLogitsProcessor
-from pretrain_gpt2 import get_batch
-from rouge_score import rouge_scorer
 
 
 def _is_digit(w):
@@ -151,42 +149,6 @@ def remove_duplicate(l_list, duplicate_rate):
             r_list.append(l_list[i])
         history_set |= w_set
     return r_list
-
-
-def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate=0.7, dataset='cnn_dm'):
-    metric_dict = {"rouge-1": "rouge1", "rouge-2": "rouge2", "rouge-l": "rougeLsum"}
-    refs = [example.meta["ref"] for example in examples]
-    ref_list = []
-    for ref in refs:
-        ref = ref.strip().split('[SEP]')
-        ref = [fix_tokenization(sentence, dataset=dataset) for sentence in ref]
-        ref = "\n".join(ref)
-        ref_list.append(ref)
-    pred_list = []
-    for prediction in predictions:
-        buf = []
-        for sentence in prediction.strip().split("[SEP]"):
-            sentence = fix_tokenization(sentence, dataset=dataset)
-            if any(get_f1(sentence, s) > 1.0 for s in buf):
-                continue
-            s_len = len(sentence.split())
-            if s_len <= 4:
-                continue
-            buf.append(sentence)
-        if duplicate_rate and duplicate_rate < 1:
-            buf = remove_duplicate(buf, duplicate_rate)
-        line = "\n".join(buf)
-        pred_list.append(line)
-    if torch.distributed.get_rank() == 0:
-        import json
-        with open("./results.json", "w") as output:
-            for ref, pred in zip(ref_list, pred_list):
-                output.write(json.dumps({"ref": ref, "pred": pred}) + "\n")
-    scorer = rouge_scorer.RougeScorer([metric_dict[metric]], use_stemmer=True)
-    scores = [scorer.score(pred, ref) for pred, ref in zip(pred_list, ref_list)]
-    scores = [score[metric_dict[metric]].fmeasure for score in scores]
-    scores = sum(scores) / len(scores)
-    return scores
 
 
 def process_batch(batch, args):

@@ -1,7 +1,9 @@
-source config_tasks/model_blocklm_1.25.sh
-source $1
+DATA_ROOT=/root/data
 CHECKPOINT_PATH="/dataset/c07bd62b/finetune_checkpoints"
 DATESTR=$(date +"%m-%d-%H-%M")
+
+source $1    # Model
+source $2    # Task
 
 export NCCL_DEBUG=info
 export NCCL_IB_DISABLE=0
@@ -15,7 +17,7 @@ HOST_FILE_PATH="/root/code/config/hostfile"
 
 EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 mkdir logs
-deepspeed --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} finetune_gpt2.py \
+deepspeed --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER} --hostfile ${HOST_FILE_PATH} finetune_glm.py \
        --finetune \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \

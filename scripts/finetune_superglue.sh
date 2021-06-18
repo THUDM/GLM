@@ -1,12 +1,13 @@
-DATA_ROOT=/dataset/c07bd62b/superglue
-source config_tasks/model_blocklm_large.sh
-source $1
+DATA_ROOT=/root/data/superglue
+CHECKPOINT_PATH=/root/data/checkpoints
 
-CHECKPOINT_PATH="/dataset/fd5061f6/finetune_checkpoints"
+source $1    # Model
+source $2    # Task
 
 if [ -z $N_GPU ];then
   N_GPU=2
 fi
+
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 DISTRIBUTED_ARGS="--nproc_per_node ${N_GPU} --nnodes 1 --node_rank 0 --master_addr localhost --master_port $MASTER_PORT"
 
@@ -15,8 +16,9 @@ DATESTR=$(date +"%m-%d-%H-%M")
 EXPERIMENT_NAME=${EXPERIMENT_NAME}-${DATESTR}
 
 mkdir logs
-python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_gpt2.py \
+python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        --finetune \
+       --cloze-eval \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \

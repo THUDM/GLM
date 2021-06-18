@@ -41,10 +41,15 @@ class PVP(ABC):
         """
         Create a new PVP.
 
-        :param wrapper: the wrapper for the underlying language model
+        :param args: the args
+        :param tokenizer: the tokenizer
+        :param label_list: the list of labels
+        :param max_seq_length: the maximum length of the sequence
         :param pattern_id: the pattern id to use
-        :param verbalizer_file: an optional file that contains the verbalizer to be used
         :param seed: a seed to be used for generating random numbers if necessary
+        :param is_multi_token: if the verbalizers contain multiple tokens
+        :param fast_decode: whether to use the fast decode mode for multi-token tasks
+        :param continuous_prompt: whether to use continuous prompt optimization
         """
         self.args = args
         self.tokenizer = tokenizer

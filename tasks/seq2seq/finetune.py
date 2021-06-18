@@ -18,11 +18,11 @@ import torch
 import mpu
 import functools
 from tasks.eval_utils import accuracy_func_provider
-from finetune_gpt2 import finetune
-from pretrain_gpt2 import get_batch
+from finetune_glm import finetune
+from pretrain_glm import get_batch
 from collections import OrderedDict
 from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset
-from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater, BlankLMEvaluater
+from tasks.seq2seq.evaluate import DecoderEvaluater, BlankLMEvaluater
 
 global_tokenizer = None
 

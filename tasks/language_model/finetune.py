@@ -22,11 +22,10 @@ import torch
 from utils import print_rank_0
 import mpu
 from tasks.data_utils import build_data_loader
-from model import ClozeModel
 
 from tasks.language_model.dataset import build_lambada_dataset, build_wikitext103_dataset, build_lm_dataset
-from pretrain_gpt2 import get_batch
-from finetune_gpt2 import finetune
+from pretrain_glm import get_batch
+from finetune_glm import finetune
 
 global_tokenizer = None
 

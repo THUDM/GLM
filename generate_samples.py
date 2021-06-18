@@ -21,10 +21,10 @@ import torch.nn.functional as F
 import time
 from datetime import datetime
 from arguments import get_args
-from pretrain_gpt2 import initialize_distributed
-from pretrain_gpt2 import set_random_seed
-from pretrain_gpt2 import get_masks_and_position_ids
-from utils import load_checkpoint
+from pretrain_glm import initialize_distributed
+from pretrain_glm import set_random_seed
+from pretrain_glm import get_masks_and_position_ids
+from utils import load_checkpoint, get_checkpoint_iteration
 from configure_data import prepare_tokenizer
 from generation_utils import BeamSearchScorer
 import mpu
@@ -307,7 +307,7 @@ def generate_samples(model, tokenizer, args, device):
                 print("\nContext:", raw_text, flush=True)
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
                 trim_decode_tokens = decode_tokens
-                print("\nGPT2:", trim_decode_tokens, flush=True)
+                print("\nGLM:", trim_decode_tokens, flush=True)
                 output.write(trim_decode_tokens + "\n")
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())

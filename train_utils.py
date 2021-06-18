@@ -6,9 +6,9 @@ from torch import distributed as dist
 import mpu
 from fp16 import FP16_Module, FP16_Optimizer, DynamicLossScaler
 from learning_rates import AnnealingLR
-from model import VerbalizerModel, ClozeModel, FastClozeModel, PoolingModel, GPT2Model, \
-    PyTorchDistributedDataParallel as TorchDDP, \
-    DistributedDataParallel as LocalDDP, gpt2_get_params_for_weight_decay_optimization
+from model import GLMModel, glm_get_params_for_weight_decay_optimization
+from model import GLMForMultiTokenCloze, GLMForMultiTokenClozeFast, GLMForSingleTokenCloze, GLMForSequenceClassification
+from model import PyTorchDistributedDataParallel as TorchDDP, DistributedDataParallel as LocalDDP
 from model.modeling import BertForMultipleChoice, BertForSequenceClassification
 from utils import print_rank_0, get_checkpoint_name, get_checkpoint_iteration
 
@@ -59,7 +59,7 @@ def load_pretrained(model, checkpoint_path, args, task_tokens=None):
         model.prompt_spell.init_embedding(model.word_embeddings.weight.data, task_tokens)
 
 
-def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
+def get_model(args, model_type=None, multi_token=True, num_labels=None):
     """Build the model."""
     print_rank_0('building GPT2 model ...')
     if args.pretrained_bert:
@@ -86,7 +86,7 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
             paralle_output = False
         if spell_length is not None:
             print_rank_0(f"Continuous spell length {spell_length}")
-        model = GPT2Model(num_layers=args.num_layers,
+        model = GLMModel(num_layers=args.num_layers,
                           vocab_size=args.vocab_size,
                           hidden_size=args.hidden_size,
                           num_attention_heads=args.num_attention_heads,
@@ -112,16 +112,16 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
                 if args.cloze_eval:
                     if multi_token:
                         if args.fast_decode:
-                            model = FastClozeModel(model, length_penalty=args.length_penalty)
+                            model = GLMForMultiTokenClozeFast(model, length_penalty=args.length_penalty)
                         else:
-                            model = ClozeModel(model, length_penalty=args.length_penalty)
+                            model = GLMForMultiTokenCloze(model, length_penalty=args.length_penalty)
                     else:
-                        model = VerbalizerModel(model, take_softmax=args.adapet)
+                        model = GLMForSingleTokenCloze(model, take_softmax=args.adapet)
                 else:
-                    model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                    model = GLMForSequenceClassification(model, args.hidden_size, args.output_dropout, args.pool_token,
                                          num_class=num_labels)
             elif model_type == 'classification':
-                model = PoolingModel(model, args.hidden_size, args.output_dropout, args.pool_token,
+                model = GLMForSequenceClassification(model, args.hidden_size, args.output_dropout, args.pool_token,
                                      num_class=num_labels)
             elif model_type == 'generation':
                 pass
@@ -161,7 +161,7 @@ def get_optimizer_param_groups(model):
     # Build parameter groups (weight decay and non-decay).
     while isinstance(model, (LocalDDP, TorchDDP, FP16_Module)):
         model = model.module
-    param_groups = gpt2_get_params_for_weight_decay_optimization(model)
+    param_groups = glm_get_params_for_weight_decay_optimization(model)
 
     # Add model parallel attribute if it is not set.
     for param_group in param_groups:
