@@ -59,7 +59,7 @@ def load_pretrained(model, checkpoint_path, args, task_tokens=None):
         model.prompt_spell.init_embedding(model.word_embeddings.weight.data, task_tokens)
 
 
-def get_model(args, model_type=None, multi_token=True, num_labels=None):
+def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_length=None):
     """Build the model."""
     print_rank_0('building GPT2 model ...')
     if args.pretrained_bert:
@@ -87,24 +87,23 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
         if spell_length is not None:
             print_rank_0(f"Continuous spell length {spell_length}")
         model = GLMModel(num_layers=args.num_layers,
-                          vocab_size=args.vocab_size,
-                          hidden_size=args.hidden_size,
-                          num_attention_heads=args.num_attention_heads,
-                          embedding_dropout_prob=args.hidden_dropout,
-                          attention_dropout_prob=args.attention_dropout,
-                          output_dropout_prob=args.hidden_dropout,
-                          max_sequence_length=args.max_position_embeddings,
-                          max_memory_length=args.mem_length,
-                          checkpoint_activations=args.checkpoint_activations,
-                          checkpoint_num_layers=args.checkpoint_num_layers,
-                          parallel_output=paralle_output,
-                          relative_encoding=args.transformer_xl,
-                          block_position_encoding=args.block_lm and not args.masked_lm,
-                          output_predict=output_predict,
-                          spell_length=spell_length,
-                          spell_func=args.prompt_func,
-                          nonautoregressive=args.nonautoregressive,
-                          attention_scale=args.attention_scale)
+                         vocab_size=args.vocab_size,
+                         hidden_size=args.hidden_size,
+                         num_attention_heads=args.num_attention_heads,
+                         embedding_dropout_prob=args.hidden_dropout,
+                         attention_dropout_prob=args.attention_dropout,
+                         output_dropout_prob=args.hidden_dropout,
+                         max_sequence_length=args.max_position_embeddings,
+                         max_memory_length=args.mem_length,
+                         checkpoint_activations=args.checkpoint_activations,
+                         checkpoint_num_layers=args.checkpoint_num_layers,
+                         parallel_output=paralle_output,
+                         relative_encoding=args.transformer_xl,
+                         block_position_encoding=args.block_lm and not args.masked_lm,
+                         output_predict=output_predict,
+                         spell_length=spell_length,
+                         spell_func=args.prompt_func,
+                         attention_scale=args.attention_scale)
         if args.freeze_transformer:
             model.freeze_transformer(tune_prefix_layers=args.tune_prefix_layers)
         if model_type is not None:
@@ -119,10 +118,10 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None):
                         model = GLMForSingleTokenCloze(model, take_softmax=args.adapet)
                 else:
                     model = GLMForSequenceClassification(model, args.hidden_size, args.output_dropout, args.pool_token,
-                                         num_class=num_labels)
+                                                         num_class=num_labels)
             elif model_type == 'classification':
                 model = GLMForSequenceClassification(model, args.hidden_size, args.output_dropout, args.pool_token,
-                                     num_class=num_labels)
+                                                     num_class=num_labels)
             elif model_type == 'generation':
                 pass
             else:

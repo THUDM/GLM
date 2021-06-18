@@ -285,7 +285,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     global tokenizer
     timers = Timers()
     tokenizer = prepare_tokenizer(args)
-    pretrain_gpt2.tokenizer = tokenizer
+    pretrain_glm.tokenizer = tokenizer
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
     # Train and validation data loaders.

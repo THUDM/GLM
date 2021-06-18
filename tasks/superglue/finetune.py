@@ -18,6 +18,7 @@
 from collections import OrderedDict
 from finetune_glm import finetune
 from tasks.superglue.dataset import SuperGlueDataset, PROCESSORS, get_output_func
+from tasks.superglue.dataset import CLASSIFICATION_DATASETS, MULTI_CHOICE_DATASETS
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
 from tasks.superglue.pvp import PVPS
 from tasks.eval_utils import accuracy_func_provider

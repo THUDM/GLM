@@ -53,7 +53,6 @@ def read_tsv(path, **kwargs):
     return pd.read_csv(path, sep='\t', quoting=csv.QUOTE_NONE, dtype=str, na_filter=False, **kwargs)
 
 
-class GlueDataset(Dataset):
 class SuperGlueDataset(Dataset):
 
     def __init__(self, args, task_name, data_dir, seq_length, split, tokenizer, for_train=False,

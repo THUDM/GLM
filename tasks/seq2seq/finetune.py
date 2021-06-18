@@ -22,7 +22,7 @@ from finetune_glm import finetune
 from pretrain_glm import get_batch
 from collections import OrderedDict
 from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset
-from tasks.seq2seq.evaluate import DecoderEvaluater, BlankLMEvaluater
+from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater, BlankLMEvaluater
 
 global_tokenizer = None
 
