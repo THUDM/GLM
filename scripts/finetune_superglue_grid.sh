@@ -1,5 +1,5 @@
-DATA_ROOT=/root/data/superglue
-source config_tasks/model_blocklm_base_na.sh
+DATA_ROOT=/dataset/c07bd62b/superglue
+source config_tasks/model_blocklm_roberta_1.25.sh
 source $1
 
 CHECKPOINT_PATH="/dataset/c07bd62b/finetune_checkpoints"

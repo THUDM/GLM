@@ -144,6 +144,7 @@ class GLMForSingleTokenCloze(torch.nn.Module):
 
         return (output, target_logits, *mems)
 
+
 class GLMForSequenceClassification(torch.nn.Module):
     def __init__(self, language_model, hidden_size, hidden_dropout, pool_token, num_class=1):
         super().__init__()
