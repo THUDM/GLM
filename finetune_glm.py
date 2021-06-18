@@ -452,9 +452,7 @@ if __name__ == '__main__':
     from tasks.superglue.dataset import PROCESSORS
 
     superglue_tasks = list(PROCESSORS.keys())
-    if args.task.lower() == 'race':
-        from tasks.race.finetune import main
-    elif args.task.lower() in superglue_tasks:
+    if args.task.lower() in superglue_tasks:
         from tasks.superglue.finetune import main
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
