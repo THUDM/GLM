@@ -259,26 +259,13 @@ def forward_step(data_iterator, model, args, timers, mems):
     else:
         mode = 'bert'
 
-    # Forward model.
-    if args.nonautoregressive:
-        logits, na_logits, *mems = model(tokens, position_ids, attention_mask, *mems)
-        losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
-                                                  labels)
-        loss_mask = loss_mask.view(-1)
-        loss = torch.sum(losses.view(-1) * loss_mask) / loss_mask.sum()
-
-        na_losses = mpu.vocab_parallel_cross_entropy(na_logits.contiguous().float(),
-                                                     labels)
-        na_loss = torch.sum(na_losses.view(-1) * loss_mask) / loss_mask.sum()
-        loss = loss + na_loss
-    else:
-        logits, *mems = model(tokens, position_ids, attention_mask, *mems)
-        losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
-                                                  labels)
-        loss_mask = loss_mask.view(-1)
-        loss = torch.sum(losses.view(-1) * loss_mask)
-        if loss_mask.sum().item() > 0:
-            loss = loss / loss_mask.sum()
+    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
+                                              labels)
+    loss_mask = loss_mask.view(-1)
+    loss = torch.sum(losses.view(-1) * loss_mask)
+    if loss_mask.sum().item() > 0:
+        loss = loss / loss_mask.sum()
 
     return loss, mems, mode
 
