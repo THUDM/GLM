@@ -3,7 +3,7 @@
 script_path=$(realpath $BASH_SOURCE)
 script_dir=$(dirname $script_path)
 
-config_json="$script_dir/config_gpt_10B_longer.json"
+config_json="$script_dir/config_block_10B_longer.json"
 gpt_options=" \
        --seed 5891 \
        --block-lm \
