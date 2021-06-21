@@ -23,16 +23,26 @@ You can download the pretrained models used in the paper [here](https://mailstsi
 | GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
 | GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2 | model_blocklm_roberta_large.sh
 | GLM-XXLarge | 10B | to be released | to be released
-## Installation
-Clone this repo
-```shell
-git clone https://github.com/THUDM/GLM
-cd GLM
-```
-Please first install PyTorch (we use 1.7.0) and [apex](https://github.com/NVIDIA/apex), and then install other dependencies by
-```shell
-pip install -r requirements.txt
-```
+## Get Started
+### Docker Image
+We prepare two docker images based on CUDA 10.2 and CUDA 11.2. You can pull the pre-built images from Docker Hub and run with docker v19.03+
+  ```shell
+  docker run --gpus all --rm -it --ipc=host zxdu20/glm-cuda102
+  ```
+  or replace `glm-cuda102` with `glm-cuda112`.
+  
+  You can also modify the image according to your requirements in [docker/cuda102.dockerfile](docker/cuda102.dockerfile) and build the image yourself
+  ```shell
+    docker build -f cuda102.dockerfile . -t glm-cuda102
+  ```
+### Manual Installation 
+Please first install PyTorch (we use 1.7.0) and [apex](https://github.com/NVIDIA/apex), and then install other dependencies by `pip install -r requirements.txt`
+### Clone this repo
+  ```shell
+  git clone https://github.com/THUDM/GLM
+  cd GLM
+  ```
+
 
 ## Pretrain
 First change `PATH` of the corresponding class (`Pile` and `CCNews`) in `NAMED_CORPORA` at [data_utils/corpora.py](data_utils/corpora.py). Then run
