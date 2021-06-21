@@ -1,24 +1,26 @@
+DATA_ROOT=/root/data/superglue
+CHECKPOINT_PATH=/root/data/checkpoints
+SAVE_PATH=/root/data/finetune_checkpoints
+DATESTR=$(date +"%m-%d-%H-%M")
+
+source $1    # Model
+source $2    # Task
+
+NUM_WORKERS=1
+NUM_GPUS_PER_WORKER=8
 MP_SIZE=1
-DATA_ROOT=/dataset/c07bd62b/superglue
-GLUE_DATA_ROOT=/dataset/c07bd62b/glue_data
-source config_tasks/model_blocklm_10B.sh
-#source config_tasks/model_blocklm_roberta_large.sh
-source $1
-
-CHECKPOINT_PATH="/dataset/c07bd62b/finetune_checkpoints"
-
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2"
-DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --num_gpus 4 --num_nodes 1 --master_port $MASTER_PORT"
-DATESTR=$(date +"%m-%d-%H-%M")
+DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --master_port $MASTER_PORT --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER}"
 
 EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 mkdir logs
-run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
+run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --deepspeed \
        --deepspeed_config config_tasks/config_blocklm_10B.json \
        --finetune \
+       --cloze-eval \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
@@ -26,18 +28,18 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_gpt2.py \
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
        --eval-batch-size 16 \
-       --save-epoch 10000 \
+       --save-epoch 100000 \
        --num-workers 1 \
        --no-load-optim \
        --no-load-lr-scheduler \
-       --fp16 \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
+       --fp16 \
+       --model-parallel-size ${MP_SIZE} \
        --continuous-prompt \
        --pattern-id $2 \
        --num-prompt-tokens 3 \
-       --model-parallel-size ${MP_SIZE} \
        --epochs ${EPOCH_SINGLE} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
