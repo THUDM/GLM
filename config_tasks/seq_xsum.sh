@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-xsum
 TASK_NAME=xsum
-DATA_PATH="/mnt/XSum"
+DATA_PATH="${DATA_ROOT}/XSum"
 
 TRAIN_ARGS="--epochs 6 \
             --batch-size 8 \
