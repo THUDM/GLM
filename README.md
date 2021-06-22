@@ -22,7 +22,46 @@ You can download the pretrained models used in the paper [here](https://mailstsi
 | GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2 | model_blocklm_1.25_generation.sh
 | GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
 | GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2 | model_blocklm_roberta_large.sh
-| GLM-XXLarge | 10B | to be released | to be released
+| GLM-XXLarge | 10B | [apply here](https://resource.wudaoai.cn/home?ind=2&name=WuDao%20WenHui&id=1399364355975327744) | model_blocklm_10B.sh
+
+## Results
+### [SuperGLUE](https://super.gluebenchmark.com)
+dev set, single model, single-task finetuning
+
+|  Model | COPA | WSC | RTE | WiC | CB | MultiRC | BoolQ | ReCoRD
+|  ----  | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| GLM-XXLarge  | 98.0 | 95.2 | 93.1 | 75.7 | 98.7/98.2 | 87.6/62.6 | 88.7 | 94.4/94.0 | 
+| [RoBERTa-Large](https://github.com/pytorch/fairseq/tree/master/examples/roberta) | 94.0 | 91.3 | 86.6 | 75.6 | 98.2/- | 85.7/- | 86.9 |
+| [DeBERTa-XXLarge-v2](https://github.com/microsoft/DeBERTa/tree/master/experiments/superglue) | 97.0 | - | 93.5 | - | - | 87.8/63.6 | 88.3 | 94.1/93.7 
+### Seq2Seq
+[CNN/Daily Mail](https://github.com/abisee/cnn-dailymail) (test set, no additional data used)
+
+|  Model  | ROUGE-1 | ROUGE-2 | ROUGE-L |
+|  ----  | ---- | ---- | ---- |
+| GLM-XXLarge | 44.7 | 21.4 | 41.4 |
+| T5-11B | 43.5 | 21.6 | 40.7 |
+| PEGASUS-Large | 44.2 | 21.5 | 41.4 |
+| BART-Large | 44.2 | 21.3 | 40.9 |
+
+[XSum](https://github.com/EdinburghNLP/XSum) (test set, no additional data used)
+
+| Model | ROUGE-1 | ROUGE-2 | ROUGE-L |
+| ---- | ---- | ---- | ---- |
+| GLM-XXLarge | 48.9 | 25.7 | 40.4 |
+| PEGASUS-Large | 47.2 | 24.6 | 39.3 |
+| BART-Large | 45.1 | 22.3 | 37.3 |
+
+### Language Modeling
+test set, zero-shot
+
+| Model | LAMBADA (accuracy) | Wikitext103 (perplexity) |
+| ---- | ---- | ---- |
+| GLM-XXLarge (bi) | 72.35 | 11.33 |
+| GLM-XXLarge (uni) | 67.18 | 12.22 | 
+| GPT-2 | 52.66 | 17.48 | 
+| Megatron-LM (8.3B) | 66.51 | 10.81 |
+| Turing-NLG | 67.98 | 10.21 |
+
 ## Get Started
 ### Docker Image
 We prepare two docker images based on CUDA 10.2 and CUDA 11.2. You can pull the pre-built images from Docker Hub and run with docker v19.03+
