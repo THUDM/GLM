@@ -32,9 +32,6 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        $TRAIN_ARGS \
        $COMMON_ARGS \
        --fp16 \
-       --continuous-prompt \
-       --pattern-id $2 \
-       --num-prompt-tokens 3 \
        --batch-size ${PER_GPU_BS} \
        --epochs ${EPOCH_SINGLE} \
        --lr ${LR_SINGLE} \
