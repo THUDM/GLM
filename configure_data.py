@@ -27,7 +27,7 @@ from data_utils.tokenization import make_tokenizer
 from utils import print_rank_0
 from itertools import accumulate
 from bisect import bisect_right
-from tasks.superglue.dataset import GlueDataset
+from tasks.superglue.dataset import SuperGlueDataset
 
 import mpu
 
