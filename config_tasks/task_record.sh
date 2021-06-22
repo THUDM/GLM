@@ -16,7 +16,8 @@ TRAIN_ARGS="--lr-decay-style linear \
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \
              --eval-interval 1000 \
-             --eval-iters 100"
+             --eval-iters 100 \
+             --deepspeed_config config_tasks/config_blocklm_10B_record.json"
 
 PATTERN_IDS=(0)
 
