@@ -50,8 +50,8 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 #ENV NV_PEER_MEM_VERSION=1.1
 #ENV NV_PEER_MEM_TAG=1.1-0
-#COPY nv_peer_memory ${STAGE_DIR}/nv_peer_memory
-##RUN git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory
+##COPY nv_peer_memory ${STAGE_DIR}/nv_peer_memory
+#RUN git clone https://github.com/Mellanox/nv_peer_memory.git --branch ${NV_PEER_MEM_TAG} ${STAGE_DIR}/nv_peer_memory
 #RUN cd ${STAGE_DIR}/nv_peer_memory && \
 #    ./build_module.sh && \
 #    cd ${STAGE_DIR} && \
@@ -67,8 +67,8 @@ RUN cd ${STAGE_DIR} && \
 ##############################################################################
 #ENV OPENMPI_BASEVERSION=4.0
 #ENV OPENMPI_VERSION=${OPENMPI_BASEVERSION}.5
-#COPY openmpi-4.0.5.tar.gz ${STAGE_DIR}/openmpi-4.0.5.tar.gz
-##RUN wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf -
+##COPY openmpi-4.0.5.tar.gz ${STAGE_DIR}/openmpi-4.0.5.tar.gz
+#RUN wget -q -O - https://download.open-mpi.org/release/open-mpi/v${OPENMPI_BASEVERSION}/openmpi-${OPENMPI_VERSION}.tar.gz | tar --no-same-owner -xzf -
 #RUN cd ${STAGE_DIR} && \
 #    tar --no-same-owner -xzf openmpi-4.0.5.tar.gz && \
 #    cd openmpi-${OPENMPI_VERSION} && \
@@ -140,8 +140,8 @@ RUN pip install psutil \
 # PyTorch
 ##############################################################################
 #ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
-#COPY pytorch /opt/pytorch
-##RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
+##COPY pytorch /opt/pytorch
+#RUN git clone --recursive https://github.com/pytorch/pytorch /opt/pytorch
 #RUN cd /opt/pytorch && git checkout -f v1.8.1 && \
 #    git submodule sync && git submodule update -f --init --recursive
 #ENV NCCL_LIBRARY=/usr/lib/x86_64-linux-gnu
@@ -174,8 +174,8 @@ RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
 # DeepSpeed
 ##############################################################################
 ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
-#RUN git clone https://github.com/microsoft/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
-COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
+RUN git clone https://github.com/microsoft/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
+#COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
 RUN cd ${STAGE_DIR}/DeepSpeed && \
     git checkout . && \
     DS_BUILD_OPS=1 ./install.sh -r

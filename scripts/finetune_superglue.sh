@@ -1,5 +1,6 @@
 DATA_ROOT=/root/data/superglue
 CHECKPOINT_PATH=/root/data/checkpoints
+SAVE_PATH=/root/data/finetune_checkpoints
 
 source $1    # Model
 source $2    # Task

@@ -1,4 +1,4 @@
-botocor
+botocore
 boto3
 deepspeed
 filelock
@@ -6,7 +6,6 @@ scipy
 nltk
 regex
 tqdm
-torch_scatter
 matplotlib
 mpi4py
 pandas
@@ -20,3 +19,5 @@ tensorboardX
 termcolor
 tldextract
 transformers
+rouge_score
+fasttext
