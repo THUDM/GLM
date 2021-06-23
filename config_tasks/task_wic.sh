@@ -11,7 +11,8 @@ EPOCH_SINGLE=40
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \
-            --weight-decay 1.0e-1"
+            --weight-decay 1.0e-1 \
+            --pattern-id 1"
 
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \

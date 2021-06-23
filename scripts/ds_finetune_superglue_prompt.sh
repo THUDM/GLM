@@ -38,7 +38,6 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --fp16 \
        --model-parallel-size ${MP_SIZE} \
        --continuous-prompt \
-       --pattern-id $2 \
        --num-prompt-tokens 3 \
        --epochs ${EPOCH_SINGLE} \
        --overwrite \

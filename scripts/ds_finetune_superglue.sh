@@ -35,6 +35,7 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
+       --pattern-id 0 \
        --fp16 \
        --model-parallel-size ${MP_SIZE} \
        --epochs ${EPOCH_SINGLE} \

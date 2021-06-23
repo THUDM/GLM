@@ -14,7 +14,8 @@ TRAIN_ARGS="--lr-decay-style linear \
             --weight-decay 0.1 \
             --loss-func mix \
             --wsc-negative \
-            --length-penalty 1"
+            --length-penalty 1 \
+            --pattern-id 2"
 
 COMMON_ARGS="--save-interval 10000 \
              --log-interval 50 \
