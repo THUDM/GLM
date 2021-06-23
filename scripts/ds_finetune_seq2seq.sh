@@ -8,12 +8,12 @@ source $2    # Task
 
 NUM_WORKERS=2
 NUM_GPUS_PER_WORKER=8
-HOSTFILE_PATH="./hostfile"
+HOST_FILE_PATH="./hostfile"
 MP_SIZE=1
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2"
-DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --hostfile ${HOSTFILE_PATH} --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER}"
+DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --hostfile ${HOST_FILE_PATH} --master_port ${MASTER_PORT} --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER}"
 
 EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 mkdir logs

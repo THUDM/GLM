@@ -182,7 +182,7 @@ First change `PATH` of the corresponding class (`Pile` and `CCNews`) in `NAMED_C
 ```shell
 bash scripts/ds_pretrain_nvidia.sh config/ds_block_2B.sh
 ```
-The script [scripts/ds_pretrain_nvidia.sh](scripts/ds_pretrain_nvidia.sh) launch the training program with DeepSpeed. You should change `NUM_WORKERS` and `NUM_GPUS_PER_WORKER` to the number of workers and the number of gpus per worker. Also change `` to the path to an [OpenMPI-style hostfile]((https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node)).
+The script [scripts/ds_pretrain_nvidia.sh](scripts/ds_pretrain_nvidia.sh) launch the training program with DeepSpeed. You should change `NUM_WORKERS` and `NUM_GPUS_PER_WORKER` to the number of workers and the number of gpus per worker. Also change `HOST_FILE_PATH` to the path to an [OpenMPI-style hostfile]((https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node)).
 
 ## Citation
 Please cite our paper if you find this code useful for your research:
