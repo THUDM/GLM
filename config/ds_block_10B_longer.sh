@@ -5,7 +5,6 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/config_block_10B_longer.json"
 gpt_options=" \
-       --seed 5891 \
        --block-lm \
        --task-mask \
        --bert-prob 0.4 \
@@ -34,7 +33,6 @@ gpt_options=" \
        --filter-english \
        --loader-scatter 32 \
        --no-lazy-loader \
-       --half-lazy-loader \
        --data-dir /mnt/glue_data \
        --cloze-eval \
        --multi-task-ratio 0.05 \

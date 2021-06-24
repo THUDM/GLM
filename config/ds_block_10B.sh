@@ -5,7 +5,6 @@ script_dir=$(dirname $script_path)
 
 config_json="$script_dir/config_block_10B.json"
 gpt_options=" \
-       --seed 5678 \
        --block-lm \
        --task-mask \
        --bert-prob 0.5 \
@@ -22,14 +21,12 @@ gpt_options=" \
        --seq-length 512 \
        --max-position-embeddings 1024 \
        --save /dataset/fd5061f6/english_data/checkpoints \
-       --load /dataset/fd5061f6/english_data/checkpoints/blocklm-10b03-30-16-42 \
        --log-interval 50 \
        --eval-interval 1000 \
        --save-interval 2000 \
        --train-iters 250000 \
        --train-data pile cc-news \
        --resume-dataloader \
-       --shuffle \
        --filter-english \
        --loader-scatter 32 \
        --tokenizer-type GPT2BPETokenizer \

@@ -178,11 +178,14 @@ Context: Ng is an adjunct professor at [MASK] (formerly associate professor and 
 GLM: [CLS] ng is an adjunct professor at [MASK] ( formerly associate professor and director of its stanford ai lab or sail ) . also a pioneer in online education , ng co - founded coursera and deeplearning . ai . [PAD] <|startofpiece|> the stanford university
 
 ## Pretrain
-First change `PATH` of the corresponding class (`Pile` and `CCNews`) in `NAMED_CORPORA` at [data_utils/corpora.py](data_utils/corpora.py). Then run
+Run the following script to pre-train the GLM-Large model
 ```shell
-bash scripts/ds_pretrain_nvidia.sh config/ds_block_2B.sh
+bash scripts/ds_pretrain_nvidia.sh config/ds_block_large.sh
 ```
-The script [scripts/ds_pretrain_nvidia.sh](scripts/ds_pretrain_nvidia.sh) launch the training program with DeepSpeed. You should change `NUM_WORKERS` and `NUM_GPUS_PER_WORKER` to the number of workers and the number of gpus per worker. Also change `HOST_FILE_PATH` to the path to an [OpenMPI-style hostfile]((https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node)).
+
+The script [scripts/ds_pretrain_nvidia.sh](scripts/ds_pretrain_nvidia.sh) launches the training program with DeepSpeed. You should change `NUM_WORKERS` and `NUM_GPUS_PER_WORKER` to the number of workers and the number of gpus per worker. Also change `HOST_FILE_PATH` to the path to an OpenMPI-style hostfile. More details about DeepSpeed launcher can be found [here](https://www.deepspeed.ai/getting-started/#resource-configuration-multi-node).
+
+The file [config/ds_block_large.sh](config/ds_block_large.sh) defines the hyperparameters for pretraining. Most of the arguments are fairly self-explanatory. Specifically, `--train-data` can be multiple keywords defined in `NAMED_CORPORA` in [data_utils/corpora.py](data_utils/corpora.py). The hyperparameters of the optimizer are defined in the corresponding json file under `config`. The semantics of the json file can be found [here](https://www.deepspeed.ai/docs/config-json).
 
 ## Citation
 Please cite our paper if you find this code useful for your research:
