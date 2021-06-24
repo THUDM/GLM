@@ -67,7 +67,8 @@ class PVP(ABC):
         self.task_mask = args.task_mask
         self.continuous_prompt = args.continuous_prompt
         self.prefix_prompt = args.prefix_prompt
-        print_rank_0(f"Prompt tokens in pvp {self.num_prompt_tokens} spell length {self.spell_length}")
+        if self.continuous_prompt:
+            print_rank_0(f"Prompt tokens in pvp {self.num_prompt_tokens} spell length {self.spell_length}")
 
         if verbalizer_file:
             self.verbalize = PVP._load_verbalizer_from_file(verbalizer_file, self.pattern_id)
