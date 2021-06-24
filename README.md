@@ -122,8 +122,8 @@ bash scripts/ds_finetune_superglue_prompt.sh \
 - Run the following script (use the CNN/Daily Mail dataset as an example)
 
   ```
-  bash scripts/finetune_seq2seq.sh \ 
-     config_tasks/model_blocklm_large_generation.sh \ 
+  bash scripts/ds_finetune_seq2seq.sh \ 
+     config_tasks/model_blocklm_10B.sh \ 
      config_tasks/seq_cnndm_org.sh
   ```
 - The summaries are written into `./runs/experiment_name/test.jsonl.hyps`. The references are written into `test.jsonl.refs` in the same directory. For calculating rouge, install [file2rouge](https://github.com/pltrdy/files2rouge) and download Stanford CoreNLP from [here](http://nlp.stanford.edu/software/stanford-corenlp-full-2016-10-31.zip). Run  the following script
