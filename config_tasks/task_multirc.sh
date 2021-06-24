@@ -3,11 +3,9 @@ TASK_NAME=multirc
 DATA_PATH="${DATA_ROOT}/MultiRC"
 MAX_SEQ_LEN=512
 
-LR_RANGE=(1e-5)
-EPOCH_RANGE=(10)
-
 LR_SINGLE=1e-5
-EPOCH_SINGLE=12
+EPOCH_SINGLE=15
+XXLARGE_EPOCH=12
 
 TRAIN_ARGS="--batch-size 16 \
             --lr-decay-style linear \

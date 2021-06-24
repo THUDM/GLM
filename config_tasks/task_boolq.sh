@@ -3,11 +3,9 @@ TASK_NAME=BoolQ
 DATA_PATH="${DATA_ROOT}/BoolQ"
 MAX_SEQ_LEN=256
 
-LR_RANGE=(1e-5)
-EPOCH_RANGE=(10)
-
 LR_SINGLE=1e-5
-EPOCH_SINGLE=24
+EPOCH_SINGLE=20
+XXLARGE_EPOCH=24
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \

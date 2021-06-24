@@ -3,11 +3,9 @@ TASK_NAME=wic
 DATA_PATH="${DATA_ROOT}/WiC"
 MAX_SEQ_LEN=256
 
-LR_RANGE=(5e-6 1e-5 2e-5)
-EPOCH_RANGE=(20)
-
 LR_SINGLE=1e-5
-EPOCH_SINGLE=40
+EPOCH_SINGLE=30
+XXLARGE_EPOCH=40
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \

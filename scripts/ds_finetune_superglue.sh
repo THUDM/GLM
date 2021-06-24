@@ -38,7 +38,7 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --pattern-id 0 \
        --fp16 \
        --model-parallel-size ${MP_SIZE} \
-       --epochs ${EPOCH_SINGLE} \
+       --epochs ${XXLARGE_EPOCH} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
 

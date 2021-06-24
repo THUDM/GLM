@@ -39,7 +39,7 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --model-parallel-size ${MP_SIZE} \
        --continuous-prompt \
        --num-prompt-tokens 3 \
-       --epochs ${EPOCH_SINGLE} \
+       --epochs ${XXLARGE_EPOCH} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
 

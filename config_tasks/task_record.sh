@@ -3,11 +3,9 @@ TASK_NAME=ReCoRD
 DATA_PATH="${DATA_ROOT}/ReCoRD"
 MAX_SEQ_LEN=512
 
-LR_RANGE=(1e-5)
-EPOCH_RANGE=(5)
-
 LR_SINGLE=1e-5
-EPOCH_SINGLE=3
+EPOCH_SINGLE=5
+XXLARGE_EPOCH=3
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \
