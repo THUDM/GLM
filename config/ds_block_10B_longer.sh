@@ -35,10 +35,10 @@ gpt_options=" \
        --no-lazy-loader \
        --data-dir /mnt/glue_data \
        --cloze-eval \
-       --multi-task-ratio 0.05 \
-       --multi-task-data agnews yelp-full cola mrpc qnli qqp sst2 mnli \
-       --multi-batch-size 8 \
-       --multi-seq-length 256 \
+       --multi-task-ratio 0.1 \
+       --multi-task-data race squad yelp-full cola mrpc qnli qqp sst2 mnli \
+       --multi-batch-size 4 \
+       --multi-seq-length 512 \
        --tokenizer-type GPT2BPETokenizer \
        --split 949,50,1 \
        --distributed-backend nccl \
