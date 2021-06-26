@@ -330,10 +330,10 @@ class ConstructBlockStrategy:
                         masked_lengths.append(block_length)
                         masked_count += block_length
                 if self.masked_lm:
-                    attention_mask.append(len(sample['text']))
+                    sep = len(sample['text'])
                 else:
-                    attention_mask.append(len(sample['text']) - masked_count + len(masked_lengths))
-                data = self.generate_blank_data(sample, masked_lengths, attention_mask[-1], rng, task='bert')
+                    sep = len(sample['text']) - masked_count + len(masked_lengths)
+                data = self.generate_blank_data(sample, masked_lengths, sep, rng, task='bert')
                 if data is not None:
                     if self.encoder_decoder:
                         source_tokens, target_tokens, loss_masks = data
@@ -346,6 +346,7 @@ class ConstructBlockStrategy:
                         target_batch.append(targets)
                         loss_mask_batch.append(loss_masks)
                         position_id_batch.append(position_ids)
+                    attention_mask.append(sep)
 
         elif rand < self.bert_prob + self.gap_sentence_prob:
             mode = 'sentence'
