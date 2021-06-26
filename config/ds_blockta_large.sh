@@ -20,15 +20,12 @@ gpt_options=" \
        --num-attention-heads 16 \
        --seq-length 512 \
        --max-position-embeddings 1024 \
-       --save /dataset/c07bd62b/checkpoints \
+       --save /dataset/fd5061f6/english_data/checkpoints \
        --save-interval 2500 \
        --train-iters 500000 \
        --resume-dataloader \
        --train-data wikibook cc-news openwebtext stories \
        --shuffle \
-       --filter-english \
-       --loader-scatter 8 \
-       --no-lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \
        --split 949,50,1 \
