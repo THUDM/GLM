@@ -6,4 +6,4 @@ MODEL_ARGS="--block-lm \
             --max-position-embeddings 512 \
             --tokenizer-model-type bert-base-uncased \
             --tokenizer-type BertWordPieceTokenizer \
-            --load-pretrained ${CHECKPOINT_PATH}/block-lm-blank-cls12-18-12-50"
+            --load-pretrained ${CHECKPOINT_PATH}/blocklm-base-blank"
