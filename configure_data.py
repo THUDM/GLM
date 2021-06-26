@@ -358,9 +358,9 @@ def build_multi_task_dataset(args, tokenizer):
             task = task.lower()
             data_dir = os.path.join(args.data_dir, task_dirs[task])
             train_datasets.append(
-                GlueDataset(args, task, data_dir, multi_seq_length, "train", tokenizer, pattern_ensemble=True))
+                SuperGlueDataset(args, task, data_dir, multi_seq_length, "train", tokenizer, pattern_ensemble=True))
             valid_datasets.append(
-                GlueDataset(args, task, data_dir, multi_seq_length, "dev", tokenizer, pattern_ensemble=True))
+                SuperGlueDataset(args, task, data_dir, multi_seq_length, "dev", tokenizer, pattern_ensemble=True))
         train = MultiTaskDataset(args.multi_task_data, train_datasets)
         valid = MultiTaskDataset(args.multi_task_data, valid_datasets)
         world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
