@@ -68,7 +68,7 @@ def train_valid_datasets_provider(args, tokenizer):
 
 
 def metrics_func_provider(args, tokenizer, is_test):
-    """Privde metrics callback function."""
+    """Provide metrics callback function."""
 
     def single_dataset_provider(split):
         if args.task.lower() == 'blank':
