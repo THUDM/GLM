@@ -33,10 +33,11 @@ from sklearn.metrics import f1_score
 
 def accuracy_metric(predictions, labels, examples):
     count = 0
+    num_predictions = max(len(predictions), 1)
     assert len(predictions) == len(labels)
     for prediction, label in zip(predictions, labels):
         count += prediction == label
-    return count * 100.0 / len(predictions)
+    return count * 100.0 / num_predictions
 
 
 def f1_metric(predictions, labels, examples):
