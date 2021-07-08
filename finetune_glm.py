@@ -420,13 +420,13 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                                 (train_dataloader, train_block_dataloader), (valid_dataloader, valid_block_dataloader),
                                 end_of_epoch_callback, args, timers,
                                 summary_writer=summary_writer)
-        if end_of_train_callback is not None:
-            if best_iteration is not None:
+        if end_of_train_callback is not None and best_iteration is not None:
                 with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
                     args.load = os.path.join(args.save, "best")
                     load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True, no_deepspeed=True)
                     args.load = None
-            torch.distributed.barrier()
+        torch.distributed.barrier()
+        if end_of_train_callback is not None:
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
     # Or just evaluate.
     else:
