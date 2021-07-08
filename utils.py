@@ -376,7 +376,6 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
                              'Specify --no-load-optim or --finetune to prevent '
                              'attempting to load the optimizer '
                              'state.'.format(checkpoint_name))
-                exit()
 
     # Iterations.
     if args.finetune or release:
@@ -389,7 +388,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
                 iteration = sd['total_iters']
             except KeyError:
                 print_rank_0('A metadata file exists but Unable to load iteration '
-                             ' from checkpoint {}, starting from zero'.format(checkpoint_name))
+                             ' from checkpoint {}, starting from 0 iteration'.format(checkpoint_name))
                 iteration = 0
 
     # rng states.
@@ -401,11 +400,10 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
             torch.cuda.set_rng_state(sd['cuda_rng_state'])
             mpu.get_cuda_rng_tracker().set_states(sd['rng_tracker_states'])
         except KeyError:
-            print_rank_0('Unable to load optimizer from checkpoint {}, exiting. '
+            print_rank_0('Unable to load random state from checkpoint {}, exiting. '
                          'Specify --no-load-rng or --finetune to prevent '
                          'attempting to load the random '
                          'state.'.format(checkpoint_name))
-            exit()
 
     if mpu.get_data_parallel_rank() == 0:
         print('  successfully loaded {}'.format(checkpoint_name))
