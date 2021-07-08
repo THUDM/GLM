@@ -132,7 +132,7 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
                     for i in range(10):
                         sample_tokens = text[i]['tokens'][:1024]
                         print(sample_tokens)
-                        print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
+                        print(tokenizer.DecodeIds(sample_tokens))
                 torch.distributed.barrier()
         return text
     elif issubclass(dataset, corpora.KeyReader):

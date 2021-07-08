@@ -93,6 +93,9 @@ class DataReader:
     PATH = None
     assert_str = None
     reserve_punct = False
+    split_row = True
+    TASK_QUEUE_LIMIT = 10000000
+    DONE_QUEUE_LIMIT = 10000000
 
     def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         raise NotImplementedError
@@ -109,11 +112,13 @@ class DataReader:
 
     def process(self):
         if os.path.isdir(self.PATH):
-            paths = [entry.path for entry in os.scandir(self.PATH) if
-                     not entry.is_dir() and not entry.name.endswith("bz2")]
+            paths = [os.path.join(top, name) for top, _, names in os.walk(self.PATH) for name in names]
+            # paths = [entry.path for entry in os.scandir(self.PATH) if
+            #          not entry.is_dir() and not entry.name.endswith("bz2")]
         else:
             paths = [self.PATH]
-        task_queue, done_queue, info_queue = Queue(maxsize=10000000), Queue(maxsize=10000000), Queue()
+        task_queue, done_queue, info_queue = Queue(maxsize=self.TASK_QUEUE_LIMIT), Queue(
+            maxsize=self.DONE_QUEUE_LIMIT), Queue()
         processes = []
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
@@ -125,8 +130,13 @@ class DataReader:
             for path in paths:
                 print_rank_0(f"Start reading {path}")
                 with open(path) as file:
-                    for row in file:
-                        task_queue.put(row)
+                    if self.split_row:
+                        for row in file:
+                            task_queue.put(row)
+                    else:
+                        items = json.load(file)
+                        for item in items["RECORDS"]:
+                            task_queue.put(item)
             print_rank_0("Read input complete")
             for i in range(len(processes)):
                 task_queue.put('STOP')
@@ -179,9 +189,9 @@ class PromptReader(DataReader):
 
     def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
-            row = row.rstrip()
             if row:
                 if self.is_json:
+                    row = row.rstrip()
                     row = json.loads(row)
                 prompts, texts = self.process_line(row, tokenizer, tokenize)
                 for prompt, text in zip(prompts, texts):
@@ -237,7 +247,7 @@ class KeyReader(DataReader):
 
 
 class zhihu(PromptReader):
-    PATH = "/root/data/zhihu/zhihu"
+    PATH = "/dataset/fd5061f6/data/tokenize_data/zhihu.lazy"
     reserve_punct = True
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
     qtitle_prefix = "问题："
@@ -308,7 +318,7 @@ class zhidao(PromptReader):
 
 
 class baike(PromptReader):
-    PATH = "/root/data/baike/baike"
+    PATH = "/dataset/fd5061f6/data/tokenize_data/baike.lazy"
     reserve_punct = True
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
@@ -478,6 +488,29 @@ class BertLargeData(BertData):
     PATH = '/dataset/c07bd62b/cognitive/zhengxiao/formatted_one_article_per_line_large'
 
 
+class WuDaoCorpus(PromptReader):
+    PATH = "/dataset/fd5061f6/chinese_data/WuDao"
+    is_json = False
+    reserve_punct = True
+    split_row = False
+
+    def process_line(self, item, tokenizer, tokenize):
+        prompts, texts = [], []
+        text = ""
+        title = item.get("title", None)
+        content = item.get("content", None)
+        if title:
+            text += title.strip() + " "
+        if content:
+            text += content
+        if len(text) > 100:
+            prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
+                                                                                             tokenize)
+            prompts.append(prompt)
+            texts.append(text)
+        return prompts, texts
+
+
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
     'wikipedia-key': KeyReader,
@@ -491,5 +524,6 @@ NAMED_CORPORA = {
     "bert-large": BertLargeData,
     'cc-news': CCNews,
     'pile': Pile,
-    'stories': Stories
+    'stories': Stories,
+    'wudao': WuDaoCorpus
 }

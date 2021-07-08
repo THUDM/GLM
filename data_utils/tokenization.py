@@ -1130,25 +1130,44 @@ class GPT2BPETokenizer(Tokenizer):
 
 
 class ChineseSPTokenizer(Tokenizer):
-    def __init__(self, add_block_symbols=False, **kwargs):
+    def __init__(self, add_block_symbols=False, add_task_mask=False, add_decoder_mask=False, **kwargs):
         self.text_tokenizer = sp_tokenizer.from_pretrained()
 
-        self.num_command_tokens = 2
+        self.num_command_tokens = 0
         self.num_text_tokens = self.text_tokenizer.sp.vocab_size()
-        self.num_tokens = self.num_text_tokens + 1
+        self.num_tokens = self.num_text_tokens
         self.num_type_tokens = 2
 
         self._command_tokens = [
             CommandToken('pad', '<|endoftext|>', self.num_text_tokens),
             CommandToken('eos', '<|endoftext|>', self.num_text_tokens),
+            CommandToken('sep', '[SEP]', self.num_text_tokens + 1),
+            CommandToken('ENC', '[CLS]', self.num_text_tokens + 2),
+            CommandToken('MASK', '[MASK]', self.num_text_tokens + 3, lstrip=True),
+            CommandToken('unk', '[UNK]', self.num_text_tokens + 4)
         ]
+        self.num_tokens += 5
+        self.num_command_tokens += 6
         if add_block_symbols:
             self._command_tokens.extend([
-                CommandToken('sop', '<|startofpiece|>', self.num_text_tokens + 1),
-                CommandToken('eop', '<|endofpiece|>', self.num_text_tokens + 2)
+                CommandToken('sop', '<|startofpiece|>', self.num_tokens + 1),
+                CommandToken('eop', '<|endofpiece|>', self.num_tokens + 2)
             ])
             self.num_tokens += 2
             self.num_command_tokens += 2
+            if add_task_mask:
+                self._command_tokens.extend([
+                    CommandToken('gMASK', '[gMASK]', self.num_tokens, lstrip=True),
+                    CommandToken('sMASK', '[sMASK]', self.num_tokens + 1, lstrip=True)
+                ])
+                self.num_tokens += 2
+                self.num_command_tokens += 2
+            if add_decoder_mask:
+                self._command_tokens.extend([
+                    CommandToken('dBLOCK', '[dBLOCK]', self.num_tokens)
+                ])
+                self.num_tokens += 1
+                self.num_command_tokens += 1
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
@@ -1197,7 +1216,7 @@ class ChineseSPTokenizer(Tokenizer):
         elif Id in self.type_id_map:
             return self.type_id_map[Id].token
         else:
-            return self.text_tokenizer.convert_id_to_token(Id)
+            return self.text_tokenizer.convert_id_to_token(int(Id))
 
     def TokenToId(self, token, type_token=False):
         if isinstance(token, (TypeToken, CommandToken)):
@@ -1212,6 +1231,7 @@ class ChineseSPTokenizer(Tokenizer):
         if isinstance(Ids, Tokenization):
             Ids = Ids.tokenization
         try:
+            Ids = list(Ids)
             first_eos = Ids.index(self.get_command('eos').Id)
             eos_count = len(Ids) - first_eos
             Ids = Ids[:first_eos]
