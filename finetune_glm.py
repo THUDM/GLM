@@ -296,6 +296,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
         if mpu.get_model_parallel_rank() == 0:
             train_dataset, valid_dataset = train_valid_datasets_provider(args, tokenizer)
             train_dataloader, valid_dataloader = _build_train_valid_dataloaders(train_dataset, valid_dataset, args)
+            if args.no_validation:
+                valid_dataloader = None
             train_iters = torch.cuda.LongTensor([len(train_dataloader)])
         else:
             train_iters = torch.cuda.LongTensor([0])
@@ -306,7 +308,10 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
             args.train_iters = args.epochs * args.train_iters_per_epoch
 
             train_dataloader = FakeDataloader(args.train_iters_per_epoch)
-            valid_dataloader = FakeDataloader(None)
+            if args.no_validation:
+                valid_dataloader = None
+            else:
+                valid_dataloader = FakeDataloader(None)
         if args.block_lm_ratio > 0.0:
             if mpu.get_model_parallel_rank() == 0:
                 train_block_dataset, valid_block_dataset = train_valid_datasets_provider(args, tokenizer,
@@ -329,7 +334,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     timers('callback function').start()
     end_of_epoch_callback, end_of_train_callback = None, None
     if end_of_epoch_callback_provider is not None:
-        if train_valid_datasets_provider is not None and args.epochs > 0:
+        if train_valid_datasets_provider is not None and args.epochs > 0 and not args.no_validation:
             end_of_epoch_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=False)
         end_of_train_callback = end_of_epoch_callback_provider(args, tokenizer, is_test=True)
     timers('callback function').stop()
@@ -415,13 +420,13 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                                 (train_dataloader, train_block_dataloader), (valid_dataloader, valid_block_dataloader),
                                 end_of_epoch_callback, args, timers,
                                 summary_writer=summary_writer)
-        if best_iteration is not None and end_of_train_callback is not None:
-            with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-                args.load = os.path.join(args.save, "best")
-                load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True, no_deepspeed=True)
-                args.load = None
-        torch.distributed.barrier()
         if end_of_train_callback is not None:
+            if best_iteration is not None:
+                with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
+                    args.load = os.path.join(args.save, "best")
+                    load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True, no_deepspeed=True)
+                    args.load = None
+            torch.distributed.barrier()
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
     # Or just evaluate.
     else:
@@ -456,7 +461,7 @@ if __name__ == '__main__':
         from tasks.superglue.finetune import main
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
-    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum']:
+    elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum', 'extraction']:
         from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))

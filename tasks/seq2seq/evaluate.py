@@ -364,7 +364,6 @@ class BlankLMEvaluater(DecoderEvaluater):
                         # print(tokens)
                         # print(position_ids)
                         next_token_logits, *mems = model(tokens, position_ids, attention_mask, return_memory=True)
-                        seq_length = next_token_logits.size(1)
                         next_token_logits = next_token_logits[:, -1]
                         position_ids = tokens.new_ones(batch_size, 2, 1)
                         for i, text in enumerate(tokens.tolist()):

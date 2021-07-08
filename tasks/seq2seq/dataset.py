@@ -310,6 +310,104 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         return sample
 
 
+class ExtractionDataset(torch.utils.data.Dataset):
+    def __init__(self, args, split, tokenizer):
+        self.args = args
+        task, data_dir = args.task.lower(), args.data_dir
+        self.max_src_length, self.max_tgt_length = args.src_seq_length, args.tgt_seq_length
+        self.split = split
+        self.tokenizer = tokenizer
+        if split == "train":
+            filename = "train"
+        elif split == "dev":
+            filename = "valid"
+        elif split == "test":
+            filename = "test"
+        else:
+            raise NotImplementedError(split)
+        print_rank_0(f"Creating {task}-{split} dataset from {data_dir}")
+        self.dataset_name = split
+        source_texts, target_texts = [], []
+        with open(os.path.join(data_dir, f"{filename}.source"),
+                  encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                source_texts.append(line)
+        with open(os.path.join(data_dir, f"{filename}.target"), encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                target_texts.append(line)
+        self.examples, self.example_list = {}, []
+        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+            if (idx + 1) % 20000 == 0:
+                print_rank_0(f"Complete {idx + 1} examples")
+            guid = "%s-%s" % (split, idx)
+            meta = {"ref": target_text}
+            example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+            self.examples[guid] = example
+            self.example_list.append(example)
+        print_rank_0(f"Return {len(self.examples)} {split} examples")
+
+    def __len__(self):
+        return len(self.example_list)
+
+    def __getitem__(self, idx):
+        example = self.example_list[idx]
+        source_text, target_text = example.text_a, example.text_b
+        mask_token = 'MASK'
+        mask_id = self.tokenizer.get_command(mask_token).Id
+        sop_id = self.tokenizer.get_command('sop').Id
+        eop_id = self.tokenizer.get_command('eop').Id
+        pad_id = self.tokenizer.get_command('pad').Id
+
+        def pad_to(text, max_len, pad_id):
+            if len(text) > max_len:
+                text = text[:max_len]
+            else:
+                text = text + [pad_id] * (max_len - len(text))
+            return text
+
+        source_tokens = self.tokenizer.EncodeAsIds(source_text).tokenization
+        masked_tgt = target_text.split("|")
+        source_tokens = pad_to(source_tokens, self.max_src_length, pad_id)
+        sep = len(source_tokens)
+        position_ids = list(range(len(source_tokens)))
+        block_position_ids = [0] * len(source_tokens)
+        if self.split == 'train':
+            mask_positions = [i for i, x in enumerate(source_tokens) if x == mask_id]
+            assert len(mask_positions) <= len(masked_tgt)
+            tokens = source_tokens
+            target_ids = [0] * len(source_tokens)
+            loss_mask = [0] * len(source_tokens)
+            for i, mask_pos in enumerate(mask_positions):
+                tgt_text = masked_tgt[i]
+                tgt_tokens = self.tokenizer.EncodeAsIds(" " + tgt_text).tokenization
+                tokens += [sop_id] + tgt_tokens
+                target_ids += tgt_tokens + [eop_id]
+                loss_mask += [1] * (len(tgt_tokens) + 1)
+                position_ids += [mask_pos] * (len(tgt_tokens) + 1)
+                block_position_ids += [i + 1 for i in range(len(tgt_tokens) + 1)]
+            tokens = pad_to(tokens, self.max_src_length + self.max_tgt_length, pad_id)
+            target_ids = pad_to(target_ids, self.max_src_length + self.max_tgt_length, pad_id)
+            loss_mask = pad_to(loss_mask, self.max_src_length + self.max_tgt_length, 0)
+            position_ids = pad_to(position_ids, self.max_src_length + self.max_tgt_length, 0)
+            block_position_ids = pad_to(block_position_ids, self.max_src_length + self.max_tgt_length, 0)
+            position_ids = [position_ids, block_position_ids]
+            sample = {'text': np.array(tokens, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
+                      'attention_mask': np.array(sep, dtype=np.int64),
+                      'loss_mask': np.array(loss_mask, dtype=np.int64),
+                      "position_id": np.array(position_ids, dtype=np.int64), "uid": example.guid}
+        else:
+            tokens = source_tokens + [sop_id]
+            mask_pos = source_tokens.index(mask_id)
+            position_ids = position_ids + [mask_pos]
+            block_position_ids = block_position_ids + [1]
+            position_ids = [position_ids, block_position_ids]
+            sample = {'text': np.array(tokens, dtype=np.int64), 'attention_mask': np.array(sep, dtype=np.int64),
+                      "position_id": np.array(position_ids, dtype=np.int64), "uid": example.guid}
+        return sample
+
+
 class BlankLMDataset(torch.utils.data.Dataset):
     def __init__(self, args, split, tokenizer):
         self.args = args

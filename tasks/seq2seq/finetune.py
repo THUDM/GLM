@@ -21,7 +21,7 @@ from tasks.eval_utils import accuracy_func_provider
 from finetune_glm import finetune
 from pretrain_glm import get_batch
 from collections import OrderedDict
-from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset
+from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset, ExtractionDataset
 from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater, BlankLMEvaluater
 
 global_tokenizer = None
@@ -38,8 +38,8 @@ def seq2seq_forward_step(data, model, args, timers, mems):
         timers('batch generator').stop()
     # Forward model.
     logits, *mems = model(tokens, position_ids, attention_mask, *mems)
-    logits, loss_mask = logits[:, args.src_seq_length:], loss_mask[:, args.src_seq_length:]
-    labels = labels[:, args.src_seq_length:]
+    # logits, loss_mask = logits[:, args.src_seq_length:], loss_mask[:, args.src_seq_length:]
+    # target_ids = target_ids[:, args.src_seq_length:]
     losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(), labels)
     if args.label_smoothing > 0.0:
         epsilon = args.label_smoothing
@@ -56,6 +56,9 @@ def train_valid_datasets_provider(args, tokenizer):
     if args.task.lower() == 'blank':
         train_dataset = BlankLMDataset(args, split='train', tokenizer=tokenizer)
         valid_dataset = None
+    elif args.task.lower() == 'extraction':
+        train_dataset = ExtractionDataset(args, split='train', tokenizer=tokenizer)
+        valid_dataset = None
     else:
         train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
         valid_dataset = None
@@ -65,15 +68,17 @@ def train_valid_datasets_provider(args, tokenizer):
 
 
 def metrics_func_provider(args, tokenizer, is_test):
-    """Privde metrics callback function."""
+    """Provide metrics callback function."""
 
     def single_dataset_provider(split):
         if args.task.lower() == 'blank':
             return BlankLMDataset(args, split=split, tokenizer=tokenizer)
+        elif args.task.lower() == 'extraction':
+            return ExtractionDataset(args, split=split, tokenizer=tokenizer)
         else:
             return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
 
-    if args.task.lower() == 'blank':
+    if args.task.lower() in ['blank', 'extraction']:
         evaluater = BlankLMEvaluater(args, tokenizer)
         eval_func = evaluater.evaluate
         metric_dict = {}
@@ -112,7 +117,8 @@ def metrics_func_provider(args, tokenizer, is_test):
 def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
-    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum']:
+    if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum',
+                             'extraction']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:
