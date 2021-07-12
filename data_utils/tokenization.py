@@ -941,7 +941,7 @@ class GPT2BPETokenizer(Tokenizer):
             self._command_tokens = [
                 CommandToken('pad', '<|endoftext|>', self.text_tokenizer.encoder['</s>']),
                 CommandToken('eos', '<|endoftext|>', self.text_tokenizer.encoder['</s>']),
-                CommandToken('sep', '[SEP]', self.text_tokenizer.encoder['</s>']),
+                CommandToken('sep', '[SEP]', self.text_tokenizer.encoder['<pad>']),
                 CommandToken('ENC', '[CLS]', self.text_tokenizer.encoder['<s>']),
                 CommandToken('MASK', '[MASK]', self.text_tokenizer.encoder['<mask>'], lstrip=True),
                 CommandToken('unk', '[UNK]', self.text_tokenizer.encoder['<unk>'])
