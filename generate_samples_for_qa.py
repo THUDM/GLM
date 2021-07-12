@@ -210,26 +210,30 @@ def sample_sequence(model, tokenizer, context_tokens, context_length, args, devi
 
 
 DEFAULT_REF_TEXT = """
-Martin Luther King Jr. (born Michael King Jr.; January 15, 1929 – April 4, 1968) was an American Baptist minister and activist who 
-became the most visible spokesperson and leader in the American civil rights movement from 1955 until his assassination in 1968. 
-King advanced civil rights through nonviolence and civil disobedience, inspired by his Christian beliefs and the nonviolent 
-activism of Mahatma Gandhi. He was the son of early civil rights activist Martin Luther King Sr.
-"""
+Martin Luther King Jr. (born Michael King Jr.; January 15, 1929 – April 4, 1968) was an American Baptist minister and activist who became the most visible spokesperson and leader in the American civil rights movement from 1955 until his assassination in 1968. King advanced civil rights through nonviolence and civil disobedience, inspired by his Christian beliefs and the nonviolent activism of Mahatma Gandhi. He was the son of early civil rights activist Martin Luther King Sr."""
 
 
 def read_context(tokenizer, args, output):
     terminate_runs, skip_run = 0, 0
     if mpu.get_model_parallel_rank() == 0:
-        ref_text = input("\nReference Text for QA (默认使用Martin Luther King维基百科的第一段) >>>")
-        ref_text = ref_text if ref_text else DEFAULT_REF_TEXT
         while True:
+            ref_text = input("\nReference Text for QA (直接回车，则默认Martin Luther King维基百科的第一段) >>>")
+            if not ref_text:
+                ref_text = DEFAULT_REF_TEXT
+                print(DEFAULT_REF_TEXT)
             raw_text = input("\nYour Question (default: When did Martin Luther King died? He died on [MASK] ) >>> ")
+            if not raw_text:
+                raw_text = "When did Martin Luther King died? He died on [MASK]"
             if not raw_text:
                 print('Question should not be empty!')
                 continue
             if raw_text == "stop":
                 terminate_runs = 1
                 break
+            print("Question:", raw_text)
+
+            raw_text = ref_text + ' ' + raw_text
+            _raw_text = raw_text
             generation_mask = '[gMASK]' if args.task_mask else '[MASK]'
             if args.block_lm and 'MASK]' not in raw_text:
                 raw_text += ' ' + generation_mask
@@ -270,7 +274,7 @@ def read_context(tokenizer, args, output):
                                 group=mpu.get_model_parallel_group())
     if mpu.get_model_parallel_rank() != 0:
         raw_text = tokenizer.DecodeIds(context_tokens_tensor.tolist())
-    return terminate_runs, raw_text, context_tokens_tensor, context_length
+    return terminate_runs, raw_text, context_tokens_tensor, context_length, _raw_text
 
 
 def generate_samples(model, tokenizer, args, device):
@@ -283,7 +287,7 @@ def generate_samples(model, tokenizer, args, device):
         while True:
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
 
-            terminate_runs, raw_text, context_tokens_tensor, context_length = read_context(tokenizer, args, output)
+            terminate_runs, raw_text, context_tokens_tensor, context_length, _raw_text = read_context(tokenizer, args, output)
             if terminate_runs == 1:
                 return
             start_time = time.time()
@@ -317,7 +321,7 @@ def generate_samples(model, tokenizer, args, device):
                 print("\nContext:", raw_text, flush=True)
                 decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
                 trim_decode_tokens = decode_tokens
-                print("\nGLM:", trim_decode_tokens, flush=True)
+                print("\nGLM:", trim_decode_tokens[len(_raw_text) + 4:], flush=True)
                 output.write(trim_decode_tokens + "\n")
 
             torch.distributed.barrier(group=mpu.get_model_parallel_group())
