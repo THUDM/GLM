@@ -7,4 +7,4 @@ MODEL_ARGS="--block-lm \
             --max-position-embeddings 512 \
             --tokenizer-model-type roberta \
             --tokenizer-type GPT2BPETokenizer \
-            --load-pretrained ${CHECKPOINT_PATH}/blocklm-roberta-large-blank"
+            --load-pretrained ./checkpoints/blocklm-roberta-large-blank"
