@@ -21,6 +21,7 @@ gpt_options=" \
        --seq-length 512 \
        --max-position-embeddings 1024 \
        --save /dataset/fd5061f6/english_data/checkpoints \
+       --load /dataset/fd5061f6/english_data/checkpoints/blocklm-10b-chinese07-08-15-28 \
        --log-interval 50 \
        --eval-interval 1000 \
        --save-interval 2000 \
