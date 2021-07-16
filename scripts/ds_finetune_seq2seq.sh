@@ -1,5 +1,5 @@
 DATA_ROOT=/root/data
-CHECKPOINT_PATH="/dataset/c07bd62b/finetune_checkpoints"
+CHECKPOINT_PATH="."
 SAVE_PATH=/root/data/finetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
