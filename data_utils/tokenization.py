@@ -1230,14 +1230,22 @@ class ChineseSPTokenizer(Tokenizer):
             return ' '.join(Id.token if isinstance(Id, TypeToken) else self.type_id_map[Id].token for Id in Ids)
         if isinstance(Ids, Tokenization):
             Ids = Ids.tokenization
-        try:
-            Ids = list(Ids)
-            first_eos = Ids.index(self.get_command('eos').Id)
-            eos_count = len(Ids) - first_eos
-            Ids = Ids[:first_eos]
-        except ValueError:
-            eos_count = 0
-        return " ".join((self.text_tokenizer.decode(Ids), *(['<|endoftext|>'] * eos_count)))
+        Ids = list(Ids)
+        pieces = []
+        last = 0
+        for i, token_id in enumerate(Ids):
+            if token_id in self.command_id_map:
+                pieces.append(Ids[last: i])
+                pieces.append(token_id)
+                last = i + 1
+        pieces.append(Ids[last:])
+        text = ""
+        for piece in pieces:
+            if isinstance(piece, int):
+                text += self.command_id_map[piece].token
+            elif piece:
+                text += self.text_tokenizer.decode(piece)
+        return text
 
     def DecodeTokens(self, Tokens, type_token=False):
         if type_token:
