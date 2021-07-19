@@ -888,6 +888,31 @@ class BertWordPieceTokenizer(Tokenizer):
             return self.command_id_map[Id].token
         return self.text_tokenizer.ids_to_tokens[Id]
 
+    @staticmethod
+    def clean_up_tokenization(out_string: str) -> str:
+        """
+        Clean up a list of simple English tokenization artifacts like spaces before punctuations and abbreviated forms.
+
+        Args:
+            out_string (:obj:`str`): The text to clean up.
+
+        Returns:
+            :obj:`str`: The cleaned-up string.
+        """
+        out_string = (
+            out_string.replace(" .", ".")
+                .replace(" ?", "?")
+                .replace(" !", "!")
+                .replace(" ,", ",")
+                .replace(" ' ", "'")
+                .replace(" n't", "n't")
+                .replace(" 'm", "'m")
+                .replace(" 's", "'s")
+                .replace(" 've", "'ve")
+                .replace(" 're", "'re")
+        )
+        return out_string
+
     def TokenToId(self, token, type_token=False):
         """convert sentencpiece token to Id"""
         if isinstance(token, (TypeToken, CommandToken)):
@@ -914,7 +939,9 @@ class BertWordPieceTokenizer(Tokenizer):
                 new_tokens[-1] += token[2:]
             else:
                 new_tokens.append(token)
-        return ' '.join(new_tokens)
+        output = ' '.join(new_tokens)
+        output = self.clean_up_tokenization(output)
+        return output
 
     def DecodeTokens(self, Tokens, type_token=False):
         """converts wordpiece tokens to a text string"""
