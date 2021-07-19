@@ -32,15 +32,30 @@ global_tokenizer = None
 
 def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
     """Forward step."""
-
     # Get the batch.
     if timers is not None:
         timers('batch generator').start()
+    try:
+        data = next(data)
+    except BaseException:
+        data = data
+
     if 'mask' in data:
+        # finetune SQuAD
         data['attention_mask'] = data.pop('mask')
+        data['position_id'] = data.pop('position')
+        data['loss_mask'] = data.pop('logit_mask')
+
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
     if timers is not None:
         timers('batch generator').stop()
+
+    if tokens.dim() == 3:
+        tokens = tokens.squeeze(1)
+        labels = labels.squeeze(1)
+        loss_mask = loss_mask.squeeze(1)
+        attention_mask = attention_mask.squeeze(1)
+        position_ids = position_ids.squeeze(1)
 
     def print_masked_text(batch_id):
         block_position_ids = position_ids[:, 1]
@@ -81,8 +96,7 @@ def lm_forward_step(data, model, args, timers, mems, eval_metric=None):
         logits, *mems = model(tokens, position_ids, attention_mask, *mems)
         
     if eval_metric is None or eval_metric == 'loss':
-        losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
-                                                  labels)
+        losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(), labels)
         loss_mask = loss_mask.view(-1)
         # The loss is not normalized for fair comparison
         loss = torch.sum(losses.view(-1) * loss_mask)

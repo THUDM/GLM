@@ -19,7 +19,7 @@ from collections import OrderedDict
 from finetune_glm import finetune
 from tasks.superglue.dataset import SuperGlueDataset, PROCESSORS, get_output_func
 from tasks.superglue.dataset import CLASSIFICATION_DATASETS, MULTI_CHOICE_DATASETS
-from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em
+from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em, squad_exact_match, squad_f1
 from tasks.superglue.pvp import PVPS
 from tasks.eval_utils import accuracy_func_provider
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
@@ -39,7 +39,6 @@ DEFAULT_METRICS = {
     "qqp": [("accuracy", accuracy_metric)],
     "mrpc": [("accuracy", accuracy_metric)],
     "cola": [("accuracy", accuracy_metric)],
-    "squad": [("accuracy", accuracy_metric)],
 }
 
 
@@ -48,9 +47,9 @@ def train_valid_datasets_provider(args, tokenizer, pattern_text=False):
     task_name = args.task.lower()
     data_dir = args.data_dir
     train_dataset = SuperGlueDataset(args, task_name, data_dir, args.seq_length, "train", tokenizer,
-                                pattern_text=pattern_text)
+                                     pattern_text=pattern_text)
     valid_dataset = SuperGlueDataset(args, task_name, data_dir, args.seq_length, "dev", tokenizer, for_train=True,
-                                pattern_text=pattern_text)
+                                     pattern_text=pattern_text)
 
     return train_dataset, valid_dataset
 
@@ -63,7 +62,7 @@ def metrics_func_provider(args, tokenizer, is_test):
 
     output_func = get_output_func(args.task.lower(), args)
     eval_func = None
-    if args.task.lower() in ['wsc', 'squad'] and args.cloze_eval and not args.wsc_negative:
+    if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import classify_evaluate
         eval_func = classify_evaluate
     metric_dict = OrderedDict(DEFAULT_METRICS[args.task.lower()])
@@ -79,7 +78,7 @@ def main(args):
                                   num_prompt_tokens=args.num_prompt_tokens)
     if args.continuous_prompt:
         model_kwargs["spell_length"] = pvp.spell_length
-    if args.task.lower() in ['wsc', 'squad'] and args.cloze_eval and not args.wsc_negative:
+    if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
         from tasks.language_model.finetune import lm_forward_step
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)

@@ -1157,13 +1157,59 @@ class SquadProcessor(DataProcessor):
             for pid, paragraph in enumerate(passage['paragraphs']):
                 context = paragraph['context']
                 for qid, qas in enumerate(paragraph['qas']):
-                    if len(qas['answers']) == 0:
-                        continue
-                    guid = f"{set_type}-{idx}-{pid}-{qid}"
+                    if len(qas['answers']):
+                        answer = qas['answers'][0]
+                    else:
+                        answer = {'text': 'N/A'}
+                    guid = qas['id']
                     example = InputExample(guid=guid, text_a=context, text_b=qas['question'], label='0',
-                                           meta={'answer': qas['answers'][0]})
+                                           meta={'answer': answer, 'answers': qas['answers']})
                     examples.append(example)
 
+        return examples
+
+    def output_prediction(self, predictions, examples, output_file):
+        with open(output_file, "w") as output:
+            for prediction, example in zip(predictions, examples):
+                data = {"idx": example.guid, "prediction_text": prediction}
+                output.write(json.dumps(data) + "\n")
+
+
+class LamaProcessor(DataProcessor):
+
+    def __init__(self, args):
+        super().__init__()
+        self.relations = ['P1001', 'P101', 'P103', 'P106', 'P108', 'P127', 'P1303', 'P131', 'P136', 'P1376',
+                          'P138', 'P140', 'P1412', 'P159', 'P17', 'P176', 'P178', 'P19', 'P190', 'P20', 'P264',
+                          'P27', 'P276', 'P279', 'P30', 'P31', 'P36', 'P361', 'P364', 'P37', 'P39', 'P407',
+                          'P413', 'P449', 'P463', 'P47', 'P495', 'P527', 'P530', 'P740', 'P937']
+        self.relation_meta = {}
+        with open(os.path.join(args.data_path, '../relations.jsonl')) as f:
+            for line in f:
+                obj = json.loads(line)
+                if obj['relation'] in self.relations:
+                    self.relation_meta[obj['relation']] = obj
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(data_dir, "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(data_dir, "dev")
+
+    def get_test_examples(self, data_dir):
+        return self._create_examples(data_dir, "test")
+
+    def _create_examples(self, path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        for relation in self.relations:
+            template = self.relation_meta[relation]['template']
+            with open(os.path.join(path, f"{relation}/{set_type}.jsonl")) as f:
+                for i, line in enumerate(f):
+                    obj = json.loads(line)
+                    text = template.replace("[X]", obj["sub_label"])
+                    guid = f"{set_type}-{relation}-{i}"
+                    example = InputExample(guid=guid, text_a=text, meta={'answer': obj['obj_label']})
+                    examples.append(example)
         return examples
 
 
@@ -1196,7 +1242,7 @@ PROCESSORS = {
     "mrpc": MrpcProcessor,
     "qqp": QqpProcessor,
     "qnli": QnliProcessor,
-    "squad": SquadProcessor,
+    # "squad": SquadProcessor,
     "race": RaceProcessor,
-    "squad": SquadProcessor
+    "lama": LamaProcessor
 }  # type: Dict[str,Callable[[1],DataProcessor]]

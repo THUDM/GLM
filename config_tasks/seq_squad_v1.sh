@@ -1,9 +1,9 @@
-TASK_NAME=squad
+TASK_NAME=squad_v1
 EXPERIMENT_NAME=${MODEL_TYPE}-${TASK_NAME}
 DATA_PATH="/dataset/fd5061f6/english_data/SQuAD"
 
 LR_SINGLE=1e-5
-EPOCH_SINGLE=10
+EPOCH_SINGLE=5
 BATCH_SINGLE=12
 
 TRAIN_ARGS="--lr-decay-style linear \
@@ -26,3 +26,6 @@ TASK_ARGS="--src-seq-length 512 \
            --select-topk \
            --eval-batch-size 8 \
            --validation-metric F1"
+
+#           --load /dataset/fd5061f6/finetune_checkpoints/blank-base-squad_v1
+#           --load /dataset/fd5061f6/finetune_checkpoints/blocklm-roberta-large-squad_v1
