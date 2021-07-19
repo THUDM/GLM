@@ -288,13 +288,14 @@ class BeamSearchScorer(BeamScorer):
         for i, beam_hyp in enumerate(self._beam_hyps):
             sorted_hyps = sorted(beam_hyp.beams, key=lambda x: x[0])
             for j in range(self.num_beam_hyps_to_keep):
-                best_hyp, mems = sorted_hyps.pop()[1:]
+                score, best_hyp, mems = sorted_hyps.pop()
                 sent_lengths[self.num_beam_hyps_to_keep * i + j] = len(best_hyp)
-                best.append((best_hyp, mems))
+                best.append((best_hyp, mems, score))
 
         # prepare for adding eos
         sent_max_len = min(sent_lengths.max().item(), self.max_length)
         decoded: torch.LongTensor = input_ids.new(batch_size * self.num_beam_hyps_to_keep, sent_max_len)
+        scores = final_beam_scores.new(batch_size * self.num_beam_hyps_to_keep)
         # shorter batches are padded if needed
         if sent_lengths.min().item() != sent_lengths.max().item():
             assert pad_token_id is not None, "`pad_token_id` has to be defined"
@@ -302,13 +303,14 @@ class BeamSearchScorer(BeamScorer):
 
         # fill with hypotheses and eos_token_id if the latter fits in
         mems = []
-        for i, (hypo, mem) in enumerate(best):
+        for i, (hypo, mem, score) in enumerate(best):
+            scores[i] = score
             decoded[i, : sent_lengths[i]] = hypo
             if sent_lengths[i] < sent_max_len:
                 decoded[i, sent_lengths[i]] = eos_token_id
             mems.append(mem)
         mems = [torch.cat([mem[i] for mem in mems], dim=0) for i in range(len(mems[0]))] if mems and mems[0] else None
-        return decoded, mems
+        return decoded, mems, scores
 
 
 class BeamHypotheses:

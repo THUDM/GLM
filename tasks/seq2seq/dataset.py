@@ -1,6 +1,8 @@
 import os
 import json
 import random
+import string
+import unidecode
 import torch
 import torch.utils.data
 import numpy as np
@@ -103,8 +105,48 @@ class SummmaryProcessor:
             example_list.append(example)
         return example_list
 
-
 class CMRCProcessor:
+    def __init__(self, data_dir, tokenizer):
+        self.data_dir = data_dir
+        self.tokenizer = tokenizer
+
+    def create_examples(self, split):
+        if split == "train":
+            filename = "train.json"
+        elif split == "dev":
+            filename = "dev.json"
+        elif split == "test":
+            filename = "test.json"
+        else:
+            raise NotImplementedError(split)
+        print_rank_0(f"Creating CMRC-{split} dataset from {self.data_dir}")
+        example_list = []
+        idx = 0
+        with open(os.path.join(self.data_dir, filename), encoding='utf-8') as file:
+            dataset = json.load(file)
+            for article in dataset['data']:
+                for paragraph in article['paragraphs']:
+                    context = paragraph['context']
+                    for qa in paragraph['qas']:
+                        question = qa["question"]
+                        answers = {answer['text'] for answer in qa["answers"]} if split != 'test' else {"FAKE_ANSWER"}
+                        for answer in answers:
+                            guid = "%s-%s" % (split, idx)
+                            meta = {
+                                "answer": answer,
+                                "question": question,
+                                "ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(answer).tokenization)}
+                            example = InputExample(guid=guid, text_a=context, meta=meta)
+                            if idx < 10:
+                                print_rank_0(
+                                    (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
+                            example_list.append(example)
+                            idx += 1
+        print_rank_0(f"Creating {len(example_list)} examples for {split}")
+        return example_list
+
+
+class SQuADGenerationProcessor:
     def __init__(self, data_dir, tokenizer):
         self.data_dir = data_dir
         self.tokenizer = tokenizer
@@ -188,6 +230,135 @@ class SQuADProcessor:
         return example_list
 
 
+def generate_token_to_char_map(tokens, raw_text, tokenizer):
+    # Use heuristics to construct the token to char mapping for BertTokenizer
+
+    def _is_whitespace(c):
+        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
+            return True
+        return False
+
+    def _normalize(s):
+        # if s in tokenizer.command_token_map:
+        #     return s
+        return unidecode.unidecode(s.lower())
+
+    def _compare(s1, s2):
+        return _normalize(s1) == _normalize(s2)
+
+    tokens = [tokenizer.IdToToken(token) for token in tokens]
+    text = raw_text
+    token_to_char = []
+    char_id = 0
+    mismatch = 0
+    for i, token in enumerate(tokens):
+        while char_id + 1 < len(text) and _is_whitespace(text[char_id]):
+            char_id += 1
+        assert char_id < len(text)
+        if token.startswith("##"):
+            token = token[2:].strip()
+        if _compare(token, text[char_id:char_id + len(token)]):
+            token_to_char.append((char_id, char_id + len(token)))
+            char_id += len(token)
+        else:
+            if token != '[UNK]':
+                mismatch += 1
+            token_len = 1 if token == '[UNK]' else len(token)
+            token_to_char.append((char_id, char_id + token_len))
+            char_id += token_len
+            if i + 1 < len(tokens):
+                pos = text[char_id:].find(tokens[i + 1])
+                if pos != -1 and pos < 20:
+                    char_id += pos
+
+    return token_to_char
+
+
+class SQuADProcessor:
+    def __init__(self, data_dir, tokenizer, max_src_length, args):
+        self.data_dir = data_dir
+        self.tokenizer = tokenizer
+        self.max_src_length = max_src_length
+        self.task = args.task
+        self.args = args
+        import transformers
+        tokenizer_model_type = self.args.tokenizer_model_type
+        if tokenizer_model_type == 'roberta':
+            tokenizer_model_type = 'roberta-large'
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        self.transformer_tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_model_type)
+
+    def create_examples(self, split):
+
+        if split == "train":
+            filename = "train-v1.1.json" if self.task == "squad_v1" else "train-v2.0.json"
+        elif split == "dev":
+            filename = "dev-v1.1.json" if self.task == "squad_v1" else "dev-v2.0.json"
+        elif split == "test":
+            filename = "dev-v1.1.json" if self.task == "squad_v1" else "dev-v2.0.json"
+        else:
+            raise NotImplementedError(split)
+        print_rank_0(f"Creating SQuAD-{split} dataset from {self.data_dir}")
+        example_list = []
+        idx = 0
+        total_qas = 0
+        total_na = 0
+        with open(os.path.join(self.data_dir, filename), encoding='utf-8') as file:
+            dataset = json.load(file)['data']
+            for paragraphs in dataset:
+                for paragraph in paragraphs['paragraphs']:
+                    context = paragraph['context']
+                    context_tokens = self.tokenizer.EncodeAsIds(context).tokenization
+                    transformer_encode = self.transformer_tokenizer(context,
+                                                                    return_offsets_mapping=True,
+                                                                    add_special_tokens=False,
+                                                                    verbose=False)
+                    assert transformer_encode['input_ids'] == context_tokens
+                    token_to_char = transformer_encode['offset_mapping']
+                    # if self.tokenizer_type == 'BertWordPieceTokenizer':
+                    #     token_to_char = generate_token_to_char_map(context_tokens, context, self.tokenizer)
+                    # else:
+                    #     token_to_char = None
+                    for qa in paragraph['qas']:
+                        total_qas += 1
+                        question = qa["question"]
+                        question_tokens = self.tokenizer.EncodeAsIds(" " + question).tokenization
+                        answers = [answer["text"] for answer in qa["answers"]]
+                        if len(qa['answers']) == 0:
+                            answers = ['N/A']
+                        for start in range(0, len(context_tokens), self.max_src_length // 2):
+                            length = self.max_src_length - 3 - len(question_tokens)
+                            tokens = context_tokens[start:start + length]
+                            new_context = self.tokenizer.DecodeIds(tokens)
+                            answer = answers[0]
+                            answer_tokens_text = self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(answer).tokenization)
+                            if answer_tokens_text and answer_tokens_text in new_context:
+                                # new_context = new_context.replace(answer_tokens_text, answer)
+                                pass
+                            else:
+                                answer = 'N/A'
+                            if self.task == 'squad_v1' and answer == 'N/A':
+                                continue
+                            guid = "%s-%s" % (split, idx)
+                            meta = {
+                                "context": context,
+                                "context_tokens": context_tokens,
+                                "token_to_char": token_to_char,
+                                "answer": answer,
+                                "answers": answers,
+                                "question": question,
+                                "ref": answer
+                            }
+                            example = InputExample(guid=guid, text_a=new_context, meta=meta, idx=qa['id'])
+                            example_list.append(example)
+                            idx += 1
+                            total_na += (answer == 'N/A')
+                            if len(tokens) < length:
+                                break
+        print_rank_0(f"Creating {len(example_list)} / {total_qas} examples for {split}. {total_na} N/A")
+        return example_list
+
+
 class XSumProcessor:
     def __init__(self, data_dir, tokenizer):
         self.data_dir = data_dir
@@ -259,7 +430,9 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         elif self.task in ["xsum"]:
             self.processor = XSumProcessor(self.data_dir, tokenizer)
         elif self.task in ["squad_generation"]:
-            self.processor = SQuADProcessor(self.data_dir, tokenizer)
+            self.processor = SQuADGenerationProcessor(self.data_dir, tokenizer)
+        elif self.task in ["squad", "squad_v1"]:
+            self.processor = SQuADProcessor(self.data_dir, tokenizer, self.max_src_length, args)
         elif self.task in ['cmrc']:
             self.processor = CMRCProcessor(self.data_dir, tokenizer)
         else:
@@ -312,6 +485,18 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                     start_index = max(answer_indices[0] - max_src_length // 2, 0)
                     source_tokens = source_tokens[start_index: start_index + max_src_length]
             source_tokens = [cls_id] + source_tokens + [mask_id] + answer_tokens
+        elif self.task in ["squad", "squad_v1"]:
+            source_text = example.text_a
+            target_text = example.meta["answer"].strip()
+            question = example.meta["question"].strip()
+            source_tokens = self.tokenizer.EncodeAsIds(" " + source_text.rstrip()).tokenization
+            question_tokens = self.tokenizer.EncodeAsIds(" " + question).tokenization
+            period_id = self.tokenizer.TokenToId('.')
+            max_src_length = self.max_src_length - len(question_tokens) - 3
+            if max_src_length <= 0:
+                print(question)
+            assert max_src_length > 0
+            source_tokens = [cls_id] + question_tokens + [mask_id, period_id] + source_tokens[:max_src_length]
         elif self.task in ["cmrc"]:
             mask_id = self.tokenizer.get_command('MASK').Id
             source_text = example.text_a

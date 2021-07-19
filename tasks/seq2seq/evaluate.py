@@ -1,6 +1,7 @@
 import string
 import datetime
 import random
+import re
 import torch
 import torch.nn.functional as F
 import mpu
@@ -188,11 +189,61 @@ def rouge_metric(predictions, labels, examples, metric="rouge-1", duplicate_rate
     return scores
 
 
+def squad_fix_tokenization(text):
+    text = text.replace(" - ", "-")
+    text = text.replace(" \u2013 ", "\u2013")
+    text = re.sub(r"\ba \. m \.\b", "a.m.", text)
+    text = re.sub(r"\ba \. m\b", "a.m", text)
+    text = re.sub(r"\bp \. m \.\b", "p.m.", text)
+    text = re.sub(r"\bp \. m\b", "p.m", text)
+    text = re.sub(r"\b' s\b", "'s", text)
+    text = re.sub(r"\bu \. s \.\b", "u.s.", text)
+    text = re.sub(r"\bu \. s\b", "u.s", text)
+    tokens = text.split()
+    i = 0
+    while i < len(tokens):
+        if tokens[i] in [",", ".", ":"] and i > 0 and i+1 < len(tokens):
+            if tokens[i - 1][-1].isdigit() and tokens[i + 1][0].isdigit():
+                if tokens[i] == ',' and len(tokens[i + 1]) > 3:
+                    pass
+                else:
+                    tokens[i - 1] = tokens[i - 1] + tokens[i] + tokens[i + 1]
+                    tokens = tokens[:i] + tokens[i+2:]
+                    i -= 1
+        i += 1
+    text = ' '.join(tokens)
+    return text
+
+
+def squad_decode(example, prediction, tokenizer):
+    text = tokenizer.DecodeIds(prediction)
+    if text.replace(' ', '').lower() == 'n/a':
+        return text
+    context = example.meta['context']
+    context_tokens = example.meta['context_tokens']
+    token_to_char = example.meta['token_to_char']
+    for i in range(len(context_tokens)):
+        if prediction == context_tokens[i:i + len(prediction)]:
+            s = token_to_char[i][0]
+            t = token_to_char[i + len(prediction) - 1][1]
+            return context[s:t]
+    text = squad_fix_tokenization(text)
+    return text
+
+
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
+    if 'mask' in batch:
+        # finetune SQuAD
+        batch['attention_mask'] = batch.pop('mask')
+        batch['position_id'] = batch.pop('position')
     tokens = batch['text'].long().cuda()
     attention_mask = batch['attention_mask'].long().cuda()
     position_ids = batch['position_id'].long().cuda()
+    if tokens.dim() == 3:
+        tokens = tokens.squeeze(1)
+        attention_mask = attention_mask.squeeze(1)
+        position_ids = position_ids.squeeze(1)
     return tokens, attention_mask, position_ids
 
 
@@ -216,9 +267,7 @@ class DecoderEvaluater:
         """Calculate correct over total answers and return prediction if the
         `output_predictions` is true."""
         model.eval()
-        store = torch.distributed.TCPStore(args.master_ip, 18931 + random.randint(0, 10000),
-                                           mpu.get_data_parallel_world_size(),
-                                           torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
+        local_predictions = {}
         print_rank_0("Distributed store created")
         with torch.no_grad():
             # For all the batches in the dataset.
@@ -296,26 +345,35 @@ class DecoderEvaluater:
                     if beam_scorer.is_done:
                         break
                     counter += 1
-                tokens, _ = beam_scorer.finalize(tokens, beam_scores, next_tokens, next_indices,
-                                                 eos_token_id=self.end_token, pad_token_id=self.pad_token)
-                predictions = []
-                for text in tokens.tolist():
-                    text = [token for token in text if token not in [self.end_token, self.pad_token]]
-                    text = self.tokenizer.DecodeIds(text)
-                    predictions.append(text)
+                tokens, _, scores = beam_scorer.finalize(tokens, beam_scores, next_tokens, next_indices,
+                                                         eos_token_id=self.end_token, pad_token_id=self.pad_token)
                 uid_list = data['uid']
                 if isinstance(uid_list, torch.Tensor):
                     uid_list = uid_list.cpu().numpy().tolist()
+                predictions = []
+                for i, text in enumerate(tokens.tolist()):
+                    text = [token for token in text if token not in [self.end_token, self.pad_token]]
+                    if args.task in ['squad', 'squad_v1'] and args.tokenizer_model_type.startswith('bert'):
+                        uid = uid_list[i]
+                        example = example_dict[uid]
+                        text = squad_decode(example, text, self.tokenizer)
+                    else:
+                        text = self.tokenizer.DecodeIds(text)
+                    predictions.append(text)
                 for uid, prediction in zip(uid_list, predictions):
-                    store.set(uid, prediction)
+                    local_predictions[uid] = prediction
                 if (idx + 1) % args.log_interval == 0:
                     print_rank_0(f"Iteration {idx + 1} / {len(dataloader)}")
         model.train()
         torch.distributed.barrier()
         print_rank_0("Evaluation completed")
-        predictions, examples = [], []
+        gathered_predictions = [None for i in range(torch.distributed.get_world_size())]
+        torch.distributed.all_gather_object(gathered_predictions, local_predictions)
+        gathered_predictions = {uid: pred for preds in gathered_predictions for uid, pred in preds.items() }
+        predictions, examples, scores = [], [], []
         for uid, example in example_dict.items():
-            predictions.append(store.get(uid).decode('utf-8'))
+            prediction = gathered_predictions[uid]
+            predictions.append(prediction)
             examples.append(example)
         torch.distributed.barrier()
         return predictions, [], examples
