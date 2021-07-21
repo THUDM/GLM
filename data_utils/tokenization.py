@@ -1230,7 +1230,7 @@ class ChineseSPTokenizer(Tokenizer):
             return ' '.join(Id.token if isinstance(Id, TypeToken) else self.type_id_map[Id].token for Id in Ids)
         if isinstance(Ids, Tokenization):
             Ids = Ids.tokenization
-        Ids = list(Ids)
+        Ids = list(map(int, Ids))
         pieces = []
         last = 0
         for i, token_id in enumerate(Ids):
