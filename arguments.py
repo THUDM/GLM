@@ -382,6 +382,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--wsc-negative', action='store_true')
     group.add_argument('--overwrite', action='store_true')
     group.add_argument('--no-validation', action='store_true')
+    group.add_argument('--lazy-seq2seq-loader', action='store_true')
     # Continuous prompt arguments
     group.add_argument('--continuous-prompt', action='store_true', help="Use continuous prompt for PET")
     group.add_argument('--num-prompt-tokens', type=int, default=0)

@@ -2,6 +2,7 @@ import os
 import json
 import random
 import string
+import time
 import unidecode
 import torch
 import torch.utils.data
@@ -10,6 +11,7 @@ from tasks.data_utils import InputExample
 from tqdm import tqdm
 from utils import print_rank_0
 from data_utils.corpora import punctuation_standardization
+from data_utils.lazy_loader import exists_lazy, LazyWriter, LazyLoader
 
 
 def gigaword_detokenize(string, is_target=False):
@@ -58,10 +60,11 @@ def blanklm_detokenize(string, is_target=False):
 
 
 class SummmaryProcessor:
-    def __init__(self, task, data_dir, tokenizer):
+    def __init__(self, task, data_dir, tokenizer, lazy_seq2seq_loader=False):
         self.task = task
         self.data_dir = data_dir
         self.tokenizer = tokenizer
+        self.lazy_seq2seq_loader = lazy_seq2seq_loader
 
     def create_examples(self, split):
         if split == "train":
@@ -73,36 +76,53 @@ class SummmaryProcessor:
         else:
             raise NotImplementedError(split)
         print_rank_0(f"Creating {self.task}-{split} dataset from {self.data_dir}")
-        if self.task == "gigaword":
-            detokenizer = gigaword_detokenize
-        elif self.task == "cnn_dm":
-            detokenizer = cnndm_detokenize
+        if not self.lazy_seq2seq_loader or (not exists_lazy(self.data_dir,
+                                                            data_type=split) and torch.distributed.get_rank() == 0):
+            if self.task == "gigaword":
+                detokenizer = gigaword_detokenize
+            elif self.task == "cnn_dm":
+                detokenizer = cnndm_detokenize
+            else:
+                detokenizer = None
+            source_texts, target_texts = [], []
+            with open(os.path.join(self.data_dir, f"{filename}.source"), encoding='utf-8') as file:
+                for line in file:
+                    line = line.strip()
+                    line = punctuation_standardization(line)
+                    line = detokenizer(line) if detokenizer else line
+                    source_texts.append(line)
+            with open(os.path.join(self.data_dir, f"{filename}.target"), encoding='utf-8') as file:
+                for line in file:
+                    line = line.strip()
+                    line = punctuation_standardization(line)
+                    line = detokenizer(line, is_target=True) if detokenizer else line
+                    target_texts.append(line)
+            assert len(source_texts) == len(target_texts)
+            if self.lazy_seq2seq_loader:
+                example_writer = LazyWriter(self.data_dir, data_type=split, is_array=False)
+            else:
+                example_list = []
+            for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+                if (idx + 1) % 20000 == 0:
+                    print_rank_0(f"Complete {idx + 1} examples")
+                guid = "%s-%s" % (split, idx)
+                meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
+                example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+                if idx < 10:
+                    print_rank_0(
+                        (source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
+                if self.lazy_seq2seq_loader:
+                    example_writer.write(example.to_json_string())
+                else:
+                    example_list.append(example)
+            if self.lazy_seq2seq_loader:
+                example_writer.close()
         else:
-            detokenizer = None
-        source_texts, target_texts = [], []
-        with open(os.path.join(self.data_dir, f"{filename}.source"), encoding='utf-8') as file:
-            for line in file:
-                line = line.strip()
-                line = punctuation_standardization(line)
-                line = detokenizer(line) if detokenizer else line
-                source_texts.append(line)
-        with open(os.path.join(self.data_dir, f"{filename}.target"), encoding='utf-8') as file:
-            for line in file:
-                line = line.strip()
-                line = punctuation_standardization(line)
-                line = detokenizer(line, is_target=True) if detokenizer else line
-                target_texts.append(line)
-        assert len(source_texts) == len(target_texts)
-        example_list = []
-        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
-            if (idx + 1) % 20000 == 0:
-                print_rank_0(f"Complete {idx + 1} examples")
-            guid = "%s-%s" % (split, idx)
-            meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
-            example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
-            if idx < 10:
-                print_rank_0((source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
-            example_list.append(example)
+            while not os.path.exists(LazyWriter.get_len_path(self.data_dir, data_type=split)):
+                time.sleep(1)
+        if self.lazy_seq2seq_loader:
+            example_list = LazyLoader(self.data_dir, data_type=split, map_fn=InputExample.from_json_string,
+                                      mem_map=True, is_array=False)
         return example_list
 
 
@@ -250,7 +270,8 @@ class SQuADProcessor:
                             tokens = context_tokens[start:start + length]
                             new_context = self.tokenizer.DecodeIds(tokens)
                             answer = answers[0]
-                            answer_tokens_text = self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(answer).tokenization)
+                            answer_tokens_text = self.tokenizer.DecodeIds(
+                                self.tokenizer.EncodeAsIds(answer).tokenization)
                             if answer_tokens_text and answer_tokens_text in new_context:
                                 # new_context = new_context.replace(answer_tokens_text, answer)
                                 pass
@@ -345,7 +366,8 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         self.tokenizer = tokenizer
         self.dataset_name = split
         if self.task in ["gigaword", "cnn_dm", "cnn_dm_original"]:
-            self.processor = SummmaryProcessor(self.task, self.data_dir, tokenizer)
+            self.processor = SummmaryProcessor(self.task, self.data_dir, tokenizer,
+                                               lazy_seq2seq_loader=args.lazy_seq2seq_loader)
         elif self.task in ["xsum"]:
             self.processor = XSumProcessor(self.data_dir, tokenizer)
         elif self.task in ["squad_generation"]:

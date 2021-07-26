@@ -75,7 +75,13 @@ class InputExample(object):
 
     def to_json_string(self):
         """Serialize this instance to a JSON string."""
-        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+    @staticmethod
+    def from_json_string(json_str):
+        """Deserialize this instance from a JSON string."""
+        data = json.loads(json_str)
+        return InputExample(**data)
 
     @staticmethod
     def load_examples(path: str) -> List['InputExample']:
