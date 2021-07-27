@@ -23,6 +23,7 @@ You can download the pretrained models used in the paper [here](https://mailstsi
 | GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
 | GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2 | model_blocklm_roberta_large.sh
 | GLM-XXLarge | 10B | [apply here](https://resource.wudaoai.cn/home?ind=2&name=WuDao%20WenHui&id=1399364355975327744) | model_blocklm_10B.sh
+| GLM-XXLarge-Chinese | 10B | - | model_blocklm_10B_chinese.sh
 
 ## Results
 
