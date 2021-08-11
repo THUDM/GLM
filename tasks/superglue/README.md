@@ -129,9 +129,9 @@ DEFAULT_METRICS = {
     "rte": [("accuracy", accuracy_metric)]
 }
 ```
-Then you can run the experiment with [finetune_superglue.sh](/scripts/finetune_superglue.sh):
+Then you can run the experiment with [ds_finetune_superglue.sh](/scripts/ds_finetune_superglue.sh):
 ```shell
-bash scripts/finetune_superglue.sh \
+bash scripts/ds_finetune_superglue.sh \
      config_tasks/model_blocklm_large.sh \
      config_tasks/task_rte.sh
 ```
