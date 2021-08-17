@@ -1,4 +1,4 @@
-MODEL_TYPE="blocklm-10B"
+MODEL_TYPE="blocklm-10B-chinese"
 MODEL_ARGS="--block-lm \
             --cloze-eval \
             --task-mask \
@@ -7,4 +7,4 @@ MODEL_ARGS="--block-lm \
             --num-attention-heads 64 \
             --max-position-embeddings 1024 \
             --tokenizer-type ChineseSPTokenizer \
-            --load-pretrained /dataset/fd5061f6/english_data/checkpoints/blocklm-10b-chinese07-08-15-28"
+            --load-pretrained ${CHECKPOINT_PATH}/blocklm-10b-chinese07-08-15-28"

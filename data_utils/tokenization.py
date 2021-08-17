@@ -28,11 +28,12 @@ from .wordpiece import BertTokenizer, PRETRAINED_VOCAB_ARCHIVE_MAP
 
 from .tokenization_gpt2 import GPT2Tokenizer
 from . import sp_tokenizer
+from utils import print_rank_0
 import regex as re
 
 
 def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, model_type=None, pad_token=0,
-                   character_coverage=1.0, command_tokens=None, type_tokens=None, **kwargs):
+                   character_coverage=1.0, command_tokens=None, type_tokens=None, fix_command_token=False, **kwargs):
     """
     Helper function to instantiate a tokenizer given common combinations of options.
     """
@@ -46,7 +47,7 @@ def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, mod
             model_type = 'gpt2'
         return GPT2BPETokenizer(model_type, **kwargs)
     elif tokenizer_class is ChineseSPTokenizer:
-        return ChineseSPTokenizer(**kwargs)
+        return ChineseSPTokenizer(fix_command_token=fix_command_token, **kwargs)
     text_tokenizer = tokenizer_class(corpus=corpus, vocab_size=vocab_size, model_path=model_path, model_type=model_type,
                                      pad_token=pad_token, character_coverage=character_coverage)
     return Tokenizer(text_tokenizer, command_tokens, type_tokens)
@@ -1130,7 +1131,8 @@ class GPT2BPETokenizer(Tokenizer):
 
 
 class ChineseSPTokenizer(Tokenizer):
-    def __init__(self, add_block_symbols=False, add_task_mask=False, add_decoder_mask=False, **kwargs):
+    def __init__(self, add_block_symbols=False, add_task_mask=False, add_decoder_mask=False, fix_command_token=False,
+                 **kwargs):
         self.text_tokenizer = sp_tokenizer.from_pretrained()
 
         self.num_command_tokens = 0
@@ -1153,13 +1155,22 @@ class ChineseSPTokenizer(Tokenizer):
                 CommandToken('sop', '<|startofpiece|>', self.num_tokens + 1),
                 CommandToken('eop', '<|endofpiece|>', self.num_tokens + 2)
             ])
-            self.num_tokens += 2
+            if fix_command_token:
+                self.num_tokens += 3
+            else:
+                self.num_tokens += 2
             self.num_command_tokens += 2
             if add_task_mask:
-                self._command_tokens.extend([
-                    CommandToken('gMASK', '[gMASK]', self.num_tokens, lstrip=True),
-                    CommandToken('sMASK', '[sMASK]', self.num_tokens + 1, lstrip=True)
-                ])
+                if fix_command_token:
+                    self._command_tokens.extend([
+                        CommandToken('sMASK', '[sMASK]', self.num_tokens, lstrip=True),
+                        CommandToken('gMASK', '[gMASK]', self.num_tokens + 1, lstrip=True)
+                    ])
+                else:
+                    self._command_tokens.extend([
+                        CommandToken('gMASK', '[gMASK]', self.num_tokens, lstrip=True),
+                        CommandToken('sMASK', '[sMASK]', self.num_tokens + 1, lstrip=True)
+                    ])
                 self.num_tokens += 2
                 self.num_command_tokens += 2
             if add_decoder_mask:
@@ -1171,7 +1182,7 @@ class ChineseSPTokenizer(Tokenizer):
         self.command_name_map = {tok.name: tok for tok in self._command_tokens}
         self.command_token_map = {tok.token: tok for tok in self._command_tokens}
         self.command_id_map = {tok.Id: tok for tok in self._command_tokens}
-
+        print_rank_0({tok.name: tok.Id for tok in self._command_tokens})
         self.type_tokens = [
             TypeToken('str0', '<str0>', 0),
             TypeToken('str1', '<str1>', 1),

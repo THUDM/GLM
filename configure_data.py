@@ -124,7 +124,8 @@ def prepare_tokenizer(args):
     tokenizer = make_tokenizer(args.tokenizer_type, None, args.tokenizer_path, args.vocab_size,
                                args.tokenizer_model_type, add_block_symbols=args.block_lm, cache_dir=args.cache_dir,
                                add_sentinel_token=add_sentinel_token, add_task_mask=args.task_mask,
-                               add_decoder_mask=args.block_mask_prob > 0.0 or args.context_mask_ratio > 0.0)
+                               add_decoder_mask=args.block_mask_prob > 0.0 or args.context_mask_ratio > 0.0,
+                               fix_command_token=args.fix_command_token)
     if mpu.get_model_parallel_rank() == 0:
         num_tokens = tokenizer.num_tokens
         eod_token = tokenizer.get_command('eos').Id
