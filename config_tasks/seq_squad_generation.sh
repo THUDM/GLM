@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-squad
 TASK_NAME=squad_generation
-DATA_PATH="/dataset/c07bd62b/nqg/raw"
+DATA_PATH="${DATA_ROOT}/nqg/raw"
 
 TRAIN_ARGS="--epochs 10 \
             --batch-size 8 \

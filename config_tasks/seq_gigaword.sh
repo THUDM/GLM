@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-ggw
 TASK_NAME=gigaword
-DATA_PATH="${DATA_ROOT}/gigaword/org_data"
+DATA_PATH="${DATA_ROOT}/ggw_data/org_data"
 
 TRAIN_ARGS="--epochs 10 \
             --batch-size 16 \
