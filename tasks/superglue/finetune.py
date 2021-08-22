@@ -40,6 +40,7 @@ DEFAULT_METRICS = {
     "mrpc": [("accuracy", accuracy_metric)],
     "cola": [("accuracy", accuracy_metric)],
     "squad": [("accuracy", accuracy_metric)],
+    "afqmc": [("accuracy", accuracy_metric)]
 }
 
 

@@ -1013,6 +1013,31 @@ class MnliPVP(PVP):
         return MnliPVP.VERBALIZER_B[label]
 
 
+class AFQMCPVP(PVP):
+    VERBALIZER_A = {
+        "0": ["不是"],
+        "1": ["是"]
+    }
+
+    @staticmethod
+    def available_patterns():
+        return [0, 1]
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text_a, text_b = self.shortenable(example.text_a), self.shortenable(example.text_b)
+        if self.pattern_id == 0:
+            return [text_a, "？"], ["你是说", text_b, "？", [self.mask], "。"]
+        elif self.pattern_id == 1:
+            return [text_a, "？"], [[self.mask], '，', text_b]
+        else:
+            raise ValueError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        if self.pattern_id == 0 or self.pattern_id == 1:
+            return MnliPVP.VERBALIZER_A[label]
+        return MnliPVP.VERBALIZER_B[label]
+
+
 class YelpPolarityPVP(PVP):
     VERBALIZER = {
         "1": [" bad"],
@@ -1272,4 +1297,5 @@ PVPS = {
     'qnli': QnliPVP,
     'squad': SquadPVP,
     'race': RacePVP,
+    "afqmc": AFQMCPVP
 }
