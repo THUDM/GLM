@@ -1324,9 +1324,7 @@ class CLUEWSCPVP(PVP):
         return parts_a, parts_b
 
     def verbalize(self, label) -> List[str]:
-        if self.pattern_id == 0:
-            return CWSCProcessorPVP.VERBALIZER_A[label]
-        if self.pattern_id == 0:
+        if self.pattern_id == 0 or self.pattern_id == 1:
             return CWSCProcessorPVP.VERBALIZER_A[label]
         else:
             raise NotImplementedError
@@ -1342,7 +1340,7 @@ class CMRCPVP(PVP):
         return True
 
     def get_answers(self, example: InputExample):
-        target = " " + example.meta['answer']
+        target = example.meta['answer']
         answers = [target]
         return answers
 

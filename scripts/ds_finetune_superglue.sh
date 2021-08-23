@@ -1,6 +1,6 @@
-DATA_ROOT=/dataset/fd5061f6/english_data/CLUE
+DATA_ROOT=/dataset/fd5061f6/tuteng/BlockLM/data
 CHECKPOINT_PATH=/dataset/fd5061f6/english_data/checkpoints
-SAVE_PATH=/dataset/fd5061f6/finetune_checkpoints
+SAVE_PATH=/dataset/fd5061f6/tuteng/BlockLM/finetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
 source $1    # Model
