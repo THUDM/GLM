@@ -1013,10 +1013,45 @@ class MnliPVP(PVP):
         return MnliPVP.VERBALIZER_B[label]
 
 
+class TNewsPVP(PVP):
+    VERBALIZER_A = {"100": ["故事"],
+                    "101": ["文化"],
+                    "102": ["娱乐"],
+                    "103": ["体育"],
+                    "104": ["金融"],
+                    "106": ["居家"],
+                    "107": ["汽车"],
+                    "108": ["教育"],
+                    "109": ["科技"],
+                    "110": ["军事"],
+                    "112": ["旅游"],
+                    "113": ["世界"],
+                    "114": ["股票"],
+                    "115": ["农业"],
+                    "116": ["游戏"]}
+
+    @staticmethod
+    def available_patterns():
+        return [0]
+
+    def get_parts(self, example: InputExample) -> FilledPattern:
+        text_a, text_b = self.shortenable(example.text_a), self.shortenable(example.text_b)
+        if self.pattern_id == 0:
+            return ["标题：", text_a, "关键词：", text_b, "类别：", [self.mask]], []
+        else:
+            raise NotImplementedError("No pattern implemented for id {}".format(self.pattern_id))
+
+    def verbalize(self, label) -> List[str]:
+        if self.pattern_id == 0:
+            return TNewsPVP.VERBALIZER_A[label]
+        else:
+            raise NotImplementedError
+
+
 class AFQMCPVP(PVP):
     VERBALIZER_A = {
-        "0": ["不是"],
-        "1": ["是"]
+        "0": ["▁不是"],
+        "1": ["▁是"]
     }
 
     @staticmethod
@@ -1034,8 +1069,7 @@ class AFQMCPVP(PVP):
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 0 or self.pattern_id == 1:
-            return MnliPVP.VERBALIZER_A[label]
-        return MnliPVP.VERBALIZER_B[label]
+            return AFQMCPVP.VERBALIZER_A[label]
 
 
 class YelpPolarityPVP(PVP):
@@ -1260,15 +1294,15 @@ def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Uni
            corresponds to multiple tokens.
     :return: either the list of token ids or the single token id corresponding to this word
     """
-    ids = tokenizer.EncodeAsIds(word).tokenization
-    if not force_single_token:
+    if force_single_token:
+        verbalization_id = tokenizer.TokenToId(word)
+        assert verbalization_id not in tokenizer.command_id_map, \
+            f'Verbalization {word} is mapped to a special token {tokenizer.IdToToken(verbalization_id)}'
+        return verbalization_id
+    else:
+        ids = tokenizer.EncodeAsIds(word).tokenization
         return ids
-    assert len(ids) == 1, \
-        f'Verbalization "{word}" does not correspond to a single token, got {tokenizer.DecodeIds(ids)}'
-    verbalization_id = ids[0]
-    assert verbalization_id not in tokenizer.command_id_map, \
-        f'Verbalization {word} is mapped to a special token {tokenizer.IdToToken(verbalization_id)}'
-    return verbalization_id
+
 
 
 PVPS = {
@@ -1297,5 +1331,6 @@ PVPS = {
     'qnli': QnliPVP,
     'squad': SquadPVP,
     'race': RacePVP,
-    "afqmc": AFQMCPVP
+    "afqmc": AFQMCPVP,
+    'tnews': TNewsPVP
 }

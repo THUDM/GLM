@@ -841,9 +841,7 @@ class MnliProcessor(DataProcessor):
         return examples
 
 
-class AFQMCProcessor(DataProcessor):
-    """Processor for the AFQMC data set (CLUE version)."""
-
+class CLUEProcessor(DataProcessor):
     def get_train_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "train.json"), "train")
 
@@ -853,17 +851,44 @@ class AFQMCProcessor(DataProcessor):
     def get_test_examples(self, data_dir) -> List[InputExample]:
         return self._create_examples(os.path.join(data_dir, "test.json"), "test")
 
-    def get_labels(self):
-        return ["0", "1"]
-
     def output_prediction(self, predictions, examples, output_file):
         indices = list(range(len(predictions)))
         indices.sort(key=lambda x: examples[x].idx)
         with open(output_file, "w") as output:
             for idx in indices:
-                prediction = self.get_labels()[prediction[idx]]
+                prediction = self.get_labels()[predictions[idx]]
                 data = {"idx": examples[idx].idx, "label": prediction}
                 output.write(json.dumps(data) + "\n")
+
+
+class TNewsProcessor(CLUEProcessor):
+    """Processor for the TNews data set (CLUE version)."""
+
+    def get_labels(self):
+        return ["100", "101", "102", "103", "104", "106", "107", "108", "109", "110", "112", "113", "114", "115", "116"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+
+        with open(path) as file:
+            for idx, line in enumerate(file):
+                guid = f"{set_type}-{idx}"
+                data = json.loads(line)
+                text_a = data["sentence"]
+                text_b = data['keywords']
+                label = data.get('label', None)
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label, idx=idx)
+                examples.append(example)
+
+        return examples
+
+
+class AFQMCProcessor(CLUEProcessor):
+    """Processor for the AFQMC data set (CLUE version)."""
+
+    def get_labels(self):
+        return ["0", "1"]
 
     @staticmethod
     def _create_examples(path: str, set_type: str) -> List[InputExample]:
@@ -1240,5 +1265,6 @@ PROCESSORS = {
     "squad": SquadProcessor,
     "race": RaceProcessor,
     "squad": SquadProcessor,
-    "afqmc": AFQMCProcessor
+    "afqmc": AFQMCProcessor,
+    "tnews": TNewsProcessor
 }  # type: Dict[str,Callable[[1],DataProcessor]]
