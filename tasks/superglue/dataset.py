@@ -1232,6 +1232,89 @@ class SquadProcessor(DataProcessor):
 
         return examples
 
+class CLUEWSCProcessor(DataProcessor):
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.json"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev.json"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        return self._create_examples(os.path.join(data_dir, "test.json"), "test")
+
+    def get_labels(self):
+        return ["false", "true"]
+
+    def _create_examples(self, path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
+        examples = []
+
+        with open(path, encoding='utf8') as f:
+            for line in f:
+                example_json = json.loads(line)
+                idx = example_json['id'] if 'id' in example_json else example_json['idx']
+                label = bool(example_json['label']
+                             ) if 'label' in example_json else None
+                guid = "%s-%s" % (set_type, idx)
+                text_a = example_json['text']
+
+                meta = {
+                    'span1_text': example_json['target']['span1_text'],
+                    'span2_text': example_json['target']['span2_text'],
+                    'span1_index': example_json['target']['span1_index'],
+                    'span2_index': example_json['target']['span2_index']
+                }
+
+                example = InputExample(
+                    guid=guid, text_a=text_a, text_b=meta['span1_index'], label=label, meta=meta, idx=idx)
+                examples.append(example)
+
+        return examples
+
+
+class CMRCProcessor(DataProcessor):
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.json"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev.json"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        return self._create_examples(os.path.join(data_dir, "test.json"), "test")
+
+    def get_labels(self):
+        return ['0']
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        with open(path) as f:
+            data_list = json.load(f)
+
+        for data in data_list:
+            idx = data["context_id"]
+            if set_type == "train":
+                idx = int(idx[6:])
+            elif set_type == "dev":
+                idx = int(idx[4:])
+            elif set_type == "test":
+                idx = int(idx[6:])
+            else:
+                raise NotImplementedError("set_type="+str(set_type))
+            text_a = data["context_text"]
+            qa_set = data["qas"]
+
+            for qid, qa in enumerate(qa_set):
+                text_b = qa['query_text']
+                ans = qa['answers'][0]
+                guid = f"{set_type}-{idx}-{qid}"
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label='0',
+                                       meta={'answer': ans})
+                examples.append(example)
+        return examples
+
+
 
 CLASSIFICATION_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
 MULTI_CHOICE_DATASETS = {"copa", "record"}
@@ -1266,5 +1349,7 @@ PROCESSORS = {
     "race": RaceProcessor,
     "squad": SquadProcessor,
     "afqmc": AFQMCProcessor,
-    "tnews": TNewsProcessor
+    "tnews": TNewsProcessor,
+    'cluewsc': CLUEWSCProcessor,
+    'cmrc': CMRCProcessor
 }  # type: Dict[str,Callable[[1],DataProcessor]]
