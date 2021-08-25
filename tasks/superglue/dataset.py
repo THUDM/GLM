@@ -1253,8 +1253,7 @@ class CLUEWSCProcessor(DataProcessor):
             for line in f:
                 example_json = json.loads(line)
                 idx = example_json['id'] if 'id' in example_json else example_json['idx']
-                label = bool(example_json['label']
-                             ) if 'label' in example_json else None
+                label = example_json['label'] if 'label' in example_json else None
                 guid = "%s-%s" % (set_type, idx)
                 text_a = example_json['text']
 
