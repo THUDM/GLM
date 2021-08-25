@@ -1325,7 +1325,7 @@ class CLUEWSCPVP(PVP):
 
     def verbalize(self, label) -> List[str]:
         if self.pattern_id == 0 or self.pattern_id == 1:
-            return CWSCProcessorPVP.VERBALIZER_A[label]
+            return CLUEWSCPVP.VERBALIZER_A[label]
         else:
             raise NotImplementedError
 
