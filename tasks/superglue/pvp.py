@@ -1309,9 +1309,9 @@ class CLUEWSCPVP(PVP):
 
         words_a = list(example.text_a)
         words_a[pronoun_idx] = '*' + words_a[pronoun_idx]
-        words_a[pronoun_idx+pronoun_len] = '*' + words_a[pronoun_idx+pronoun_len]
+        words_a[pronoun_idx+pronoun_len-1] = words_a[pronoun_idx+pronoun_len-1] + '*'
         words_a[target_idx] = '#' + words_a[target_idx]
-        words_a[target_idx+target_len] = '#' + words_a[target_idx+target_len]
+        words_a[target_idx+target_len-1] = words_a[target_idx+target_len-1] + '#'
 
         text_a = ''.join(words_a)
         text_a = self.shortenable(text_a)
