@@ -1302,21 +1302,25 @@ class CLUEWSCPVP(PVP):
 
         pronoun = example.meta['span2_text']
         pronoun_idx = example.meta['span2_index']
+        pronoun_len = example.meta['span2_length']
         target = example.meta['span1_text']
         target_idx = example.meta['span1_index']
+        target_len = example.meta['span1_length']
 
         words_a = list(example.text_a)
-        words_a[pronoun_idx] = '*' + words_a[pronoun_idx] + '*'
-        words_a[pronoun_idx] = '#' + words_a[target_idx] + '#'
+        words_a[pronoun_idx] = '*' + words_a[pronoun_idx]
+        words_a[pronoun_idx+pronoun_len] = '*' + words_a[pronoun_idx+pronoun_len]
+        words_a[target_idx] = '#' + words_a[target_idx]
+        words_a[target_idx+target_len] = '#' + words_a[target_idx+target_len]
 
-        text_a = ' '.join(words_a)
+        text_a = ''.join(words_a)
         text_a = self.shortenable(text_a)
 
         if self.pattern_id == 0:
-            parts_a, parts_b = [None, text_a, " 代词'*" +
+            parts_a, parts_b = [None, text_a, "代词'*" +
                                 pronoun + "*'", [self.mask], "指#", target, '#.'], []
         elif self.pattern_id == 1:
-            parts_a, parts_b = ["在如下的句子中：", text_a, " 代词'*" +
+            parts_a, parts_b = ["在如下的句子中：", text_a, "代词'*" +
                                 pronoun + "*'", [self.mask], "指'#", target, "#'."], []
         else:
             raise NotImplementedError(self.pattern_id)
@@ -1348,11 +1352,11 @@ class CMRCPVP(PVP):
         context = self.shortenable(example.text_a)
         question = example.text_b
         if self.pattern_id == 0:
-            parts_a, parts_b = [context, " 请问，" +
+            parts_a, parts_b = [context, "请问，" +
                                 question, [self.mask], "。"], []
         elif self.pattern_id == 1:
-            parts_a, parts_b = [" 根据以下信息：" + context,
-                                " 请问，" + question, [self.mask], "。"], []
+            parts_a, parts_b = ["根据以下信息：" + context,
+                                "请问，" + question, [self.mask], "。"], []
         else:
             raise ValueError(
                 "No pattern implemented for id {}".format(self.pattern_id))

@@ -1262,8 +1262,10 @@ class CLUEWSCProcessor(DataProcessor):
                     'span1_text': example_json['target']['span1_text'],
                     'span2_text': example_json['target']['span2_text'],
                     'span1_index': example_json['target']['span1_index'],
-                    'span2_index': example_json['target']['span2_index']
+                    'span2_index': example_json['target']['span2_index'],
                 }
+                meta['span1_length'] = len(meta['span1_text'])
+                meta['span2_length'] = len(meta['span2_text'])
 
                 example = InputExample(
                     guid=guid, text_a=text_a, text_b=meta['span1_index'], label=label, meta=meta, idx=idx)
