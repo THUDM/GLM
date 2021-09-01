@@ -348,7 +348,8 @@ class PVP(ABC):
             return False
 
         for _ in range(num_tokens_to_remove):
-            if self._seq_length(parts_a, only_shortenable=True) > self._seq_length(parts_b, only_shortenable=True):
+            if not parts_b or self._seq_length(parts_a, only_shortenable=True) > self._seq_length(parts_b,
+                                                                                                  only_shortenable=True):
                 self._remove_last(parts_a)
             else:
                 self._remove_last(parts_b)
