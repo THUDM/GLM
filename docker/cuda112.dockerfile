@@ -174,12 +174,13 @@ RUN rm -rf /usr/lib/python3/dist-packages/yaml && \
 # DeepSpeed
 ##############################################################################
 ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0+PTX 8.0"
-RUN git clone https://github.com/microsoft/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
-#COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
-RUN cd ${STAGE_DIR}/DeepSpeed && \
-    git checkout . && \
-    DS_BUILD_OPS=1 ./install.sh -r
-RUN rm -rf ${STAGE_DIR}/DeepSpeed
+#RUN git clone https://github.com/microsoft/DeepSpeed.git ${STAGE_DIR}/DeepSpeed
+##COPY DeepSpeed ${STAGE_DIR}/DeepSpeed
+#RUN cd ${STAGE_DIR}/DeepSpeed && \
+#    git checkout . && \
+#    DS_BUILD_OPS=1 ./install.sh -r \
+#RUN rm -rf ${STAGE_DIR}/DeepSpeed
+RUN DS_BUILD_OPS=1 pip install deepspeed==0.3.16
 RUN python -c "import deepspeed; print(deepspeed.__version__)"
 
 ##############################################################################
