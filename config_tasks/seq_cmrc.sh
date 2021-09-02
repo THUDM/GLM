@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-cmrc
 TASK_NAME=cmrc
-DATA_PATH="/root/data/cmrc"
+DATA_PATH="${DATA_ROOT}/CMRC2018"
 
 TRAIN_ARGS="--epochs 10 \
             --batch-size 8 \

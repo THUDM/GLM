@@ -1417,5 +1417,5 @@ PVPS = {
     "afqmc": AFQMCPVP,
     'tnews': TNewsPVP,
     'cluewsc': CLUEWSCPVP,
-    'cmrc': CMRCPVP
+    # 'cmrc': CMRCPVP
 }

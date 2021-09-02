@@ -1352,5 +1352,5 @@ PROCESSORS = {
     "afqmc": AFQMCProcessor,
     "tnews": TNewsProcessor,
     'cluewsc': CLUEWSCProcessor,
-    'cmrc': CMRCProcessor
+    # 'cmrc': CMRCProcessor
 }  # type: Dict[str,Callable[[1],DataProcessor]]
