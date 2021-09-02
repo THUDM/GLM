@@ -126,7 +126,7 @@ class CMRCProcessor:
             for paragraph in dataset:
                 context = paragraph['context_text']
                 for qa in paragraph['qas']:
-                    question = qa["question"]
+                    question = qa["query_text"]
                     answers = {answer for answer in qa["answers"]}
                     for answer in answers:
                         guid = "%s-%s" % (split, idx)
@@ -139,7 +139,7 @@ class CMRCProcessor:
                             print_rank_0(
                                 (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
                         example_list.append(example)
-                        idx += 1 # What's that for?
+                        idx += 1
         print_rank_0(f"Creating {len(example_list)} examples for {split}")
         return example_list
 
