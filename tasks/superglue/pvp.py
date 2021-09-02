@@ -1318,10 +1318,10 @@ class CLUEWSCPVP(PVP):
 
         if self.pattern_id == 0:
             parts_a, parts_b = [None, text_a, "代词'*" +
-                                pronoun + "*'", [self.mask], "指#", target, '#.'], []
+                                pronoun + "*'", [self.mask], "指#" + target + '#.'], []
         elif self.pattern_id == 1:
             parts_a, parts_b = ["在如下的句子中：", text_a, "代词'*" +
-                                pronoun + "*'", [self.mask], "指'#", target, "#'."], []
+                                pronoun + "*'", [self.mask], "指'#" + target + "#'."], []
         else:
             raise NotImplementedError(self.pattern_id)
         parts_a, parts_b = self.replace_prompt_tokens(parts_a, parts_b)

@@ -104,6 +104,47 @@ class SummmaryProcessor:
         return example_list
 
 
+class CMRCProcessor:
+    def __init__(self, data_dir, tokenizer):
+        self.data_dir = data_dir
+        self.tokenizer = tokenizer
+
+    def create_examples(self, split):
+        if split == "train":
+            filename = "train.json"
+        elif split == "dev":
+            filename = "dev.json"
+        elif split == "test":
+            filename = "test.json"
+        else:
+            raise NotImplementedError(split)
+        print_rank_0(f"Creating CMRC-{split} dataset from {self.data_dir}")
+        example_list = []
+        idx = 0
+        with open(os.path.join(self.data_dir, filename), encoding='utf-8') as file:
+            dataset = json.load(file)
+            for paragraph in dataset:
+                context = paragraph['context_text']
+                for qa in paragraph['qas']:
+                    question = qa["question"]
+                    answers = {answer for answer in qa["answers"]}
+                    for answer in answers:
+                        guid = "%s-%s" % (split, idx)
+                        meta = {
+                            "answer": answer,
+                            "question": question,
+                            "ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(question).tokenization)}
+                        example = InputExample(guid=guid, text_a=context, meta=meta)
+                        if idx < 10:
+                            print_rank_0(
+                                (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
+                        example_list.append(example)
+                        idx += 1 # What's that for?
+        print_rank_0(f"Creating {len(example_list)} examples for {split}")
+        return example_list
+
+
+
 class SQuADProcessor:
     def __init__(self, data_dir, tokenizer):
         self.data_dir = data_dir
