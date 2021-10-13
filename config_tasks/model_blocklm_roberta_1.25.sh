@@ -9,4 +9,4 @@ MODEL_ARGS="--block-lm \
             --attention-scale 8.0 \
             --tokenizer-model-type roberta \
             --tokenizer-type GPT2BPETokenizer \
-            --load-pretrained /dataset/c07bd62b/checkpoints/blocklm-roberta-1.25-blank04-22-14-01"
+            --load-pretrained ${CHECKPOINT_PATH}/blocklm-roberta-1.25-blank04-22-14-01"

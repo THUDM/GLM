@@ -1,4 +1,4 @@
-MODEL_TYPE="blocklm-10B"
+MODEL_TYPE="blocklm-2B"
 MODEL_ARGS="--block-lm \
             --cloze-eval \
             --task-mask \
