@@ -177,6 +177,13 @@ Context: Ng is an adjunct professor at [MASK] (formerly associate professor and 
 
 GLM: [CLS] ng is an adjunct professor at [MASK] ( formerly associate professor and director of its stanford ai lab or sail ) . also a pioneer in online education , ng co - founded coursera and deeplearning . ai . [PAD] <|startofpiece|> the stanford university
 
+### Model Parallelism
+If your encounter the `CUDA out of memory` error, which means you GPU memory is limited, you can try the model parallelism to divide the parameters into multiple GPUs. Take the two-way model parallelism as an example. First run `change_mp.py` to divide the checkpoint:
+```shell
+python change_mp.py path_to_the_checkpoint 2
+```
+Then update the checkpoint path in the model config file (such as [config_tasks/model_blocklm_10B.sh](config_tasks/model_blocklm_10B.sh)) and change `MP_SIZE` in the script (such as [scripts/ds_finetune_superglue.sh](scripts/ds_finetune_superglue.sh)) to `2`.
+
 ## Pretrain
 Run the following script to pre-train the GLM-Large model
 ```shell
