@@ -370,7 +370,7 @@ class OpenWebText(PromptReader):
 
 
 class CCNews(PromptReader):
-    PATH = "/mnt/cc_news.json"
+    PATH = "/dataset/fd5061f6/english_data/cc_news.json"
     assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
@@ -407,7 +407,7 @@ class BertData(PromptReader):
 
 class Pile(PromptReader):
     is_json = True
-    PATH = "/mnt/train"
+    PATH = "/dataset/fd5061f6/english_data/pile/train"
     filtered_sources = ["Github", "StackExchange", "DM Mathematics", "Ubuntu IRC", "EuroParl", "YoutubeSubtitles",
                         "Enron Emails"]
     downsample_sources = {"PubMed Central": 0.3, "ArXiv": 0.3, "FreeLaw": 0.3}
