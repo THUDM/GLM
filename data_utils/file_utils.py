@@ -24,10 +24,7 @@ import requests
 from botocore.exceptions import ClientError
 from tqdm import tqdm
 
-try:
-    from urllib.parse import urlparse
-except ImportError:
-    from urlparse import urlparse
+from urllib.parse import urlparse
 
 try:
     from pathlib import Path

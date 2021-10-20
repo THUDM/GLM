@@ -1,1 +1,9 @@
 .idea/
+/.ipynb_checkpoints/
+.DS_Store
+*.pyc
+logs
+runs
+settings.json
+.gitignore
+.vscode

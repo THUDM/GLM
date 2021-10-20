@@ -24,12 +24,15 @@ import mpu
 
 
 class PyTorchDistributedDataParallel(DDP):
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.module.named_parameters(prefix=prefix, recurse=recurse)
+
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         sd = self.module.state_dict(destination, prefix, keep_vars)
         return sd
 
     def load_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+        return self.module.load_state_dict(state_dict, strict=strict)
 
 
 class DistributedDataParallel(Module):
@@ -46,7 +49,7 @@ class DistributedDataParallel(Module):
                 dist.broadcast(p, src_rank, group=self.data_parallel_group)
 
         def allreduce_params(reduce_after=True, no_scale=False, fp32_allreduce=False):
-            if(self.needs_reduction):
+            if (self.needs_reduction):
                 self.needs_reduction = False
                 buckets = {}
                 for name, param in self.module.named_parameters():
@@ -74,14 +77,15 @@ class DistributedDataParallel(Module):
                         coalesced /= dist.get_world_size(group=self.data_parallel_group)
                     for buf, synced in zip(grads, _unflatten_dense_tensors(coalesced, grads)):
                         buf.copy_(synced)
+
         self.hook_handles = []
         self.hooks = []
         for param in list(self.module.parameters()):
             def allreduce_hook(*unused):
                 Variable._execution_engine.queue_callback(allreduce_params)
         #    handle = param.register_hook(allreduce_hook)
-            #self.hooks.append(allreduce_hook)
-            #self.hook_handles.append(handle)
+        # self.hooks.append(allreduce_hook)
+        # self.hook_handles.append(handle)
         self.allreduce_params = allreduce_params
 
     def forward(self, *inputs, **kwargs):
@@ -89,16 +93,15 @@ class DistributedDataParallel(Module):
         return self.module(*inputs, **kwargs)
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
-        #[h.remove() for h in self.hook_handles]
+        # [h.remove() for h in self.hook_handles]
         sd = self.module.state_dict(destination, prefix, keep_vars)
-       # for handle, hook in zip(self.hook_handles, self.hooks):
-       #     d = handle.hooks_dict_ref()
-       #     d[handle.id] = hook
-
         return sd
 
     def load_state_dict(self, state_dict, strict=True):
-        self.module.load_state_dict(state_dict, strict=strict)
+        return self.module.load_state_dict(state_dict, strict=strict)
+
+    def named_parameters(self, prefix: str = '', recurse: bool = True):
+        return self.module.named_parameters(prefix=prefix, recurse=recurse)
 
     '''
     def _sync_buffers(self):
@@ -118,4 +121,3 @@ class DistributedDataParallel(Module):
         super(DistributedDataParallel, self).train(mode)
         self.module.train(mode)
     '''
-

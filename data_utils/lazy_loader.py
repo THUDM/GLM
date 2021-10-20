@@ -23,11 +23,13 @@ from itertools import accumulate
 import torch
 from torch.multiprocessing import Lock
 
+
 def get_lazy_path(path):
     """
     Gets directory path where lazy files are stored.
     """
-    return os.path.splitext(path)[0]+'.lazy'
+    return os.path.splitext(path)[0] + '.lazy'
+
 
 def exists_lazy(path, data_type='data'):
     """
@@ -38,8 +40,22 @@ def exists_lazy(path, data_type='data'):
     contents = os.listdir(get_lazy_path(path))
     if data_type not in contents:
         return False
-    if data_type+'.len.pkl' not in contents:
+    if data_type + '.len.pkl' not in contents:
         return False
+    return True
+
+
+def get_scatter_path(path, scatter_rank):
+    path = os.path.splitext(path)[0] + '.scatter'
+    scatter_path = os.path.join(path, str(scatter_rank))
+    return scatter_path
+
+
+def exists_scatter(path, scatter_num=64, data_type='data'):
+    for i in range(scatter_num):
+        scatter_path = get_scatter_path(path, scatter_rank=i)
+        if not exists_lazy(scatter_path, data_type=data_type):
+            return False
     return True
 
 
@@ -82,7 +98,7 @@ def split_strings(strings, start, chr_lens):
     """
     Split strings based on string lengths and given start.
     """
-    return [strings[i-start:j-start] for i, j in zip([start]+chr_lens[:-1], chr_lens)]
+    return [strings[i - start:j - start] for i, j in zip([start] + chr_lens[:-1], chr_lens)]
 
 
 class ProcessorTokenizer:
@@ -90,15 +106,16 @@ class ProcessorTokenizer:
     callable class that runs a preprocessing, as well as tokenization step,
     on input text.
     """
+
     def __init__(self, tokenizer, process_fn=None):
         self.tokenizer = tokenizer
         self.process_fn = process_fn
 
     def __call__(self, string):
         if self.tokenizer is not None:
-            string =  self.tokenizer(string, process_fn=self.process_fn)
+            string = self.tokenizer(string, process_fn=self.process_fn)
         elif self.process_fn is not None:
-            string =  self.process_fn(string)
+            string = self.process_fn(string)
         return string
 
 
@@ -120,21 +137,34 @@ class LazyLoader(object):
         data_type2
         data_type2.len.pkl
     """
-    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32):
+
+    def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32,
+                 load_memory=False, half_load=False):
         lazypath = get_lazy_path(path)
         datapath = os.path.join(lazypath, data_type)
-        #get file where array entries are concatenated into one big string
+        # get file where array entries are concatenated into one big string
         self._file = open(datapath, 'rb')
         self.file = self._file
         self.is_array = is_array
         self.array_data_type = array_data_type
-        #memory map file if necessary
-        lenpath = os.path.join(lazypath, data_type+'.len.pkl')
+        # memory map file if necessary
+        lenpath = os.path.join(lazypath, data_type + '.len.pkl')
         self.lens = pkl.load(open(lenpath, 'rb'))
+        if half_load:
+            self.lens = self.lens[:2 * len(self.lens) // 3]
         self.ends = list(accumulate(self.lens))
         self.dumb_ends = list(self.ends)
         self.mem_map = mem_map
-        if self.mem_map:
+        self.load_memory = load_memory
+        if self.load_memory:
+            data_type_size = np.dtype(self.array_data_type).itemsize
+            if half_load:
+                self.file = self.file.read(sum(self.lens) * data_type_size)
+            else:
+                self.file = self.file.read()
+            self.file = np.ndarray(shape=(len(self.file) // data_type_size,), dtype=array_data_type, buffer=self.file,
+                                   order='C')
+        elif self.mem_map:
             if is_array:
                 if self.ends[-1] == 0:
                     self.file = np.array([], dtype=array_data_type)
@@ -174,23 +204,23 @@ class LazyLoader(object):
             if index == 0:
                 start = 0
             else:
-                start = self.ends[index-1]
+                start = self.ends[index - 1]
             end = self.ends[index]
             rtn = self.file_read(start, end)
             if self.map_fn is not None:
-                return self.map_fn(rtn)
+                rtn = self.map_fn(rtn)
         else:
             # if slice, fetch strings with 1 diskread and then splice in memory
             chr_lens = self.ends[index]
             if index.start == 0 or index.start is None:
                 start = 0
             else:
-                start = self.ends[index.start-1]
+                start = self.ends[index.start - 1]
             stop = chr_lens[-1]
             strings = self.file_read(start, stop)
             rtn = split_strings(strings, start, chr_lens)
             if self.map_fn is not None:
-                return self.map_fn([s for s in rtn])
+                rtn = [self.map_fn(s) for s in rtn]
         return rtn
 
     def __len__(self):
@@ -201,7 +231,7 @@ class LazyLoader(object):
         data_type_size = np.dtype(self.array_data_type).itemsize
         # atomic reads to avoid race conditions with multiprocess dataloader
         self.read_lock.acquire()
-        if not self.mem_map:
+        if not self.mem_map and not self.load_memory:
             # seek to start of file read
             if self.is_array:
                 start = start * data_type_size
@@ -210,11 +240,11 @@ class LazyLoader(object):
             # read to end of file if no end point provided
             if end is None:
                 rtn = self.file.read()
-            #else read amount needed to reach end point
+            # else read amount needed to reach end point
             else:
-                rtn = self.file.read(end-start)
+                rtn = self.file.read(end - start)
             if self.is_array:
-                rtn = np.ndarray(shape=(len(rtn) / data_type_size,), dtype=self.array_data_type, buffer=rtn, order='C')
+                rtn = np.ndarray(shape=(len(rtn) // data_type_size,), dtype=self.array_data_type, buffer=rtn, order='C')
             else:
                 rtn = rtn.decode('utf-8', 'ignore')
         else:
@@ -224,10 +254,9 @@ class LazyLoader(object):
             else:
                 rtn = rtn.decode('utf-8', 'strict')
         self.read_lock.release()
-        #TODO: @raulp figure out mem map byte string bug
-        #if mem map'd need to decode byte string to string
+        # TODO: @raulp figure out mem map byte string bug
+        # if mem map'd need to decode byte string to string
         # # rtn = str(rtn)
         # if self.mem_map:
         #     rtn = rtn.decode('unicode_escape')
         return rtn
-

@@ -16,11 +16,13 @@
 import os
 import math
 import time
+import random
+import torch
 
 from .samplers import DistributedBatchSampler
-from .datasets import json_dataset, csv_dataset, split_ds, ConcatDataset, SplitDataset, bert_sentencepair_dataset, \
-    GPT2Dataset, ShuffleDataset, XLDataset
-from .lazy_loader import exists_lazy, LazyWriter, LazyLoader
+from .datasets import split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
+    GPT2Dataset, ShuffleDataset, XLDataset, BlockDataset
+from .lazy_loader import exists_lazy, LazyWriter, LazyLoader, exists_scatter, get_scatter_path
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
 from . import corpora
@@ -47,39 +49,96 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_dataset(name, tokenizer, pre_tokenize, local_rank):
+def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatter=None, no_lazy_loader=False,
+                half_lazy_loader=False):
     """gets dataset object based on keyword args and file at `path`"""
-    if supported_corpus(name):
-        dataset = corpora.NAMED_CORPORA[name]
-        path = dataset.PATH
-    else:
-        dataset = corpora.get_finetune_dataset(name)
-        path = dataset.PATH
+    global_rank = torch.distributed.get_rank()
+    if not supported_corpus(name):
+        raise NotImplementedError('dataset %s is not supported' % name)
+    dataset = corpora.NAMED_CORPORA[name]
+    path = dataset.PATH
     if issubclass(dataset, corpora.PromptReader):
-        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')):
+        if not (exists_lazy(path, data_type='prompt') and exists_lazy(path, data_type='text')) and not (
+                loader_scatter is not None and exists_scatter(path, data_type='prompt',
+                                                              scatter_num=loader_scatter) and exists_scatter(path,
+                                                                                                             data_type='text',
+                                                                                                             scatter_num=loader_scatter)):
             # create cached version of dataset for lazy loading if it doesn't exist
-            if local_rank == 0:
+            if global_rank == 0:
+                print(f"Creating lazy loader for dataset {name}")
                 prompt_writer = LazyWriter(path, data_type='prompt', is_array=pre_tokenize)
                 text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                 writers = {'prompt': prompt_writer, 'text': text_writer}
-                dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                reader = dataset(writers=writers, tokenizer=tokenizer, tokenize=pre_tokenize)
+                reader.process()
                 prompt_writer.close()
                 text_writer.close()
             else:
                 while not os.path.exists(LazyWriter.get_len_path(path, data_type='prompt')):
                     time.sleep(1)
         map_fn = (lambda x: x.tolist()) if pre_tokenize else None
-        prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                             is_array=pre_tokenize)
-        texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
-                           is_array=pre_tokenize)
+        if loader_scatter is not None:
+            if not (exists_scatter(path, data_type='prompt', scatter_num=loader_scatter) and exists_scatter(path,
+                                                                                                            data_type='text',
+                                                                                                            scatter_num=loader_scatter)):
+                if global_rank == 0:
+                    print(f"Creating scatter loader for dataset {name}")
+                    prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                         is_array=pre_tokenize)
+                    texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
+                                       is_array=pre_tokenize)
+                    indices = list(range(len(texts)))
+                    random.shuffle(indices)
+                    segment_length = (len(indices) - 1) // loader_scatter + 1
+                    for i in range(loader_scatter):
+                        scatter_path = get_scatter_path(path, scatter_rank=i)
+                        prompt_writer = LazyWriter(scatter_path, data_type='prompt', is_array=pre_tokenize)
+                        text_writer = LazyWriter(scatter_path, data_type='text', is_array=pre_tokenize)
+                        for idx in indices[i * segment_length: (i + 1) * segment_length]:
+                            prompt_writer.write(prompts[idx])
+                            text_writer.write(texts[idx])
+                        prompt_writer.close()
+                        text_writer.close()
+                else:
+                    while not (
+                            exists_scatter(path, data_type='prompt', scatter_num=loader_scatter) and exists_scatter(
+                        path, data_type='text', scatter_num=loader_scatter)):
+                        time.sleep(1)
+            scatter_path = get_scatter_path(path, scatter_rank=data_parallel_rank % loader_scatter)
+            print(f"Rank {global_rank} is using scatter from {scatter_path}")
+            prompts = LazyLoader(scatter_path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                 is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
+            texts = LazyLoader(scatter_path, data_type='text', map_fn=map_fn, mem_map=True,
+                               is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
+        else:
+            prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                                 is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
+            texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
+                               is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
         text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
                                      to_tokenize=not pre_tokenize)
+        if loader_scatter is None:
+            if global_rank == 0:
+                print(f"Create dataset {name} with {len(text)} documents")
+                for i in range(10):
+                    rand_id = i if i < 5 else random.randrange(len(text))
+                    sample_tokens = text[rand_id]['tokens'][:1024]
+                    print(sample_tokens)
+                    print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
+        else:
+            for scatter_id in range(loader_scatter):
+                if data_parallel_rank % loader_scatter == scatter_id and data_parallel_rank // loader_scatter == 0:
+                    print(f"Create dataset {name} at scatter {scatter_id} with {len(text)} documents")
+                    for i in range(10):
+                        sample_tokens = text[i]['tokens'][:1024]
+                        print(sample_tokens)
+                        print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
+                torch.distributed.barrier()
         return text
     elif issubclass(dataset, corpora.KeyReader):
         if not (exists_lazy(path, data_type='text') and exists_lazy(path, data_type='mask')):
             # create cached version of dataset for lazy loading if it doesn't exist
-            if local_rank == 0:
+            if global_rank == 0:
                 text_writer = LazyWriter(path, data_type='text', is_array=pre_tokenize)
                 mask_writer = LazyWriter(path, data_type='mask', is_array=True)
                 writers = {'mask': mask_writer, 'text': text_writer}
@@ -102,56 +161,54 @@ def supported_corpus(corpus_name):
     return corpus_name in corpora.NAMED_CORPORA
 
 
-def make_dataset(path, seq_length, mem_length, local_rank, lazy=False, xl_style=False,
-                 shuffle=True, split=None, tokenizer=None, tokenizer_type='CharacterLevelTokenizer',
-                 tokenizer_model_path=None, vocab_size=None, model_type='bpe', pad_token=0, character_converage=1.0,
-                 non_binary_cols=None, sample_one_document=False, pre_tokenize=False, **kwargs):
+def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
+                 sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
+                 save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None,
+                 filter_english=False, non_sentence_start=0.0, half_lazy_loader=False, **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
-    if non_binary_cols is not None:
-        # multilabel dataset support (only for csvs)
-        label_key = non_binary_cols
-
-        # make tokenizer for dataset
-    if tokenizer is None:
-        add_eop = path.endswith('key') if isinstance(path, str) else sum([p.endswith('key') for p in path]) > 0
-        tokenizer = make_tokenizer(tokenizer_type, None, tokenizer_model_path, vocab_size, model_type,
-                                   pad_token, character_converage, add_eop=add_eop, **kwargs)
 
     # get one or multiple datasets and concatenate
     if isinstance(path, str):
-        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank)
+        ds = get_dataset(path, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
+                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                         half_lazy_loader=half_lazy_loader)
     else:
-        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, local_rank=local_rank) for p in path]
+        ds = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
+                          loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                          half_lazy_loader=half_lazy_loader) for p in path]
         ds = ConcatDataset(ds)
 
-    ds_type = ''
-    if 'ds_type' in kwargs:
-        ds_type = kwargs['ds_type']
     # Split dataset into train/val/test (and wrap bert dataset)
+    def wrap_dataset(dataset):
+        if ds_type.lower() == 'bert':
+            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
+            dataset = BertSentencepairDataset(dataset, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
+        elif ds_type.lower() == 'gpt-xl':
+            assert pre_tokenize
+            dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
+                                sample_across_doc=not sample_one_document)
+        elif ds_type.lower() == 'gpt2':
+            dataset = GPT2Dataset(dataset, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
+        elif ds_type.lower() == 'block':
+            dataset = BlockDataset(dataset, tokenizer, max_seq_len=seq_length,
+                                   sample_across_doc=not sample_one_document, filter_english=filter_english,
+                                   non_sentence_start=non_sentence_start)
+        return dataset
+
     if should_split(split):
-        ds = split_ds(ds, split, shuffle=shuffle)
-        if ds_type.lower() == 'bert':
-            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            ds = [bert_sentencepair_dataset(d, max_seq_len=seq_length,
-                                            presplit_sentences=presplit_sentences) if d is not None else None for d in
-                  ds]
-        elif ds_type.lower() == 'gpt2':
-            if xl_style:
-                ds = [XLDataset(d, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                                sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
-            else:
-                ds = [GPT2Dataset(d, tokenizer, max_seq_len=seq_length,
-                                  sample_across_doc=not sample_one_document) if d is not None else None for d in ds]
+        ds = split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits)
+        if save_test_data is not None and torch.distributed.get_rank() == 0:
+            test_ds = ds[-1]
+            with open(save_test_data, "w", encoding='utf-8') as output:
+                for data in test_ds:
+                    text = data['tokens']
+                    text = tokenizer.DecodeIds(text)
+                    output.write(text)
+                    output.write("\n")
+            print(f"Write test data to {save_test_data}")
+        ds = [wrap_dataset(d) if d is not None else None for d in ds]
     else:
-        if ds_type.lower() == 'bert':
-            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            ds = bert_sentencepair_dataset(ds, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
-        elif ds_type.lower() == 'gpt2':
-            if xl_style:
-                ds = XLDataset(ds, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
-                               sample_across_doc=not sample_one_document)
-            else:
-                ds = GPT2Dataset(ds, tokenizer, max_seq_len=seq_length, sample_across_doc=not sample_one_document)
-    return ds, tokenizer
+        ds = wrap_dataset(ds)
+    return ds

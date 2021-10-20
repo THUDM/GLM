@@ -21,6 +21,7 @@ import torch
 from torch.utils import data
 import numpy as np
 
+
 class RandomSampler(data.sampler.Sampler):
     r"""
     Based off of pytorch RandomSampler and DistributedSampler. Essentially a RandomSampler,
@@ -34,6 +35,7 @@ class RandomSampler(data.sampler.Sampler):
     """
 
     def __init__(self, data_source, replacement=False, num_samples=None):
+        super(RandomSampler, self).__init__(data_source)
         self.data_source = data_source
         self.replacement = replacement
         self._num_samples = num_samples
@@ -63,8 +65,12 @@ class RandomSampler(data.sampler.Sampler):
         if self.epoch >= 0:
             g.manual_seed(self.epoch)
         if self.replacement:
-            return iter(torch.randint(high=n, size=(self.num_samples,), dtype=torch.int64, generator=g).tolist())
-        return iter(torch.randperm(n, generator=g).tolist())
+            for _ in range(self.num_samples // 32):
+                yield from torch.randint(high=n, size=(32,), dtype=torch.int64, generator=g).tolist()
+            yield from torch.randint(high=n, size=(self.num_samples % 32,), dtype=torch.int64,
+                                     generator=g).tolist()
+        else:
+            yield from torch.randperm(n, generator=self.generator).tolist()
 
     def __len__(self):
         return self.num_samples
@@ -139,14 +145,6 @@ class DistributedBatchSampler(data.sampler.BatchSampler):
                 self.sampler.wrap_around -= (self.batch_size)
                 self.wrap_around += (len(batch))
                 self.wrap_around %= self.batch_size
-                if isinstance(self.sampler, TransposedSampler):
-                    for i, idx in enumerate(self.data_iterator(self.sampler, wrap_around=True)):
-                        if i == 0:
-                            continue
-                        batch.append(idx)
-                        new_batch_len = len(batch)
-                        if len(batch) == self.batch_size:
-                            break
             yield self._batch(batch)
         if self.wrap_last:
             self.sampler.wrap_around += self.batch_size
