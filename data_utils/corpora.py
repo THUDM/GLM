@@ -370,7 +370,8 @@ class OpenWebText(PromptReader):
 
 
 class CCNews(PromptReader):
-    PATH = "/dataset/fd5061f6/english_data/cc_news.json"
+    # PATH = "/dataset/fd5061f6/english_data/cc_news.json"  # For GPT2 tokenizer
+    PATH = "/dataset/fd5061f6/english_data/cc_news_new.json" # For RoBERTa tokenizer
     assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
