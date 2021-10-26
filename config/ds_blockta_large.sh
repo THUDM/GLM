@@ -22,13 +22,12 @@ gpt_options=" \
        --max-position-embeddings 1024 \
        --save /dataset/fd5061f6/english_data/checkpoints \
        --save-interval 100000 \
-       --train-iters 400000 \
+       --train-iters 40000 \
        --resume-dataloader \
        --train-data wikibook cc-news openwebtext stories \
        --shuffle \
        --filter-english \
        --loader-scatter 8 \
-       --no-lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \
        --split 949,50,1 \
