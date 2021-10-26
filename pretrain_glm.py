@@ -641,7 +641,7 @@ def main():
 
         if args.do_valid:
             prefix = 'the end of training for val data'
-            val_loss = evaluate_and_print_results(prefix, val_data_iterator,
+            evaluate_and_print_results(prefix, (val_data_iterator, multi_val_iterator),
                                                   model, args, timers, verbose=False, forward_step_func=forward_step)
 
     if args.save and iteration != 0:
