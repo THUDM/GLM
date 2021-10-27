@@ -46,7 +46,7 @@ def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, mod
             model_type = 'gpt2'
         return GPT2BPETokenizer(model_type, **kwargs)
     elif tokenizer_class is ChineseSPTokenizer:
-        return ChineseSPTokenizer(**kwargs)
+        return ChineseSPTokenizer(tokenizer_path=model_path, **kwargs)
     text_tokenizer = tokenizer_class(corpus=corpus, vocab_size=vocab_size, model_path=model_path, model_type=model_type,
                                      pad_token=pad_token, character_coverage=character_coverage)
     return Tokenizer(text_tokenizer, command_tokens, type_tokens)
@@ -662,121 +662,6 @@ def get_corpus_freq(dataset, filepath, filetype='tsv'):
     return total_sentence_count, maxlen
 
 
-class SentencePieceTokenizer(TextTokenizer):
-    """Trains and uses sentencepiece for text tokenization"""
-
-    def __init__(self, model_type='bpe', vocab_size=None, corpus=None, model_path=None, character_coverage=1.0,
-                 **kwargs):
-        self.character_coverage = character_coverage
-        self.model_type = model_type.lower()
-        self.spm_model = model_path
-        self.num_text_tokens = vocab_size
-        make_train = not SentencePieceTokenizer.exists(self.spm_model)
-        if make_train:
-            assert corpus is not None and self.num_text_tokens is not None
-            self.Train(corpus, self.num_text_tokens)
-        self._tokens = []
-        self._vocab = {}
-        self.load_spm_model()
-        super(SentencePieceTokenizer, self).__init__()
-
-    def __len__(self):
-        return self.num_text_tokens
-
-    @property
-    def tokens(self):
-        return self._tokens
-
-    @property
-    def vocab(self):
-        return self._vocab
-
-    @staticmethod
-    def exists(model_path):
-        if model_path is None:
-            return False
-        # check if path exists
-        dne = not os.path.exists(model_path)
-        # check if path.model exists
-        if dne and not model_path.endswith('.model'):
-            dne = not os.path.exists(model_path + '.model')
-        return not dne
-
-    def load_spm_model(self):
-        """load sentencepiece model and parse vocab"""
-        if not os.path.exists(self.spm_model) and not self.spm_model.endswith('.model'):
-            self.spm_model = self.spm_model + '.model'
-        self.sp = spm.SentencePieceProcessor()
-        self.sp.Load(self.spm_model)
-        self.vocab_size = self.num_text_tokens = len(self.sp)
-        self._tokens = [self.IdToToken(t) for t in range(self.vocab_size)]
-        self._vocab = {t: i for i, t in enumerate(self._tokens)}
-
-    def Train(self, corpus, num_text_tokens):
-        """train sentencepiece model on corpus using word frequencies"""
-        self.num_text_tokens = num_text_tokens
-        use_model_path = self.spm_model
-        random_hash = str(random.randint(0, 2147483647))
-        if use_model_path is None:
-            use_model_path = random_hash
-        if use_model_path.endswith('.model'):
-            use_model_path = use_model_path[:use_model_path.rfind('.model')]
-        input_path = use_model_path + '.tsv.' + random_hash
-        line_count, maxlenline = get_corpus_freq(corpus, input_path)
-        line_count = min(line_count, MAX_SENTENCEPIECE_SENTENCES)
-        print('line count used as input_sentence_size ', line_count, flush=True)
-        print('training sentencepiece model', flush=True)
-        train_string = '--input={file_path} --model_prefix={model_prefix} --vocab_size={vocab_size}' \
-                       + ' --model_type={model_type} --character_coverage={character_coverage} ' \
-                       + '--input_sentence_size={input_sentence_size} ' \
-                       + '--input_format=tsv'
-        train_string = train_string.format(file_path=input_path, model_prefix=use_model_path,
-                                           vocab_size=num_text_tokens,
-                                           model_type=self.model_type, character_coverage=self.character_coverage,
-                                           input_sentence_size=int(line_count))  # , #)#,
-        print("calling spm.SentencePieceTrainer.Train(%s)" % (train_string), flush=True)
-        spm.SentencePieceTrainer.Train(train_string)
-        os.remove(input_path)
-        self.spm_model = use_model_path + '.model'
-        print('sentencepiece model written to ' + self.spm_model, flush=True)
-
-    def EncodeAsIds(self, text, process_fn=None):
-        """convert text to sentencepiece Ids"""
-        processed_text = text
-        if process_fn is not None:
-            processed_text = process_fn(processed_text)
-        tokens = self.sp.EncodeAsIds(processed_text)
-        return Tokenization(tokens, processed_text, text)
-
-    def EncodeAsTokens(self, text, process_fn=None):
-        """convert text to sentencepiece tokens"""
-        processed_text = text
-        if process_fn is not None:
-            processed_text = process_fn(processed_text)
-        tokens = self.sp.EncodeAsTokens(processed_text)
-        return Tokenization(tokens, processed_text, text, asIds=False)
-
-    def IdToToken(self, Id):
-        """convert Id to sentencpiece token"""
-        return self.sp.IdToPiece(Id)
-
-    def TokenToId(self, token):
-        """convert sentencpiece token to Id"""
-        return self.sp.PieceToId(token)
-
-    def DecodeIds(self, Ids):
-        """converts ids to a text string"""
-        if isinstance(Ids, Tokenization):
-            Ids = Ids.tokenization
-        return self.sp.DecodeIds(Ids)
-
-    def DecodeTokens(self, Tokens):
-        """converts sentencepiece tokens to a text string"""
-        if isinstance(Tokens, Tokenization):
-            Tokens = Tokens.tokenization
-        return self.sp.DecodeTokens(Tokens)
-
-
 class BertWordPieceTokenizer(Tokenizer):
     """
     Loads a pretrained WordPiece tokenizer from `cache_dir` for tokenization
@@ -1157,8 +1042,8 @@ class GPT2BPETokenizer(Tokenizer):
 
 
 class ChineseSPTokenizer(Tokenizer):
-    def __init__(self, add_block_symbols=False, **kwargs):
-        self.text_tokenizer = sp_tokenizer.from_pretrained()
+    def __init__(self, tokenizer_path=None, add_block_symbols=False, **kwargs):
+        self.text_tokenizer = sp_tokenizer.from_pretrained(tokenizer_path)
 
         self.num_command_tokens = 2
         self.num_text_tokens = self.text_tokenizer.sp.vocab_size()

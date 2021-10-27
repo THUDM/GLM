@@ -146,5 +146,7 @@ def get_encoder(encoder_file, bpe_file):
         )
 
 
-def from_pretrained():
-    return get_encoder(PRETRAINED_MODEL_FILE, "")
+def from_pretrained(model_file=None):
+    if model_file is None:
+        model_file = PRETRAINED_MODEL_FILE
+    return get_encoder(model_file, "")

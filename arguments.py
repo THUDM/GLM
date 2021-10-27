@@ -314,7 +314,7 @@ def add_data_args(parser):
                        (one of ['bpe', 'char', 'unigram', 'word']) or \
                        bert vocab to use for BertWordPieceTokenizer (one of \
                        ['bert-large-uncased', 'bert-large-cased', etc.])")
-    group.add_argument('--tokenizer-path', type=str, default='tokenizer.model',
+    group.add_argument('--tokenizer-path', type=str, default=None,
                        help='path used to save/load sentencepiece tokenization '
                             'models')
     group.add_argument('--tokenizer-type', type=str,

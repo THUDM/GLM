@@ -17,6 +17,7 @@ import os
 import mmap
 import pickle as pkl
 import time
+import random
 import numpy as np
 from itertools import accumulate
 
@@ -57,6 +58,43 @@ def exists_scatter(path, scatter_num=64, data_type='data'):
         if not exists_lazy(scatter_path, data_type=data_type):
             return False
     return True
+
+
+class ScatterLazyWriter:
+    def __init__(self, path, data_type, loader_scatter=1, **kwargs):
+        lazypath = get_lazy_path(path)
+        if not os.path.exists(lazypath):
+            os.makedirs(lazypath)
+        self.writers = []
+        for i in range(loader_scatter):
+            scatter_path = os.path.join(lazypath, str(i))
+            if isinstance(data_type, str):
+                self.writers.append(LazyWriter(scatter_path, data_type, **kwargs))
+            else:
+                self.writers.append(MultiLazyWriter(scatter_path, data_type, **kwargs))
+
+    def write(self, s):
+        writer = random.choice(self.writers)
+        writer.write(s)
+
+    def close(self):
+        for writer in self.writers:
+            writer.close()
+
+
+class MultiLazyWriter:
+    def __init__(self, path, data_types, **kwarys):
+        self.writers = {}
+        for data_type in data_types:
+            self.writers[data_type] = LazyWriter(path, data_type, **kwarys)
+
+    def write(self, data):
+        for key, value in data.items():
+            self.writers[key].write(value)
+
+    def close(self):
+        for writer in self.writers.values():
+            writer.close()
 
 
 class LazyWriter:

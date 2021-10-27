@@ -13,6 +13,11 @@
 # limitations under the License.
 
 """several datasets with preset arguments"""
+import glob
+import gzip
+import zlib
+from abc import ABC
+
 from .datasets import json_dataset, csv_dataset
 import os
 import json
@@ -23,44 +28,17 @@ from queue import Empty
 from collections import defaultdict
 from torch.utils import data
 from .lazy_loader import LazyLoader
-from utils import print_rank_0
 
 NUM_PROCESSES = 100
 
+def tqdm_print(s):
+    tqdm.tqdm.write(s)
 
 def punctuation_standardization(string: str):
     punctuation_dict = {"\u201c": "\"", "\u201d": "\"", "\u2019": "'", "\u2018": "'", "\u2013": "-"}
     for key, value in punctuation_dict.items():
         string = string.replace(key, value)
     return string
-
-
-class KeyDataset(data.Dataset):
-    def __init__(self, text_loader, mask_loader, **kwargs):
-        self.texts = text_loader
-        self.masks = mask_loader
-        self.is_lazy = False
-        if isinstance(self.texts, LazyLoader) and isinstance(self.masks, LazyLoader):
-            self.text_lens = self.texts.lens
-            self.is_lazy = True
-
-    def get_text_len(self, idx):
-        return self.text_lens[idx]
-
-    def __getitem__(self, index):
-        text = self.texts[index]
-        mask_length = self.masks[index]
-        mask = []
-        for i, length in enumerate(mask_length):
-            if i % 2 == 0:
-                mask += [0] * length
-            else:
-                mask += [1] * length
-        assert len(text) == len(mask)
-        return {"tokens": text, "loss_masks": mask}
-
-    def __len__(self):
-        return len(self.texts)
 
 
 class PromptDataset(data.Dataset):
@@ -100,19 +78,21 @@ class DataReader:
     def print_info(self, info):
         pass
 
-    def __init__(self, writers, tokenizer=None, tokenize=False, **kwargs):
+    def __init__(self, writer, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
-        print_rank_0(f"Creating dataset from {self.PATH}")
+        tqdm_print(f"Creating dataset from {self.PATH} with pre-tokenization {tokenize}")
         self.tokenizer = tokenizer
         self.tokenize = tokenize
-        self.writers = writers
+        self.writer = writer
+
+    def read_input_to_queue(self, task_queue):
+        raise NotImplementedError
+
+    @staticmethod
+    def write_result(data, writer):
+        writer.write(data)
 
     def process(self):
-        if os.path.isdir(self.PATH):
-            paths = [entry.path for entry in os.scandir(self.PATH) if
-                     not entry.is_dir() and not entry.name.endswith("bz2")]
-        else:
-            paths = [self.PATH]
         task_queue, done_queue, info_queue = Queue(maxsize=10000000), Queue(maxsize=10000000), Queue()
         processes = []
         for i in range(NUM_PROCESSES):
@@ -121,17 +101,13 @@ class DataReader:
             process.start()
             processes.append(process)
 
-        def read_input_to_queue():
-            for path in paths:
-                print_rank_0(f"Start reading {path}")
-                with open(path) as file:
-                    for row in file:
-                        task_queue.put(row)
-            print_rank_0("Read input complete")
-            for i in range(len(processes)):
+        def read_func():
+            self.read_input_to_queue(task_queue)
+            tqdm_print("Read input complete")
+            for _ in range(len(processes)):
                 task_queue.put('STOP')
 
-        process = Process(target=read_input_to_queue)
+        process = Process(target=read_func)
         process.start()
         count = len(processes)
         progress_bar = tqdm.tqdm()
@@ -142,14 +118,10 @@ class DataReader:
                 if count == 0:
                     break
             else:
-                self.write_result(data, self.writers)
+                self.write_result(data, self.writer)
                 progress_bar.update()
         progress_bar.close()
         self.print_info(info_queue)
-
-    @staticmethod
-    def write_result(data, writers):
-        raise NotImplementedError
 
     @staticmethod
     def get_token_count(contents):
@@ -170,12 +142,24 @@ class DataReader:
             content += "......"
         return content
 
-    def process_line(self, data, tokenizer, tokenize):
-        raise NotImplementedError
 
+class LineReader(DataReader, ABC):
+    is_json = True  # Take as jsonline file by default
 
-class PromptReader(DataReader):
-    is_json = True
+    def get_paths(self):
+        if os.path.isdir(self.PATH):
+            paths = [entry.path for entry in os.scandir(self.PATH) if
+                     not entry.is_dir() and not entry.name.endswith("bz2")]
+        else:
+            paths = [self.PATH]
+        return paths
+
+    def read_input_to_queue(self, task_queue):
+        for path in self.get_paths():
+            tqdm_print(f"Start reading {path}")
+            with open(path) as file:
+                for row in file:
+                    task_queue.put(row)
 
     def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         for row in iter(input.get, 'STOP'):
@@ -183,60 +167,94 @@ class PromptReader(DataReader):
             if row:
                 if self.is_json:
                     row = json.loads(row)
-                prompts, texts = self.process_line(row, tokenizer, tokenize)
-                for prompt, text in zip(prompts, texts):
-                    output.put((prompt, text))
+                data = self.process_line(row, tokenizer, tokenize)
+                for item in data:
+                    output.put(item)
         output.put("COMPLETE")
-
-    @staticmethod
-    def write_result(data, writers):
-        prompt, text = data
-        writers['prompt'].write(prompt)
-        writers['text'].write(text)
-
-
-class KeyReader(DataReader):
-    PATH = '/root/data/wikipedia/wiki-key.txt'
-    assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
-        keys, contents = data['key'], data["content"]
-        assert len(keys) == len(contents)
-        for i in range(1, len(keys)):
-            keys[i] = " " + keys[i]
-        contents = [" " + content for content in contents]
-        keys = [tokenizer.EncodeAsIds(key).tokenization for key in keys]
-        contents = [tokenizer.EncodeAsIds(content).tokenization for content in contents]
-        summary = sum(keys, [])
-        summary_prefix = self.process_sample("Summary: ", tokenizer, tokenize)
-        summary_mask = [len(summary_prefix), len(summary)]
-        summary = summary_prefix + summary
-        text, text_mask = [], []
-        for key, content in zip(keys, contents):
-            content = content + [tokenizer.get_command('eop').Id]
-            text += key
-            text += content
-            text_mask.append(len(key))
-            text_mask.append(len(content))
-        return (summary, summary_mask), (text, text_mask)
+        if data:
+            prompt, text = "", data
+            prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer,
+                                                                                                 tokenize)
+            return [{"prompt": prompt, "text": text}]
+        else:
+            return []
+
+
+class FileReader(DataReader):
+
+    def get_paths(self):
+        raise NotImplementedError
+
+    def read_input_to_queue(self, task_queue):
+        for path in self.get_paths():
+            task_queue.put(path)
+
+    def process_file(self, path, output, tokenizer, tokenize):
+        raise NotImplementedError
 
     def tokenize_worker(self, input, output, info, tokenizer, tokenize):
-        for row in iter(input.get, 'STOP'):
-            data = json.loads(row)
-            summary, content = self.process_line(data, tokenizer, tokenize)
-            output.put((summary, content))
+        for path in iter(input.get, 'STOP'):
+            tqdm_print(f"Start reading {path}")
+            self.process_file(path, output, tokenizer=tokenizer, tokenize=tokenize)
         output.put("COMPLETE")
 
-    @staticmethod
-    def write_result(data, writers):
-        summary, content = data
-        writers['text'].write(summary[0])
-        writers['mask'].write(summary[1])
-        writers['text'].write(content[0])
-        writers['mask'].write(content[1])
+
+class MultilingualReader(FileReader):
+    PATH = "/dataset/fd5061f6/english_data/xiaoice"
+
+    def __init__(self, *args, language=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.language = language
+
+    @classmethod
+    def get_languages(cls):
+        languages = set()
+        for directory in ["zhiyuan2", "zhiyuan3", "zhiyuan4"]:
+            directory = os.path.join(cls.PATH, directory, "multilingual_dataset")
+            for path in glob.glob(os.path.join(directory, "*.json.gz")):
+                print(path)
+                filename = os.path.basename(path)
+                lang = filename.split('_')[0]
+                languages.add(lang)
+        return languages
+
+    def get_paths(self):
+        if self.language is not None:
+            pattern = f"{self.language}_*.json.gz"
+        else:
+            pattern = "*.json.gz"
+        found_files = set()
+        paths = [entry.path for entry in os.scandir(self.PATH) if entry.is_dir()]
+        for directory in paths:
+            directory = os.path.join(directory, "multilingual_dataset")
+            for path in glob.glob(os.path.join(directory, pattern)):
+                filename = os.path.basename(path)
+                if filename not in found_files:
+                    yield path
+                    found_files.add(filename)
+
+    def process_file(self, path, output, tokenizer, tokenize):
+        lines = []
+        try:
+            with gzip.open(path, mode='rt') as file:
+                for row in file:
+                    row = row.rstrip()
+                    if row:
+                        lines.append(row)
+                    else:
+                        if lines:
+                            text = "\n".join(lines)
+                            prompt = self.process_sample("", tokenizer, tokenize)
+                            text = self.process_sample(text, tokenizer, tokenize)
+                            output.put({"prompt": prompt, "text": text})
+                        lines = []
+        except (zlib.error, gzip.BadGzipFile) as e:
+            tqdm_print(f"Compression error when reading {path}")
 
 
-class zhihu(PromptReader):
+class zhihu(LineReader):
     PATH = "/root/data/zhihu/zhihu"
     reserve_punct = True
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
@@ -245,13 +263,8 @@ class zhihu(PromptReader):
     user_prefix = "回答用户："
     answer_prefix = " 回答："
 
-    # qtitle_prefix = []
-    # qcontent_prefix = []
-    # user_prefix = []
-    # answer_prefix = []
-
     def process_line(self, data, tokenizer, tokenize):
-        prompts, texts = [], []
+        outputs = []
         ans_length = len(data.get("ans-content", ""))
         ans_up = data.get("ans-up-num", "")
         ans_up = int(ans_up) if ans_up else 0
@@ -266,16 +279,11 @@ class zhihu(PromptReader):
             text = data["ans-content"]
             prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer,
                                                                                                  tokenize)
-            prompts.append(prompt)
-            texts.append(text)
-        # prompt = data["q_title"] + data["q-content"] + data["user-signature"]
-        # text = data["ans-content"]
-        # prompts.append(prompt)
-        # texts.append(text)
-        return prompts, texts
+            outputs.append({"prompt": prompt, "text": text})
+        return outputs
 
 
-class zhidao(PromptReader):
+class zhidao(LineReader):
     PATH = "/root/data/zhidao/zhidao"
     reserve_punct = True
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
@@ -286,7 +294,7 @@ class zhidao(PromptReader):
     def process_line(self, data, tokenizer, tokenize):
         if "title" not in data:
             return [], []
-        prompts, texts = [], []
+        outputs = []
         qtitle = data["title"]
         qcontent = data.get("content", "")
         qcontent = self.trim_field(qcontent, max_length=100)
@@ -296,59 +304,51 @@ class zhidao(PromptReader):
             text = data["best_answer"]["content"]
             if len(text) > 10:
                 text = self.process_sample(text, tokenizer, tokenize)
-                prompts.append(prompt)
-                texts.append(text)
+                outputs.append({"prompt": prompt, "text": text})
         for answer in data.get("other_answers", []):
             text = answer["content"]
             if len(text) > 100:
                 text = self.process_sample(text, tokenizer, tokenize)
-                prompts.append(prompt)
-                texts.append(text)
-        return prompts, texts
+                outputs.append({"prompt": prompt, "text": text})
+        return outputs
 
 
-class baike(PromptReader):
+class baike(LineReader):
     PATH = "/root/data/baike/baike"
     reserve_punct = True
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
-        prompts, texts = [], []
+        outputs = []
         text = data.get("title", "") + data.get("abstract", "") + data.get("content", "")
         if text:
             p, t = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
-            prompts.append(p)
-            texts.append(t)
-        return prompts, texts
+            outputs.append({"prompt": p, "text": t})
+        return outputs
 
 
-class wikipedia(PromptReader):
+class wikipedia(LineReader):
     """
     dataset for wikipedia with arguments configured for convenience
 
     command line usage: `--train-data wikipedia`
     """
-    # PATH = '/dataset/data/wiki.txt'
+    is_json = False
     PATH = '/root/data/bert_data/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
-    def process_line(self, data, tokenizer, tokenize):
-        text = data['text']
-        prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
-        return [prompt], [text]
 
-
-class TestDataset(PromptReader):
+class TestDataset(LineReader):
     PATH = '/root/data/test.json'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
         prompt, text = data['prompt'], data['text']
         prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
-        return [prompt], [text]
+        return [{"prompt": prompt, "text": text}]
 
 
-class OpenWebText(PromptReader):
+class OpenWebText(LineReader):
     PATH = '/dataset/fd5061f6/english_data/openwebtext2'
     assert_str = "make sure to set PATH for openwebtext data_utils/corpora.py"
 
@@ -356,7 +356,7 @@ class OpenWebText(PromptReader):
         import fasttext
         super().__init__(*args, **kwargs)
         self.model = fasttext.load_model('/dataset/fd5061f6/english_data/lid.176.bin')
-        print_rank_0("Load language detection model")
+        print("Load language detection model")
 
     def process_line(self, data, tokenizer, tokenize):
         text = data['text']
@@ -365,13 +365,13 @@ class OpenWebText(PromptReader):
             if lang == '__label__en':
                 prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
                                                                                                  tokenize)
-                return [prompt], [text]
-        return [], []
+                return [{"prompt": prompt, "text": text}]
+        return []
 
 
-class CCNews(PromptReader):
+class CCNews(LineReader):
     # PATH = "/dataset/fd5061f6/english_data/cc_news.json"  # For GPT2 tokenizer
-    PATH = "/dataset/fd5061f6/english_data/cc_news_new.json" # For RoBERTa tokenizer
+    PATH = "/dataset/fd5061f6/english_data/cc_news_new.json"  # For RoBERTa tokenizer
     assert_str = "make sure to set PATH for cc-news data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
@@ -387,26 +387,17 @@ class CCNews(PromptReader):
             text += maintext
         if len(text) > 100:
             prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer, tokenize)
-            return [prompt], [text]
+            return [{"prompt": prompt, "text": text}]
         else:
-            return [], []
+            return []
 
 
-class BertData(PromptReader):
+class BertData(LineReader):
     is_json = False
     PATH = '/dataset/fd5061f6/english_data/wikibook'
 
-    def process_line(self, data, tokenizer, tokenize):
-        if data:
-            prompt, text = "", data
-            prompt, text = self.process_sample(prompt, tokenizer, tokenize), self.process_sample(text, tokenizer,
-                                                                                                 tokenize)
-            return [prompt], [text]
-        else:
-            return [], []
 
-
-class Pile(PromptReader):
+class Pile(LineReader):
     is_json = True
     PATH = "/dataset/fd5061f6/english_data/pile/train"
     filtered_sources = ["Github", "StackExchange", "DM Mathematics", "Ubuntu IRC", "EuroParl", "YoutubeSubtitles",
@@ -422,7 +413,7 @@ class Pile(PromptReader):
                     total_dict[source] += length
             except Empty:
                 break
-        print_rank_0(total_dict)
+        tqdm_print(total_dict)
 
     def tokenize_worker(self, input, output, info, tokenizer, tokenize):
         source_dict = defaultdict(int)
@@ -431,11 +422,11 @@ class Pile(PromptReader):
             if row:
                 if self.is_json:
                     row = json.loads(row)
-                prompts, texts, source = self.process_line(row, tokenizer, tokenize)
+                data, source = self.process_line(row, tokenizer, tokenize)
                 length = 0
-                for prompt, text in zip(prompts, texts):
-                    length += len(text)
-                    output.put((prompt, text))
+                for item in data:
+                    length += len(item['text'])
+                    output.put(item)
                 if source:
                     source_dict[source] += length
         output.put("COMPLETE")
@@ -452,12 +443,12 @@ class Pile(PromptReader):
             else:
                 prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
                                                                                                  tokenize)
-                return [prompt], [text], source
+                return [{"prompt": prompt, "text": text}], source
         else:
-            return [], [], None
+            return [], None
 
 
-class Stories(PromptReader):
+class Stories(LineReader):
     is_json = True
     PATH = "/dataset/fd5061f6/english_data/stories_31G.jsonl"
 
@@ -466,9 +457,9 @@ class Stories(PromptReader):
         if text:
             prompt, text = self.process_sample("", tokenizer, tokenize), self.process_sample(text, tokenizer,
                                                                                              tokenize)
-            return [prompt], [text]
+            return [{"prompt": prompt, "text": text}]
         else:
-            return [], []
+            return []
 
 
 class BertBaseData(BertData):
@@ -481,7 +472,6 @@ class BertLargeData(BertData):
 
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
-    'wikipedia-key': KeyReader,
     'openwebtext': OpenWebText,
     "zhihu": zhihu,
     "zhidao": zhidao,
