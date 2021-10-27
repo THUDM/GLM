@@ -1,5 +1,5 @@
 #!/bin/bash
-CHECKPOINT_PATH=/root/data/checkpoints
+CHECKPOINT_PATH=/dataset/fd5061f6/english_data/checkpoints
 
 source $1
 
