@@ -28,6 +28,7 @@ gpt_options=" \
        --shuffle \
        --filter-english \
        --loader-scatter 8 \
+       --no-lazy-loader \
        --tokenizer-type GPT2BPETokenizer \
        --tokenizer-model-type roberta \
        --split 949,50,1 \
