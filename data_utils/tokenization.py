@@ -158,7 +158,7 @@ class CommandToken(object):
         self.lstrip = lstrip
         self.rstrip = rstrip
 
-    def __str__(self):
+    def __repr__(self):
         return str(COMMAND_TUPLE(self.name, self.token, self.Id))
 
 
