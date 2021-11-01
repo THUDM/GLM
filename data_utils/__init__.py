@@ -20,7 +20,8 @@ import random
 import torch
 
 from .samplers import DistributedBatchSampler
-from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDataset, \
+from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDataset, MultiSamplingDataset, \
+ \
     GPT2Dataset, XLDataset, BlockDataset
 from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWriter, LazyLoader, exists_scatter, \
     get_scatter_path
@@ -95,9 +96,7 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
                 time.sleep(1)
     map_fn = (lambda x: x.tolist()) if pre_tokenize else None
     if loader_scatter is not None:
-        if not (exists_scatter(path, data_type='prompt', scatter_num=loader_scatter) and exists_scatter(path,
-                                                                                                        data_type='text',
-                                                                                                        scatter_num=loader_scatter)):
+        if not (exists_scatter(path, data_type='text', scatter_num=loader_scatter)):
             if global_rank == 0:
                 print(f"Creating scatter loader for dataset {name}")
                 prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
@@ -149,7 +148,8 @@ def supported_corpus(corpus_name):
 def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
                  save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None,
-                 filter_english=False, non_sentence_start=0.0, half_lazy_loader=False, **kwargs):
+                 filter_english=False, non_sentence_start=0.0, half_lazy_loader=False, dataset_temperature=1.0,
+                 **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
         split = [1.]
@@ -180,7 +180,11 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
         _datasets = [_datasets]
     if ds_type.lower() != 'gpt-xl':
         _datasets = [[LengthSamplingDataset(ds) for ds in ds_split] for ds_split in _datasets]
-    _datasets = [ConcatDataset(ds) if len(ds) > 1 else ds[0] for ds in _datasets]
+    if dataset_temperature < 1.0:
+        _datasets = [MultiSamplingDataset(ds, reweight=True, temperature=dataset_temperature) if len(ds) > 1 else ds[0]
+                     for ds in _datasets]
+    else:
+        _datasets = [ConcatDataset(ds) if len(ds) > 1 else ds[0] for ds in _datasets]
 
     # Split dataset into train/val/test (and wrap bert dataset)
     def wrap_dataset(dataset):

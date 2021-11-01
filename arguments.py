@@ -280,6 +280,7 @@ def add_data_args(parser):
                        help="""Filename for validation data.""")
     group.add_argument('--test-data', nargs='*', default=None,
                        help="""Filename for testing""")
+    group.add_argument('--dataset-temperature', type=float, default=1.0)
     group.add_argument('--data-dir', type=str, default=None, help="The data path to all the data files")
     group.add_argument('--input-data-sizes-file', type=str, default='sizes.txt',
                        help='the filename containing all the shards sizes')
