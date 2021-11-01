@@ -649,6 +649,10 @@ class RecordPVP(PVP):
     def is_multi_token(self):
         return True
 
+    @property
+    def spell_length(self):
+        return self.num_prompt_tokens + self.prefix_prompt
+
     def get_answers(self, example: InputExample):
         choices = example.meta['candidates']
         choices = [" " + choice for choice in choices]
@@ -659,7 +663,9 @@ class RecordPVP(PVP):
 
         assert '@placeholder' in example.text_b, f'question "{example.text_b}" does not contain a @placeholder token'
         question_a, question_b = example.text_b.split('@placeholder')
-        return [premise, " " + question_a.rstrip(), [self.mask], question_b], []
+        parts_a, parts_b = [None, premise, None, " " + question_a.rstrip(), [self.mask], question_b, None], []
+        parts_a, parts_b = self.replace_prompt_tokens(parts_a, parts_b)
+        return parts_a, parts_b
 
     def verbalize(self, label) -> List[str]:
         return []

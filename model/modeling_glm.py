@@ -226,4 +226,9 @@ def glm_get_params_for_weight_decay_optimization(module):
                 [p for n, p in list(module_._parameters.items())
                  if p is not None and p.requires_grad and n == 'bias'])
 
+    if len(weight_decay_params['params']) == 0:
+        return (no_weight_decay_params,)
+    elif len(no_weight_decay_params['params']) == 0:
+        return (weight_decay_params,)
+
     return weight_decay_params, no_weight_decay_params
