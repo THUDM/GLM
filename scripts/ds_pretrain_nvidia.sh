@@ -2,8 +2,8 @@
 
 # Change for multinode config
 
-NUM_WORKERS=12
-NUM_GPUS_PER_WORKER=8
+NUM_WORKERS=1
+NUM_GPUS_PER_WORKER=1
 MP_SIZE=1
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 

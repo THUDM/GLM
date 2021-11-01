@@ -20,8 +20,8 @@ import random
 import torch
 
 from .samplers import DistributedBatchSampler
-from .datasets import split_ds, ConcatDataset, SplitDataset, BertSentencepairDataset, \
-    GPT2Dataset, ShuffleDataset, XLDataset, BlockDataset
+from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDataset, \
+    GPT2Dataset, XLDataset, BlockDataset
 from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWriter, LazyLoader, exists_scatter, \
     get_scatter_path
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
@@ -66,7 +66,7 @@ def get_language_datasets(tokenizer, pre_tokenize, data_parallel_rank, loader_sc
             writer = MultiLazyWriter(path, data_types=['prompt', 'text'], is_array=pre_tokenize)
         else:
             writer = ScatterLazyWriter(path, data_type=['prompt', 'text'], is_array=pre_tokenize,
-                                            loader_scatter=loader_scatter)
+                                       loader_scatter=loader_scatter)
         reader = MultilingualReader(language=lang, writer=writer, tokenizer=tokenizer, tokenize=pre_tokenize)
         reader.process()
         writer.close()
@@ -156,20 +156,35 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
 
     # get one or multiple datasets and concatenate
     paths = [path] if isinstance(path, str) else path
-    ds = [get_language_datasets(tokenizer=tokenizer, pre_tokenize=pre_tokenize, data_parallel_rank=data_parallel_rank,
-                                loader_scatter=loader_scatter, no_lazy_loader=no_lazy_loader) if p == "multilingual"
-          else get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                           loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
-                           half_lazy_loader=half_lazy_loader)
-          for p in paths]
-    ds = ConcatDataset(ds) if len(ds) > 1 else ds[0]
+    _datasets = [
+        get_language_datasets(tokenizer=tokenizer, pre_tokenize=pre_tokenize, data_parallel_rank=data_parallel_rank,
+                              loader_scatter=loader_scatter, no_lazy_loader=no_lazy_loader) if p == "multilingual"
+        else get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
+                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                         half_lazy_loader=half_lazy_loader)
+        for p in paths]
+    if should_split(split):
+        _datasets = [split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits) for ds in
+                     _datasets]
+        _datasets = [ds for ds in zip(*_datasets)]
+        if save_test_data is not None and torch.distributed.get_rank() == 0:
+            test_ds = _datasets[-1]
+            with open(save_test_data, "w", encoding='utf-8') as output:
+                for data in test_ds:
+                    text = data['tokens']
+                    text = tokenizer.DecodeIds(text)
+                    output.write(text)
+                    output.write("\n")
+            print(f"Write test data to {save_test_data}")
+    else:
+        _datasets = [_datasets]
+    if ds_type.lower() != 'gpt-xl':
+        _datasets = [[LengthSamplingDataset(ds) for ds in ds_split] for ds_split in _datasets]
+    _datasets = [ConcatDataset(ds) if len(ds) > 1 else ds[0] for ds in _datasets]
 
     # Split dataset into train/val/test (and wrap bert dataset)
     def wrap_dataset(dataset):
-        if ds_type.lower() == 'bert':
-            presplit_sentences = kwargs['presplit_sentences'] if 'presplit_sentences' in kwargs else False
-            dataset = BertSentencepairDataset(dataset, max_seq_len=seq_length, presplit_sentences=presplit_sentences)
-        elif ds_type.lower() == 'gpt-xl':
+        if ds_type.lower() == 'gpt-xl':
             assert pre_tokenize
             dataset = XLDataset(dataset, tokenizer, max_seq_len=seq_length, mem_len=mem_length,
                                 sample_across_doc=not sample_one_document)
@@ -181,18 +196,7 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
                                    non_sentence_start=non_sentence_start)
         return dataset
 
-    if should_split(split):
-        ds = split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits)
-        if save_test_data is not None and torch.distributed.get_rank() == 0:
-            test_ds = ds[-1]
-            with open(save_test_data, "w", encoding='utf-8') as output:
-                for data in test_ds:
-                    text = data['tokens']
-                    text = tokenizer.DecodeIds(text)
-                    output.write(text)
-                    output.write("\n")
-            print(f"Write test data to {save_test_data}")
-        ds = [wrap_dataset(d) if d is not None else None for d in ds]
-    else:
-        ds = wrap_dataset(ds)
-    return ds
+    _datasets = [wrap_dataset(d) if d is not None else None for d in _datasets]
+    if len(_datasets) == 1:
+        return _datasets[0]
+    return _datasets

@@ -18,7 +18,6 @@ import gzip
 import zlib
 from abc import ABC
 
-from .datasets import json_dataset, csv_dataset
 import os
 import json
 import random
@@ -45,7 +44,7 @@ class PromptDataset(data.Dataset):
     def __init__(self, prompt_loader, text_loader, tokenizer=None, to_tokenize=False, **kwargs):
         self.prompts = prompt_loader
         self.texts = text_loader
-        self.tokenizer = tokenizer
+        self._tokenizer = tokenizer
         self.to_tokenize = to_tokenize
         if isinstance(self.prompts, LazyLoader) and isinstance(self.texts, LazyLoader):
             self.prompt_lens = self.prompts.lens
@@ -54,6 +53,14 @@ class PromptDataset(data.Dataset):
 
     def get_text_len(self, idx):
         return self.prompt_lens[idx] + self.text_lens[idx]
+
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, tokenizer):
+        self._tokenizer = tokenizer
 
     def __getitem__(self, index):
         prompt = self.prompts[index]
