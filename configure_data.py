@@ -279,7 +279,7 @@ def make_loaders(args, tokenizer):
         'loader_scatter': args.loader_scatter,
         'data_parallel_rank': mpu.get_data_parallel_rank(),
         "non_sentence_start": args.non_sentence_start,
-        "half_lazy_loader": args.half_lazy_loader
+        "loader_fraction": args.loader_fraction
     }
 
     eval_set_args = copy.copy(data_set_args)

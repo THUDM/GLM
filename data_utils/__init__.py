@@ -19,6 +19,7 @@ import time
 import random
 import torch
 
+from .corpora import get_corpora_class
 from .samplers import DistributedBatchSampler
 from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDataset, MultiSamplingDataset, \
  \
@@ -27,7 +28,6 @@ from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWr
     get_scatter_path
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
-from . import corpora
 
 TRAIN_DATA = 0
 VAL_DATA = 1
@@ -51,36 +51,12 @@ def get_ext(path):
     return os.path.splitext(path)[1]
 
 
-def get_language_datasets(tokenizer, pre_tokenize, data_parallel_rank, loader_scatter=None, no_lazy_loader=False):
-    from .corpora import MultilingualReader
-    languages = []
-    with open("./languages.txt") as file:
-        for line in file:
-            languages.append(line.strip())
-    target_path = "/dataset/fd5061f6/english_data/xiaoice.lazy"
-    if not os.path.exists(target_path):
-        os.makedirs(target_path)
-    for lang in languages:
-        path = os.path.join(target_path, lang)
-        print(f"Creating lazy loader for language {lang}")
-        if loader_scatter is None:
-            writer = MultiLazyWriter(path, data_types=['prompt', 'text'], is_array=pre_tokenize)
-        else:
-            writer = ScatterLazyWriter(path, data_type=['prompt', 'text'], is_array=pre_tokenize,
-                                       loader_scatter=loader_scatter)
-        reader = MultilingualReader(language=lang, writer=writer, tokenizer=tokenizer, tokenize=pre_tokenize)
-        reader.process()
-        writer.close()
-
-
 def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatter=None, no_lazy_loader=False,
-                half_lazy_loader=False):
+                loader_fraction=None):
     """gets dataset object based on keyword args and file at `path`"""
     global_rank = torch.distributed.get_rank()
-    if not supported_corpus(name):
-        raise NotImplementedError('dataset %s is not supported' % name)
-    dataset = corpora.NAMED_CORPORA[name]
-    path = dataset.PATH
+    dataset = get_corpora_class(name)
+    path = dataset.path()
     if not (exists_lazy(path, data_type='text')) and not (
             loader_scatter is not None and exists_scatter(path, data_type='text', scatter_num=loader_scatter)):
         # create cached version of dataset for lazy loading if it doesn't exist
@@ -114,17 +90,18 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
                         exists_scatter(path, data_type='prompt', scatter_num=loader_scatter) and exists_scatter(
                     path, data_type='text', scatter_num=loader_scatter)):
                     time.sleep(1)
-        scatter_path = get_scatter_path(path, scatter_rank=data_parallel_rank % loader_scatter)
-        print(f"Rank {global_rank} is using scatter from {scatter_path}")
-        prompts = LazyLoader(scatter_path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                             is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
-        texts = LazyLoader(scatter_path, data_type='text', map_fn=map_fn, mem_map=True,
-                           is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
+        lazy_path = get_scatter_path(path, scatter_rank=data_parallel_rank % loader_scatter)
+        print(f"Rank {global_rank} is using scatter from {lazy_path}")
+
     else:
-        prompts = LazyLoader(path, data_type='prompt', map_fn=map_fn, mem_map=True,
-                             is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
-        texts = LazyLoader(path, data_type='text', map_fn=map_fn, mem_map=True,
-                           is_array=pre_tokenize, load_memory=no_lazy_loader, half_load=half_lazy_loader)
+        lazy_path = path
+    if exists_lazy(lazy_path, data_type='prompt'):
+        prompts = LazyLoader(lazy_path, data_type='prompt', map_fn=map_fn, mem_map=True,
+                             is_array=pre_tokenize, load_memory=no_lazy_loader, loader_fraction=loader_fraction)
+    else:
+        prompts = None
+    texts = LazyLoader(lazy_path, data_type='text', map_fn=map_fn, mem_map=True,
+                       is_array=pre_tokenize, load_memory=no_lazy_loader, loader_fraction=loader_fraction)
     text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
                                  to_tokenize=not pre_tokenize)
     if loader_scatter is None:
@@ -140,15 +117,10 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
     return text
 
 
-def supported_corpus(corpus_name):
-    """checks if corpus name is defined in `corpora.py`"""
-    return corpus_name in corpora.NAMED_CORPORA
-
-
 def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
                  save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None,
-                 filter_english=False, non_sentence_start=0.0, half_lazy_loader=False, dataset_temperature=1.0,
+                 filter_english=False, non_sentence_start=0.0, loader_fraction=None, dataset_temperature=1.0,
                  **kwargs):
     """function to create datasets+tokenizers for common options"""
     if split is None:
@@ -156,13 +128,24 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
 
     # get one or multiple datasets and concatenate
     paths = [path] if isinstance(path, str) else path
-    _datasets = [
-        get_language_datasets(tokenizer=tokenizer, pre_tokenize=pre_tokenize, data_parallel_rank=data_parallel_rank,
-                              loader_scatter=loader_scatter, no_lazy_loader=no_lazy_loader) if p == "multilingual"
-        else get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                         loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
-                         half_lazy_loader=half_lazy_loader)
-        for p in paths]
+    new_paths = []
+    for p in paths:
+        if p == 'multilingual':
+            cache_file = './languages.txt'
+            if os.path.exists(cache_file):
+                with open(cache_file) as file:
+                    languages = list(map(lambda x: x.strip(), file.readlines()))
+            else:
+                multilingual = get_corpora_class('multilingual')
+                languages = multilingual.get_languages()
+                with open(cache_file, "w") as output:
+                    output.write('\n'.join(languages))
+            new_paths += [f'multilingual-{lang}' for lang in languages]
+        else:
+            new_paths.append(p)
+    _datasets = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
+                             loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
+                             loader_fraction=loader_fraction) for p in new_paths]
     if should_split(split):
         _datasets = [split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits) for ds in
                      _datasets]

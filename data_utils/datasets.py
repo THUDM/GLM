@@ -42,13 +42,13 @@ class LengthSamplingDataset(data.Dataset):
         self.ds = ds
         self.lengths = [ds.get_text_len(idx) for idx in range(len(ds))]
         if ds.is_lazy:
-            lens = np.array([self.ds.get_text_len(idx) for idx in range(len(self.ds))])
+            lens = map(lambda idx:self.ds.get_text_len(idx), range(len(self.ds)))
         else:
-            lens = np.array([len(d['text']) if isinstance(d, dict) else len(d) for d in self.ds])
-        self.total_len = np.sum(lens)
-        print_rank_0(
-            f"Dataset document count {len(lens)}, token count {self.total_len}")
+            lens = map(lambda d: len(d['text']) if isinstance(d, dict) else len(d), self.ds)
         self.weighting = list(accumulate(lens))
+        self.total_len = self.weighting[-1] if self.weighting else 0
+        print_rank_0(
+            f"Dataset {ds.name} document count {len(self.ds)}, token count {self.total_len}")
 
     @property
     def tokenizer(self):
@@ -200,6 +200,10 @@ class SplitDataset(data.Dataset):
 
     def __getitem__(self, index):
         return self.ds[self.split_inds[index]]
+
+    @property
+    def name(self):
+        return "Split of " + self.ds.name
 
     @property
     def tokenizer(self):

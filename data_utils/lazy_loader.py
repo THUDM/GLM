@@ -177,7 +177,7 @@ class LazyLoader(object):
     """
 
     def __init__(self, path, data_type='data', mem_map=False, map_fn=None, is_array=False, array_data_type=np.int32,
-                 load_memory=False, half_load=False):
+                 load_memory=False, loader_fraction=None):
         lazypath = get_lazy_path(path)
         datapath = os.path.join(lazypath, data_type)
         # get file where array entries are concatenated into one big string
@@ -188,51 +188,38 @@ class LazyLoader(object):
         # memory map file if necessary
         lenpath = os.path.join(lazypath, data_type + '.len.pkl')
         self.lens = pkl.load(open(lenpath, 'rb'))
-        if half_load:
-            self.lens = self.lens[:2 * len(self.lens) // 3]
+        if loader_fraction:
+            self.lens = self.lens[: int(len(self.lens) * loader_fraction)]
         self.ends = list(accumulate(self.lens))
         self.dumb_ends = list(self.ends)
         self.mem_map = mem_map
         self.load_memory = load_memory
         if self.load_memory:
-            data_type_size = np.dtype(self.array_data_type).itemsize
-            if half_load:
+            data_type_size = np.dtype(self.array_data_type).itemsize if is_array else 1
+            if loader_fraction:
                 self.file = self.file.read(sum(self.lens) * data_type_size)
             else:
                 self.file = self.file.read()
-            self.file = np.ndarray(shape=(len(self.file) // data_type_size,), dtype=array_data_type, buffer=self.file,
-                                   order='C')
+            if is_array:
+                self.file = np.ndarray(shape=(len(self.file) // data_type_size,), dtype=array_data_type,
+                                       buffer=self.file, order='C')
         elif self.mem_map:
             if is_array:
                 if self.ends[-1] == 0:
                     self.file = np.array([], dtype=array_data_type)
                 else:
-                    self.file = np.memmap(self.file, dtype=array_data_type, mode='r', order='C')
+                    shape = sum(self.lens) if loader_fraction else None
+                    self.file = np.memmap(self.file, dtype=array_data_type, mode='r', order='C', shape=shape)
             else:
                 if self.ends[-1] == 0:
                     self.file = bytearray()
                 else:
-                    self.file = mmap.mmap(self.file.fileno(), 0, prot=mmap.PROT_READ)
+                    length = sum(self.lens) if loader_fraction else 0
+                    self.file = mmap.mmap(self.file.fileno(), length, prot=mmap.PROT_READ)
         self.read_lock = Lock()
         self.process_fn = map_fn
         self.map_fn = map_fn
-        self._tokenizer = None
         self.is_lazy = True
-
-    def SetTokenizer(self, tokenizer):
-        """
-        logic to set and remove (set to None) tokenizer.
-        combines preprocessing/tokenization into one callable.
-        """
-        if tokenizer is None:
-            if not hasattr(self, '_tokenizer'):
-                self._tokenizer = tokenizer
-        else:
-            self._tokenizer = tokenizer
-        self.map_fn = ProcessorTokenizer(tokenizer, self.process_fn)
-
-    def GetTokenizer(self):
-        return self._tokenizer
 
     def __getitem__(self, index):
         """

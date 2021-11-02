@@ -30,8 +30,10 @@ from .lazy_loader import LazyLoader
 
 NUM_PROCESSES = 100
 
+
 def tqdm_print(s):
     tqdm.tqdm.write(s)
+
 
 def punctuation_standardization(string: str):
     punctuation_dict = {"\u201c": "\"", "\u201d": "\"", "\u2019": "'", "\u2018": "'", "\u2013": "-"}
@@ -41,18 +43,24 @@ def punctuation_standardization(string: str):
 
 
 class PromptDataset(data.Dataset):
-    def __init__(self, prompt_loader, text_loader, tokenizer=None, to_tokenize=False, **kwargs):
+    def __init__(self, prompt_loader, text_loader, tokenizer=None, to_tokenize=False, name="", **kwargs):
+        self._name = name
         self.prompts = prompt_loader
         self.texts = text_loader
         self._tokenizer = tokenizer
         self.to_tokenize = to_tokenize
-        if isinstance(self.prompts, LazyLoader) and isinstance(self.texts, LazyLoader):
-            self.prompt_lens = self.prompts.lens
+        if (self.prompts is None or isinstance(self.prompts, LazyLoader)) and isinstance(self.texts, LazyLoader):
+            self.prompt_lens = self.prompts.lens if self.prompts else None
             self.text_lens = self.texts.lens
             self.is_lazy = True
 
     def get_text_len(self, idx):
-        return self.prompt_lens[idx] + self.text_lens[idx]
+        prompt_length = self.prompt_lens[idx] if self.prompt_lens else 0
+        return prompt_length + self.text_lens[idx]
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def tokenizer(self):
@@ -63,15 +71,15 @@ class PromptDataset(data.Dataset):
         self._tokenizer = tokenizer
 
     def __getitem__(self, index):
-        prompt = self.prompts[index]
+        prompt = self.prompts[index] if self.prompts else ""
         text = self.texts[index]
         if self.to_tokenize:
-            prompt = self.tokenizer.EncodeAsIds(prompt).tokenization
+            prompt = self.tokenizer.EncodeAsIds(prompt).tokenization if prompt else []
             text = self.tokenizer.EncodeAsIds(text).tokenization
         return {"tokens": prompt + text, "loss_masks": [0] * len(prompt) + [1] * len(text)}
 
     def __len__(self):
-        return len(self.prompts)
+        return len(self.texts)
 
 
 class DataReader:
@@ -84,6 +92,10 @@ class DataReader:
 
     def print_info(self, info):
         pass
+
+    @classmethod
+    def path(cls):
+        return cls.PATH
 
     def __init__(self, writer, tokenizer=None, tokenize=False, **kwargs):
         assert os.path.exists(self.PATH), self.assert_str
@@ -208,57 +220,61 @@ class FileReader(DataReader):
         output.put("COMPLETE")
 
 
-class MultilingualReader(FileReader):
-    PATH = "/dataset/fd5061f6/english_data/xiaoice"
+def create_multilingual_reader(language=None):
+    class MultilingualReader(FileReader):
+        PATH = "/dataset/fd5061f6/english_data/xiaoice"
 
-    def __init__(self, *args, language=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.language = language
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
 
-    @classmethod
-    def get_languages(cls):
-        languages = set()
-        for directory in ["zhiyuan2", "zhiyuan3", "zhiyuan4"]:
-            directory = os.path.join(cls.PATH, directory, "multilingual_dataset")
-            for path in glob.glob(os.path.join(directory, "*.json.gz")):
-                print(path)
+        @classmethod
+        def path(cls):
+            if language is None:
+                return cls.PATH
+            else:
+                return os.path.join(cls.PATH + ".lazy", language)
+
+        @classmethod
+        def get_languages(cls):
+            languages = set()
+            pattern = os.path.join(cls.PATH, "**", "*.json.gz")
+            for path in glob.glob(pattern, recursive=True):
                 filename = os.path.basename(path)
                 lang = filename.split('_')[0]
                 languages.add(lang)
-        return languages
+            return languages
 
-    def get_paths(self):
-        if self.language is not None:
-            pattern = f"{self.language}_*.json.gz"
-        else:
-            pattern = "*.json.gz"
-        found_files = set()
-        paths = [entry.path for entry in os.scandir(self.PATH) if entry.is_dir()]
-        for directory in paths:
-            directory = os.path.join(directory, "multilingual_dataset")
-            for path in glob.glob(os.path.join(directory, pattern)):
+        def get_paths(self):
+            if language is not None:
+                pattern = f"{language}_*.json.gz"
+            else:
+                pattern = "*.json.gz"
+            found_files = set()
+            for path in glob.glob(os.path.join(self.PATH, "**", pattern), recursive=True):
                 filename = os.path.basename(path)
                 if filename not in found_files:
                     yield path
                     found_files.add(filename)
 
-    def process_file(self, path, output, tokenizer, tokenize):
-        lines = []
-        try:
-            with gzip.open(path, mode='rt') as file:
-                for row in file:
-                    row = row.rstrip()
-                    if row:
-                        lines.append(row)
-                    else:
-                        if lines:
-                            text = "\n".join(lines)
-                            prompt = self.process_sample("", tokenizer, tokenize)
-                            text = self.process_sample(text, tokenizer, tokenize)
-                            output.put({"prompt": prompt, "text": text})
-                        lines = []
-        except (zlib.error, gzip.BadGzipFile) as e:
-            tqdm_print(f"Compression error when reading {path}")
+        def process_file(self, path, output, tokenizer, tokenize):
+            lines = []
+            try:
+                with gzip.open(path, mode='rt') as file:
+                    for row in file:
+                        row = row.rstrip()
+                        if row:
+                            lines.append(row)
+                        else:
+                            if lines:
+                                text = "\n".join(lines)
+                                prompt = self.process_sample("", tokenizer, tokenize)
+                                text = self.process_sample(text, tokenizer, tokenize)
+                                output.put({"prompt": prompt, "text": text})
+                            lines = []
+            except (zlib.error, gzip.BadGzipFile) as e:
+                tqdm_print(f"Compression error when reading {path}")
+
+    return MultilingualReader
 
 
 class zhihu(LineReader):
@@ -491,3 +507,16 @@ NAMED_CORPORA = {
     'pile': Pile,
     'stories': Stories
 }
+
+
+def get_corpora_class(corpus_name):
+    if corpus_name.startswith('multilingual'):
+        if corpus_name == 'multilingual':
+            return create_multilingual_reader(None)
+        else:
+            lang = corpus_name.split('-')[1]
+            return create_multilingual_reader(language=lang)
+    elif corpus_name in NAMED_CORPORA:
+        return NAMED_CORPORA[corpus_name]
+    else:
+        raise NotImplementedError('dataset %s is not supported' % corpus_name)
