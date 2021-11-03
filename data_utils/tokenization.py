@@ -33,7 +33,7 @@ import regex as re
 
 
 def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, model_type=None, pad_token=0,
-                   character_coverage=1.0, command_tokens=None, type_tokens=None, fix_command_token=False, **kwargs):
+                   character_coverage=1.0, command_tokens=None, type_tokens=None, no_fix_command=False, **kwargs):
     """
     Helper function to instantiate a tokenizer given common combinations of options.
     """
@@ -47,7 +47,7 @@ def make_tokenizer(tokenizer_type, corpus, model_path=None, vocab_size=None, mod
             model_type = 'gpt2'
         return GPT2BPETokenizer(model_type, **kwargs)
     elif tokenizer_class is ChineseSPTokenizer:
-        return ChineseSPTokenizer(tokenizer_path=model_path, fix_command_token=fix_command_token, **kwargs)
+        return ChineseSPTokenizer(tokenizer_path=model_path, no_fix_command=no_fix_command, **kwargs)
     text_tokenizer = tokenizer_class(corpus=corpus, vocab_size=vocab_size, model_path=model_path, model_type=model_type,
                                      pad_token=pad_token, character_coverage=character_coverage)
     return Tokenizer(text_tokenizer, command_tokens, type_tokens)
@@ -1043,7 +1043,7 @@ class GPT2BPETokenizer(Tokenizer):
 
 
 class ChineseSPTokenizer(Tokenizer):
-    def __init__(self, tokenizer_path=None, add_block_symbols=False, add_task_mask=False, add_decoder_mask=False, fix_command_token=False,
+    def __init__(self, tokenizer_path=None, add_block_symbols=False, add_task_mask=False, add_decoder_mask=False, no_fix_command=False,
                  **kwargs):
         self.text_tokenizer = sp_tokenizer.from_pretrained(tokenizer_path)
 
@@ -1067,13 +1067,13 @@ class ChineseSPTokenizer(Tokenizer):
                 CommandToken('sop', '<|startofpiece|>', self.num_tokens + 1),
                 CommandToken('eop', '<|endofpiece|>', self.num_tokens + 2)
             ])
-            if fix_command_token:
+            if not no_fix_command:
                 self.num_tokens += 3
             else:
                 self.num_tokens += 2
             self.num_command_tokens += 2
             if add_task_mask:
-                if fix_command_token:
+                if not no_fix_command:
                     self._command_tokens.extend([
                         CommandToken('sMASK', '[sMASK]', self.num_tokens, lstrip=True),
                         CommandToken('gMASK', '[gMASK]', self.num_tokens + 1, lstrip=True)

@@ -125,7 +125,8 @@ def prepare_tokenizer(args):
                                args.tokenizer_model_type, add_block_symbols=args.block_lm, cache_dir=args.cache_dir,
                                add_sentinel_token=add_sentinel_token, add_task_mask=args.task_mask,
                                add_decoder_mask=args.block_mask_prob > 0.0 or args.context_mask_ratio > 0.0,
-                               fix_command_token=args.fix_command_token)
+
+                               no_fix_command=args.no_fix_command)
     if mpu.get_model_parallel_rank() == 0:
         num_tokens = tokenizer.num_tokens
         eod_token = tokenizer.get_command('eos').Id
@@ -208,48 +209,8 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args, shuffle=Fa
     return data_loader
 
 
-def make_tfrecord_loaders(args):
-    """Load train/val/test dataset from shuffled TFRecords"""
-
-    import data_utils.tf_dl
-    data_set_args = {'batch_size': args.batch_size,
-                     'max_seq_len': args.seq_length,
-                     'max_preds_per_seq': args.max_preds_per_seq,
-                     'train': True,
-                     'num_workers': max(args.num_workers, 1),
-                     'seed': args.seed + args.rank + 1,
-                     'threaded_dl': args.num_workers > 0
-                     }
-    train = data_utils.tf_dl.TFRecordDataLoader(args.train_data,
-                                                **data_set_args)
-    data_set_args['train'] = False
-    if args.eval_seq_length is not None:
-        data_set_args['max_seq_len'] = args.eval_seq_length
-    if args.eval_max_preds_per_seq is not None:
-        data_set_args['max_preds_per_seq'] = args.eval_max_preds_per_seq
-    valid = None
-    if args.valid_data is not None:
-        valid = data_utils.tf_dl.TFRecordDataLoader(args.valid_data,
-                                                    **data_set_args)
-    test = None
-    if args.test_data is not None:
-        test = data_utils.tf_dl.TFRecordDataLoader(args.test_data,
-                                                   **data_set_args)
-    tokenizer = data_utils.make_tokenizer(args.tokenizer_type,
-                                          train,
-                                          args.tokenizer_path,
-                                          args.vocab_size,
-                                          args.tokenizer_model_type,
-                                          cache_dir=args.cache_dir)
-
-    return (train, valid, test), tokenizer
-
-
 def make_loaders(args, tokenizer):
     """makes training/val/test"""
-
-    if args.use_tfrecords:
-        return make_tfrecord_loaders(args)
     world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
     batch_size = args.batch_size * world_size
     eval_batch_size = batch_size

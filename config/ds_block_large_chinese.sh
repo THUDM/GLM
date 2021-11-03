@@ -31,7 +31,6 @@ gpt_options=" \
        --loader-scatter 32 \
        --no-lazy-loader \
        --tokenizer-type ChineseSPTokenizer \
-       --fix-command-token \
        --split 949,50,1 \
        --distributed-backend nccl \
        --lr-decay-style cosine \

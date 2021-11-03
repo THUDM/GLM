@@ -326,22 +326,14 @@ def add_data_args(parser):
                                 'GPT2BPETokenizer',
                                 'ChineseSPTokenizer'],
                        help='what type of tokenizer to use')
-    group.add_argument('--fix-command-token', action='store_true')
+    group.add_argument('--no-fix-command', action='store_true')
     group.add_argument('--no-pre-tokenize', action='store_true')
     group.add_argument("--cache-dir", default=None, type=str,
                        help="Where to store pre-trained BERT downloads")
-    group.add_argument('--use-tfrecords', action='store_true',
-                       help='load `--train-data`, `--valid-data`, '
-                            '`--test-data` from BERT tf records instead of '
-                            'normal data pipeline')
     group.add_argument('--seq-length', type=int, default=512,
                        help="Maximum sequence length to process")
     group.add_argument('--mem-length', type=int, default=0,
                        help="The memory length to preserve")
-    group.add_argument('--max-preds-per-seq', type=int, default=None,
-                       help='Maximum number of predictions to use per sequence.'
-                            'Defaults to math.ceil(`--seq-length`*.15/10)*10.'
-                            'MUST BE SPECIFIED IF `--use-tfrecords` is True.')
     group.add_argument('--non-sentence-start', type=float, default=0.0)
     group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
     group.add_argument('--load-splits', type=str, default=None, help="The path to load split indices from")

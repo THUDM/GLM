@@ -51,6 +51,14 @@ class LengthSamplingDataset(data.Dataset):
             f"Dataset {ds.name} document count {len(self.ds)}, token count {self.total_len}")
 
     @property
+    def name(self):
+        return self.ds.name
+
+    @property
+    def is_lazy(self):
+        return self.ds.is_lazy
+
+    @property
     def tokenizer(self):
         return self.ds.tokenizer
 
@@ -135,6 +143,8 @@ class MultiSamplingDataset(data.Dataset):
         if max_limit is None:
             max_limit = float('inf')
         self.weights = np.array([min(l, max_limit) ** temperature for l in self.lens])
+        names = [ds.name for ds in datasets]
+        print(list(zip(names, self.weights)))
         self.total_len = sum(self.lens)
         self.cumulative_lens = list(accumulate(self.lens))
         if self.reweight:
@@ -190,7 +200,6 @@ class SplitDataset(data.Dataset):
     def __init__(self, ds, split_inds, **kwargs):
         self.split_inds = list(split_inds)
         self.ds = ds
-        self.is_lazy = isinstance(ds, LazyLoader) or (hasattr(ds, 'is_lazy') and ds.is_lazy)
 
     def __len__(self):
         return len(self.split_inds)
@@ -200,6 +209,10 @@ class SplitDataset(data.Dataset):
 
     def __getitem__(self, index):
         return self.ds[self.split_inds[index]]
+
+    @property
+    def is_lazy(self):
+        return isinstance(self.ds, LazyLoader) or (hasattr(self.ds, 'is_lazy') and self.ds.is_lazy)
 
     @property
     def name(self):

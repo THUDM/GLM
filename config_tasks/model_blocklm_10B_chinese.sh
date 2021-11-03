@@ -7,4 +7,5 @@ MODEL_ARGS="--block-lm \
             --num-attention-heads 64 \
             --max-position-embeddings 1024 \
             --tokenizer-type ChineseSPTokenizer \
+            --no-fix-command \
             --load-pretrained ${CHECKPOINT_PATH}/blocklm-10b-chinese07-08-15-28"

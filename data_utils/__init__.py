@@ -14,9 +14,7 @@
 # limitations under the License.
 """utils for creating datasets"""
 import os
-import math
 import time
-import random
 import torch
 
 from .corpora import get_corpora_class
@@ -28,6 +26,7 @@ from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWr
     get_scatter_path
 from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
     GPT2BPETokenizer, make_tokenizer
+from utils import print_rank_0
 
 TRAIN_DATA = 0
 VAL_DATA = 1
@@ -159,10 +158,12 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
                     output.write(text)
                     output.write("\n")
             print(f"Write test data to {save_test_data}")
+        print_rank_0("Split dataset initialized")
     else:
         _datasets = [_datasets]
     if ds_type.lower() != 'gpt-xl':
         _datasets = [[LengthSamplingDataset(ds) for ds in ds_split] for ds_split in _datasets]
+        print_rank_0("Length sampling dataset initialized")
     if dataset_temperature < 1.0:
         _datasets = [MultiSamplingDataset(ds, reweight=True, temperature=dataset_temperature) if len(ds) > 1 else ds[0]
                      for ds in _datasets]
