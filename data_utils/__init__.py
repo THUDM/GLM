@@ -102,17 +102,17 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
     texts = LazyLoader(lazy_path, data_type='text', map_fn=map_fn, mem_map=True,
                        is_array=pre_tokenize, load_memory=no_lazy_loader, loader_fraction=loader_fraction)
     text = corpora.PromptDataset(prompt_loader=prompts, text_loader=texts, tokenizer=tokenizer,
-                                 to_tokenize=not pre_tokenize)
-    if loader_scatter is None:
-        loader_scatter = 1
-    for scatter_id in range(loader_scatter):
-        if data_parallel_rank % loader_scatter == scatter_id and data_parallel_rank // loader_scatter == 0:
-            print(f"Create dataset {name} at scatter {scatter_id} with {len(text)} documents")
-            for i in range(10):
-                sample_tokens = text[i]['tokens'][:1024]
-                print(sample_tokens)
-                print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
-        torch.distributed.barrier()
+                                 to_tokenize=not pre_tokenize, name=name)
+    # if loader_scatter is None:
+    #     loader_scatter = 1
+    # for scatter_id in range(loader_scatter):
+    #     if data_parallel_rank % loader_scatter == scatter_id and data_parallel_rank // loader_scatter == 0:
+    #         print(f"Create dataset {name} at scatter {scatter_id} with {len(text)} documents")
+    #         for i in range(10):
+    #             sample_tokens = text[i]['tokens'][:1024]
+    #             print(sample_tokens)
+    #             print(tokenizer.DecodeIds(sample_tokens).encode('utf-8'))
+    #     torch.distributed.barrier()
     return text
 
 
