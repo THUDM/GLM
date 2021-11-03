@@ -14,7 +14,6 @@ from pretrain_glm import forward_step as lm_forward_step
 import pathlib
 import mpu
 
-
 import torch
 import torch.utils.data
 from configure_data import prepare_tokenizer
@@ -322,7 +321,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                                                           block_collate=True)
                 valid_block_dataloader = make_data_loader(valid_block_dataset, tokenizer,
                                                           args.batch_size * mpu.get_data_parallel_world_size(), (
-                                                                      args.train_iters // args.eval_interval + 1) * args.eval_iters,
+                                                                  args.train_iters // args.eval_interval + 1) * args.eval_iters,
                                                           args, shuffle=True, block_collate=True)
             else:
                 train_block_dataloader = FakeDataloader(args.train_iters)
@@ -421,10 +420,10 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                                 end_of_epoch_callback, args, timers,
                                 summary_writer=summary_writer)
         if end_of_train_callback is not None and best_iteration is not None:
-                with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-                    args.load = os.path.join(args.save, "best")
-                    load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True, no_deepspeed=True)
-                    args.load = None
+            with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
+                args.load = os.path.join(args.save, "best")
+                load_checkpoint(model, optimizer, lr_scheduler, args, no_load_optim=True, no_deepspeed=True)
+                args.load = None
         torch.distributed.barrier()
         if end_of_train_callback is not None:
             score_dict = end_of_train_callback(model, epoch=-1, output_predictions=True)
@@ -462,7 +461,7 @@ if __name__ == '__main__':
     elif args.task.lower() in ['lambda', 'wikitext', 'language_model']:
         from tasks.language_model.finetune import main
     elif args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'squad',
-                               'squad_v1', 'xsum', 'extraction']:
+                               'squad_v1', 'xsum', 'extraction', 'cmrc']:
         from tasks.seq2seq.finetune import main
     else:
         raise NotImplementedError('Task {} is not implemented.'.format(args.task))

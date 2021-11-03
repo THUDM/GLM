@@ -841,6 +841,72 @@ class MnliProcessor(DataProcessor):
         return examples
 
 
+class CLUEProcessor(DataProcessor):
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.json"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev.json"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        return self._create_examples(os.path.join(data_dir, "test.json"), "test")
+
+    def output_prediction(self, predictions, examples, output_file):
+        indices = list(range(len(predictions)))
+        indices.sort(key=lambda x: examples[x].idx)
+        with open(output_file, "w") as output:
+            for idx in indices:
+                prediction = self.get_labels()[predictions[idx]]
+                data = {"idx": examples[idx].idx, "label": prediction}
+                output.write(json.dumps(data) + "\n")
+
+
+class TNewsProcessor(CLUEProcessor):
+    """Processor for the TNews data set (CLUE version)."""
+
+    def get_labels(self):
+        return ["100", "101", "102", "103", "104", "106", "107", "108", "109", "110", "112", "113", "114", "115", "116"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+
+        with open(path) as file:
+            for idx, line in enumerate(file):
+                guid = f"{set_type}-{idx}"
+                data = json.loads(line)
+                text_a = data["sentence"]
+                text_b = data['keywords']
+                label = data.get('label', None)
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label, idx=idx)
+                examples.append(example)
+
+        return examples
+
+
+class AFQMCProcessor(CLUEProcessor):
+    """Processor for the AFQMC data set (CLUE version)."""
+
+    def get_labels(self):
+        return ["0", "1"]
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+
+        with open(path) as file:
+            for idx, line in enumerate(file):
+                guid = f"{set_type}-{idx}"
+                data = json.loads(line)
+                text_a = data["sentence1"]
+                text_b = data['sentence2']
+                label = data.get('label', None)
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label, idx=idx)
+                examples.append(example)
+
+        return examples
+
+
 class MnliMismatchedProcessor(MnliProcessor):
     """Processor for the MultiNLI mismatched data set (GLUE version)."""
 
@@ -1210,7 +1276,92 @@ class LamaProcessor(DataProcessor):
                     guid = f"{set_type}-{relation}-{i}"
                     example = InputExample(guid=guid, text_a=text, meta={'answer': obj['obj_label']})
                     examples.append(example)
+
         return examples
+
+class CLUEWSCProcessor(DataProcessor):
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.json"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev.json"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        return self._create_examples(os.path.join(data_dir, "test.json"), "test")
+
+    def get_labels(self):
+        return ["false", "true"]
+
+    def _create_examples(self, path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
+        examples = []
+
+        with open(path, encoding='utf8') as f:
+            for line in f:
+                example_json = json.loads(line)
+                idx = example_json['id'] if 'id' in example_json else example_json['idx']
+                label = example_json['label'] if 'label' in example_json else None
+                guid = "%s-%s" % (set_type, idx)
+                text_a = example_json['text']
+
+                meta = {
+                    'span1_text': example_json['target']['span1_text'],
+                    'span2_text': example_json['target']['span2_text'],
+                    'span1_index': example_json['target']['span1_index'],
+                    'span2_index': example_json['target']['span2_index'],
+                }
+                meta['span1_length'] = len(meta['span1_text'])
+                meta['span2_length'] = len(meta['span2_text'])
+
+                example = InputExample(
+                    guid=guid, text_a=text_a, text_b=meta['span1_index'], label=label, meta=meta, idx=idx)
+                examples.append(example)
+
+        return examples
+
+
+class CMRCProcessor(DataProcessor):
+
+    def get_train_examples(self, data_dir):
+        return self._create_examples(os.path.join(data_dir, "train.json"), "train")
+
+    def get_dev_examples(self, data_dir, for_train=False):
+        return self._create_examples(os.path.join(data_dir, "dev.json"), "dev")
+
+    def get_test_examples(self, data_dir) -> List[InputExample]:
+        return self._create_examples(os.path.join(data_dir, "test.json"), "test")
+
+    def get_labels(self):
+        return ['0']
+
+    @staticmethod
+    def _create_examples(path: str, set_type: str) -> List[InputExample]:
+        examples = []
+        with open(path) as f:
+            data_list = json.load(f)
+
+        for data in data_list:
+            idx = data["context_id"]
+            if set_type == "train":
+                idx = int(idx[6:])
+            elif set_type == "dev":
+                idx = int(idx[4:])
+            elif set_type == "test":
+                idx = int(idx[6:])
+            else:
+                raise NotImplementedError("set_type="+str(set_type))
+            text_a = data["context_text"]
+            qa_set = data["qas"]
+
+            for qid, qa in enumerate(qa_set):
+                text_b = qa['query_text']
+                ans = qa['answers'][0]
+                guid = f"{set_type}-{idx}-{qid}"
+                example = InputExample(guid=guid, text_a=text_a, text_b=text_b, label='0',
+                                       meta={'answer': ans})
+                examples.append(example)
+        return examples
+
 
 
 CLASSIFICATION_DATASETS = {"wic", "rte", "cb", "boolq", "multirc", "wsc"}
@@ -1244,5 +1395,10 @@ PROCESSORS = {
     "qnli": QnliProcessor,
     # "squad": SquadProcessor,
     "race": RaceProcessor,
+    "squad": SquadProcessor,
+    "afqmc": AFQMCProcessor,
+    "tnews": TNewsProcessor,
+    'cluewsc': CLUEWSCProcessor,
+    # 'cmrc': CMRCProcessor
     "lama": LamaProcessor
 }  # type: Dict[str,Callable[[1],DataProcessor]]

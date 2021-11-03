@@ -126,6 +126,47 @@ class SummmaryProcessor:
         return example_list
 
 
+class CMRCProcessor:
+    def __init__(self, data_dir, tokenizer):
+        self.data_dir = data_dir
+        self.tokenizer = tokenizer
+
+    def create_examples(self, split):
+        if split == "train":
+            filename = "train.json"
+        elif split == "dev":
+            filename = "dev.json"
+        elif split == "test":
+            filename = "test.json"
+        else:
+            raise NotImplementedError(split)
+        print_rank_0(f"Creating CMRC-{split} dataset from {self.data_dir}")
+        example_list = []
+        idx = 0
+        with open(os.path.join(self.data_dir, filename), encoding='utf-8') as file:
+            dataset = json.load(file)
+            for article in dataset['data']:
+                for paragraph in article['paragraphs']:
+                    context = paragraph['context']
+                    for qa in paragraph['qas']:
+                        question = qa["question"]
+                        answers = {answer['text'] for answer in qa["answers"]} if split != 'test' else {"FAKE_ANSWER"}
+                        for answer in answers:
+                            guid = "%s-%s" % (split, idx)
+                            meta = {
+                                "answer": answer,
+                                "question": question,
+                                "ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(answer).tokenization)}
+                            example = InputExample(guid=guid, text_a=context, meta=meta)
+                            if idx < 10:
+                                print_rank_0(
+                                    (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
+                            example_list.append(example)
+                            idx += 1
+        print_rank_0(f"Creating {len(example_list)} examples for {split}")
+        return example_list
+
+
 class SQuADGenerationProcessor:
     def __init__(self, data_dir, tokenizer):
         self.data_dir = data_dir
@@ -374,8 +415,10 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             self.processor = SQuADGenerationProcessor(self.data_dir, tokenizer)
         elif self.task in ["squad", "squad_v1"]:
             self.processor = SQuADProcessor(self.data_dir, tokenizer, self.max_src_length, args)
+        elif self.task in ['cmrc']:
+            self.processor = CMRCProcessor(self.data_dir, tokenizer)
         else:
-            raise NotImplementedError
+            raise NotImplementedError(self.task)
         example_list = self.processor.create_examples(split)
         self.example_list = example_list
         self.examples = {example.guid: example for example in example_list}
@@ -424,6 +467,18 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                     start_index = max(answer_indices[0] - max_src_length // 2, 0)
                     source_tokens = source_tokens[start_index: start_index + max_src_length]
             source_tokens = [cls_id] + source_tokens + [mask_id] + answer_tokens
+        elif self.task in ["cmrc"]:
+            mask_id = self.tokenizer.get_command('MASK').Id
+            source_text = example.text_a
+            target_text = example.meta["answer"].strip()
+            question = example.meta["question"].strip()
+            source_tokens = self.tokenizer.EncodeAsIds(source_text.rstrip()).tokenization
+            question_tokens = self.tokenizer.EncodeAsIds("问题：" + question + "答案：").tokenization
+            max_src_length = self.max_src_length - len(question_tokens) - 2
+            if max_src_length <= 0:
+                print(question)
+                question_tokens = question_tokens[self.max_src_length // 4]
+            source_tokens = [cls_id] + question_tokens + [mask_id] + source_tokens[:max_src_length]
         elif self.task in ["squad", "squad_v1"]:
             source_text = example.text_a
             target_text = example.meta["answer"].strip()
