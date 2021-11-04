@@ -155,7 +155,7 @@ class PrefixEncoder(torch.nn.Module):
 class GLMFPrefixModel(GLMModel):
     def __init__(self, prefix_prompt, num_layers, hidden_size, **kwargs):
         super(GLMFPrefixModel, self).__init__(num_layers=num_layers, hidden_size=hidden_size, **kwargs)
-        print(f"Create prefix prompt of length {prefix_prompt}")
+        print_rank_0(f"Create prefix prompt of length {prefix_prompt}")
         self.prefix_length = prefix_prompt
         self.prefix_tokens = torch.arange(self.prefix_length).long()
         self.prefix_encoder = PrefixEncoder(prefix_length=prefix_prompt, num_layers=num_layers, hidden_size=hidden_size)

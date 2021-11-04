@@ -365,10 +365,12 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
             print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
 
         # Optimizer.
+        optimizer_loaded = False
         if not release and not args.finetune and not args.no_load_optim and not no_load_optim:
             try:
                 if optimizer is not None:
                     optimizer.load_state_dict(sd['optimizer'])
+                    optimizer_loaded = True
                 if lr_scheduler is not None:
                     lr_scheduler.load_state_dict(sd['lr_scheduler'])
             except KeyError:
@@ -376,9 +378,13 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
                              'Specify --no-load-optim or --finetune to prevent '
                              'attempting to load the optimizer '
                              'state.'.format(checkpoint_name))
-
+        if not optimizer_loaded and args.fp16 and optimizer is not None:
+            if args.deepspeed:
+                optimizer.refresh_fp32_params()
+            else:
+                optimizer._model_params_to_master_params()
     # Iterations.
-    if args.finetune or release:
+    if args.finetune or release or args.no_load_iteration:
         iteration = 0
     else:
         try:

@@ -577,7 +577,7 @@ def main():
 
     if args.load is not None:
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=args.no_deepspeed_load)
     else:
         args.iteration = 0
     torch.distributed.barrier()
@@ -642,7 +642,7 @@ def main():
         if args.do_valid:
             prefix = 'the end of training for val data'
             evaluate_and_print_results(prefix, (val_data_iterator, multi_val_iterator),
-                                                  model, args, timers, verbose=False, forward_step_func=forward_step)
+                                       model, args, timers, verbose=False, forward_step_func=forward_step)
 
     if args.save and iteration != 0:
         save_checkpoint(iteration, model, optimizer, lr_scheduler, args)
