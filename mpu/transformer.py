@@ -527,7 +527,6 @@ class ParallelTransformerLayer(torch.nn.Module):
                  init_method,
                  output_layer_init_method=None,
                  relative_encoding=False,
-                 performer=False,
                  attention_scale=1.0):
         super(ParallelTransformerLayer, self).__init__()
         # Set output layer initialization if not provided.
@@ -546,7 +545,6 @@ class ParallelTransformerLayer(torch.nn.Module):
             init_method,
             output_layer_init_method=output_layer_init_method,
             relative_encoding=relative_encoding,
-            performer=performer,
             attention_scale=attention_scale)
 
         # Layernorm on the input data.
@@ -651,7 +649,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
                  use_scaled_init_for_output_weights=True,
                  relative_encoding=False,
                  block_position_encoding=False,
-                 performer=False,
                  use_decoder_layer=False,
                  attention_scale=1.0,
                  ):
@@ -661,9 +658,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
         self.checkpoint_activations = checkpoint_activations
         self.checkpoint_num_layers = checkpoint_num_layers
         self.max_memory_length = max_memory_length
-        self.performer = performer
         self.use_decoder_layer = use_decoder_layer
-        assert not (performer and relative_encoding)
 
         output_layer_init_method = None
         if use_scaled_init_for_output_weights:
@@ -724,7 +719,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
                     unscaled_init_method(init_method_std),
                     output_layer_init_method=output_layer_init_method,
                     relative_encoding=relative_encoding,
-                    performer=performer,
                     attention_scale=attention_scale)
 
         # Transformer layers.
@@ -747,9 +741,6 @@ class GPT2ParallelTransformer(torch.nn.Module):
         # attention mask is the beginning postion of B region, \in [0, query_len)
         is_scalar = torch.numel(attention_mask) == 1
         is_sep = is_scalar or torch.numel(attention_mask) == batch_size
-        if self.performer:
-            assert is_scalar, 'attention_mask should be a scalar to indicate the seperation position.'
-            assert memory_length == 0, 'Do not support transformer-xl.'
         if is_sep:
             sep = attention_mask.item() if is_scalar else attention_mask
 
@@ -770,8 +761,7 @@ class GPT2ParallelTransformer(torch.nn.Module):
                 m = m.unsqueeze(1)
                 return m
 
-            if not self.performer:
-                attention_mask = build_mask_matrix(query_length, sep, memory_length=memory_length)
+            attention_mask = build_mask_matrix(query_length, sep, memory_length=memory_length)
         else:
             attention_mask = attention_mask[:, :, :, -query_length - memory_length:]
 

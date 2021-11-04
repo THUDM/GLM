@@ -70,6 +70,7 @@ class GLMModel(torch.nn.Module):
         self.parallel_output = parallel_output
         self.output_predict = output_predict
         self.hidden_size = hidden_size
+        self.num_layers = num_layers
 
         init_method = init_method_normal(std=0.02)
 
@@ -133,6 +134,58 @@ class GLMModel(torch.nn.Module):
             return (mpu.gather_from_model_parallel_region(logits_parallel), *outputs)
         else:
             return (logits, *outputs)
+
+
+class PrefixEncoder(torch.nn.Module):
+    """
+    The torch.nn model to encode the prefix
+    Input shape: (batch-size, prefix-length)
+    Output shape: (batch-size, prefix-length, layers*hidden)
+    """
+
+    def __init__(self, prefix_length, num_layers, hidden_size):
+        super().__init__()
+        self.embedding = torch.nn.Embedding(prefix_length, num_layers * hidden_size)
+
+    def forward(self, prefix: torch.Tensor):
+        past_key_values = self.embedding(prefix)
+        return past_key_values
+
+
+class GLMFPrefixModel(GLMModel):
+    def __init__(self, prefix_prompt, num_layers, hidden_size, **kwargs):
+        super(GLMFPrefixModel, self).__init__(num_layers=num_layers, hidden_size=hidden_size, **kwargs)
+        print(f"Create prefix prompt of length {prefix_prompt}")
+        self.prefix_length = prefix_prompt
+        self.prefix_tokens = torch.arange(self.prefix_length).long()
+        self.prefix_encoder = PrefixEncoder(prefix_length=prefix_prompt, num_layers=num_layers, hidden_size=hidden_size)
+
+    def get_prompt(self, batch_size, device):
+        prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(device)
+        prefix_hidden_states = self.prefix_encoder(prefix_tokens).half()
+        # bsz, seqlen, _ = past_key_values.shape
+        prefix_hidden_states = prefix_hidden_states.view(
+            batch_size,
+            self.prefix_length,
+            self.num_layers,
+            self.hidden_size
+        )
+        prefix_hidden_states = prefix_hidden_states.permute([2, 0, 1, 3]).split(1)
+        prefix_hidden_states = [value[0] for value in prefix_hidden_states]
+        return prefix_hidden_states
+
+    def forward(self, input_ids, position_ids, attention_mask, *mems, return_memory=False, detach_memory=True,
+                prompt_pos=None
+                ):
+        batch_size = input_ids.shape[0]
+        prompt_hidden_states = self.get_prompt(batch_size=batch_size, device=input_ids.device)
+        mems = [torch.cat((mem, prompt), dim=1) for mem, prompt in
+                zip(mems, prompt_hidden_states)] if mems else prompt_hidden_states
+        output, *mems = super().forward(input_ids, position_ids, attention_mask, *mems, return_memory=return_memory,
+                                       detach_memory=detach_memory)
+        if return_memory:
+            mems = [mem[:, self.prefix_length:] for mem in mems]
+        return (output, *mems)
 
 
 def glm_get_params_for_weight_decay_optimization(module):

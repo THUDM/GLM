@@ -6,7 +6,7 @@ from torch import distributed as dist
 import mpu
 from fp16 import FP16_Module, FP16_Optimizer, DynamicLossScaler
 from learning_rates import AnnealingLR
-from model import GLMModel, glm_get_params_for_weight_decay_optimization
+from model import GLMModel, GLMFPrefixModel, glm_get_params_for_weight_decay_optimization
 from model import GLMForMultiTokenCloze, GLMForMultiTokenClozeFast, GLMForSingleTokenCloze, GLMForSequenceClassification
 from model import PyTorchDistributedDataParallel as TorchDDP, DistributedDataParallel as LocalDDP
 from model.modeling_bert import BertForMultipleChoice, BertForSequenceClassification
@@ -86,24 +86,45 @@ def get_model(args, model_type=None, multi_token=True, num_labels=None, spell_le
             paralle_output = False
         if spell_length is not None:
             print_rank_0(f"Continuous spell length {spell_length}")
-        model = GLMModel(num_layers=args.num_layers,
-                         vocab_size=args.vocab_size,
-                         hidden_size=args.hidden_size,
-                         num_attention_heads=args.num_attention_heads,
-                         embedding_dropout_prob=args.hidden_dropout,
-                         attention_dropout_prob=args.attention_dropout,
-                         output_dropout_prob=args.hidden_dropout,
-                         max_sequence_length=args.max_position_embeddings,
-                         max_memory_length=args.mem_length,
-                         checkpoint_activations=args.checkpoint_activations,
-                         checkpoint_num_layers=args.checkpoint_num_layers,
-                         parallel_output=paralle_output,
-                         relative_encoding=args.transformer_xl,
-                         block_position_encoding=args.block_lm and not args.masked_lm,
-                         output_predict=output_predict,
-                         spell_length=spell_length,
-                         spell_func=args.prompt_func,
-                         attention_scale=args.attention_scale)
+        if args.prefix_prompt:
+            model = GLMFPrefixModel(num_layers=args.num_layers,
+                             vocab_size=args.vocab_size,
+                             hidden_size=args.hidden_size,
+                             num_attention_heads=args.num_attention_heads,
+                             embedding_dropout_prob=args.hidden_dropout,
+                             attention_dropout_prob=args.attention_dropout,
+                             output_dropout_prob=args.hidden_dropout,
+                             max_sequence_length=args.max_position_embeddings,
+                             max_memory_length=args.mem_length,
+                             checkpoint_activations=args.checkpoint_activations,
+                             checkpoint_num_layers=args.checkpoint_num_layers,
+                             parallel_output=paralle_output,
+                             relative_encoding=args.transformer_xl,
+                             block_position_encoding=args.block_lm and not args.masked_lm,
+                             output_predict=output_predict,
+                             spell_length=spell_length,
+                             spell_func=args.prompt_func,
+                             attention_scale=args.attention_scale,
+                             prefix_prompt=args.prefix_prompt)
+        else:
+            model = GLMModel(num_layers=args.num_layers,
+                             vocab_size=args.vocab_size,
+                             hidden_size=args.hidden_size,
+                             num_attention_heads=args.num_attention_heads,
+                             embedding_dropout_prob=args.hidden_dropout,
+                             attention_dropout_prob=args.attention_dropout,
+                             output_dropout_prob=args.hidden_dropout,
+                             max_sequence_length=args.max_position_embeddings,
+                             max_memory_length=args.mem_length,
+                             checkpoint_activations=args.checkpoint_activations,
+                             checkpoint_num_layers=args.checkpoint_num_layers,
+                             parallel_output=paralle_output,
+                             relative_encoding=args.transformer_xl,
+                             block_position_encoding=args.block_lm and not args.masked_lm,
+                             output_predict=output_predict,
+                             spell_length=spell_length,
+                             spell_func=args.prompt_func,
+                             attention_scale=args.attention_scale)
         if args.freeze_transformer:
             model.freeze_transformer(tune_prefix_layers=args.tune_prefix_layers)
         if model_type is not None:
