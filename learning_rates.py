@@ -43,7 +43,7 @@ class AnnealingLR(_LRScheduler):
             return float(self.start_lr) * self.num_iters / self.warmup_iter
         else:
             if self.decay_style == self.DECAY_STYLES[0]:
-                decay_step_ratio = (self.num_iters - self.warmup_iter) / self.end_iter
+                decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
                 return self.start_lr - self.start_lr * (1 - 1 / self.decay_ratio) * decay_step_ratio
             elif self.decay_style == self.DECAY_STYLES[1]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
@@ -51,9 +51,9 @@ class AnnealingLR(_LRScheduler):
                         (math.cos(math.pi * decay_step_ratio) + 1) * (self.decay_ratio - 1) / 2 + 1)
             elif self.decay_style == self.DECAY_STYLES[2]:
                 # TODO: implement exponential decay
-                return self.start_lr
+                raise NotImplementedError
             else:
-                return self.start_lr
+                raise NotImplementedError
 
     def step(self, step_num=None):
         if step_num is None:
@@ -78,10 +78,10 @@ class AnnealingLR(_LRScheduler):
         # self.start_lr = sd['start_lr']
         self.warmup_iter = sd['warmup_iter']
         self.num_iters = sd['num_iters']
-        # self.end_iter = sd['end_iter']
-        # self.decay_style = sd['decay_style']
-        # if 'decay_ratio' in sd:
-        #     self.decay_ratio = sd['decay_ratio']
+        self.end_iter = sd['end_iter']
+        self.decay_style = sd['decay_style']
+        if 'decay_ratio' in sd:
+            self.decay_ratio = sd['decay_ratio']
         self.step(self.num_iters)
 
     def switch_linear(self, args):
