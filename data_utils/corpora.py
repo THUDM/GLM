@@ -277,7 +277,7 @@ def create_multilingual_reader(language=None):
     return MultilingualReader
 
 
-class zhihu(LineReader):
+class Zhihu(LineReader):
     PATH = "/root/data/zhihu/zhihu"
     reserve_punct = True
     assert_str = "make sure to set PATH for zhihu data_utils/corpora.py"
@@ -306,7 +306,7 @@ class zhihu(LineReader):
         return outputs
 
 
-class zhidao(LineReader):
+class Zhidao(LineReader):
     PATH = "/root/data/zhidao/zhidao"
     reserve_punct = True
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
@@ -336,7 +336,7 @@ class zhidao(LineReader):
         return outputs
 
 
-class baike(LineReader):
+class Baike(LineReader):
     PATH = "/root/data/baike/baike"
     reserve_punct = True
     assert_str = "make sure to set PATH for baike data_utils/corpora.py"
@@ -350,7 +350,7 @@ class baike(LineReader):
         return outputs
 
 
-class wikipedia(LineReader):
+class Wikipedia(LineReader):
     """
     dataset for wikipedia with arguments configured for convenience
 
@@ -493,19 +493,44 @@ class BertLargeData(BertData):
     PATH = '/dataset/c07bd62b/cognitive/zhengxiao/formatted_one_article_per_line_large'
 
 
+class WuDaoCorpus(FileReader):
+    PATH = "/dataset/fd5061f6/chinese_data/WuDao"
+
+    def get_paths(self):
+        for path in glob.glob(os.path.join(self.PATH, "**", "*.json"), recursive=True):
+            yield path
+
+    def process_file(self, path, output, tokenizer, tokenize):
+        with open(path) as file:
+            items = json.load(file)
+            for item in items["RECORDS"]:
+                text = ""
+                title = item.get("title", None)
+                content = item.get("content", None)
+                if title:
+                    text += title.strip() + " "
+                if content:
+                    text += content
+                if len(text) > 100:
+                    prompt = self.process_sample("", tokenizer, tokenize)
+                    text = self.process_sample(text, tokenizer, tokenize)
+                    output.put({"prompt": prompt, "text": text})
+
+
 NAMED_CORPORA = {
-    'wikipedia': wikipedia,
+    'wikipedia': Wikipedia,
     'openwebtext': OpenWebText,
-    "zhihu": zhihu,
-    "zhidao": zhidao,
-    "baike": baike,
+    "zhihu": Zhihu,
+    "zhidao": Zhidao,
+    "baike": Baike,
     "test": TestDataset,
     'wikibook': BertData,
     "bert-base": BertBaseData,
     "bert-large": BertLargeData,
     'cc-news': CCNews,
     'pile': Pile,
-    'stories': Stories
+    'stories': Stories,
+    'wudao': WuDaoCorpus
 }
 
 
