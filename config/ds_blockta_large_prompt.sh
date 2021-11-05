@@ -27,9 +27,10 @@ gpt_options=" \
        --no-load-rng \
        --no-load-iteration \
        --no-deepspeed-load \
+       --new-save-directory \
        --save-interval 5000 \
        --train-iters 50000 \
-       --train-data wikibook \
+       --train-data wikibook cc-news openwebtext stories \
        --shuffle \
        --filter-english \
        --loader-scatter 8 \
@@ -40,7 +41,7 @@ gpt_options=" \
        --distributed-backend nccl \
        --lr-decay-style linear \
        --lr-decay-iters 50000 \
-       --lr-decay-ratio 0.05 \
+       --lr-decay-ratio 0.1 \
        --warmup .1 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
