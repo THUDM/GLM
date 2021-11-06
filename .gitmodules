@@ -1,0 +1,3 @@
+[submodule "SwissArmyTransformer"]
+	path = SwissArmyTransformer
+	url = git@github.com:THUDM/SwissArmyTransformer.git
