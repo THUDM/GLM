@@ -472,3 +472,23 @@ class ConstructBlockStrategy:
                 np.concatenate((position_ids, np.zeros((2, max_length - position_ids.shape[1]), dtype=np.long)),
                                axis=1) for position_ids in position_id_batch]
         return token_batch, target_batch, loss_mask_batch, position_id_batch
+
+
+ # conventional transformer
+def build_mask_matrix(separator, batch_size, seq_length, memory_length=0):
+    dtype = torch.float
+    m = torch.ones((1, seq_length, seq_length), dtype=dtype)
+    m = torch.tril(m)
+    is_scalar = torch.numel(separator) == 1
+    if is_scalar:
+        m[0, :, :separator] = 1
+    else:
+        m = m.expand(batch_size, -1, -1)
+        ids = torch.arange(seq_length, device=separator.device, dtype=separator.dtype).view(1, -1)
+        mask = ids < separator.view(-1, 1)
+        m = m.masked_fill(mask.unsqueeze(1).expand_as(m), 1)
+    if memory_length > 0:
+        m = m.expand(batch_size, -1, -1)
+        m = torch.cat((torch.ones((batch_size, seq_length, memory_length), dtype=dtype), m), dim=2)
+    m = m.unsqueeze(1)
+    return m

@@ -23,25 +23,24 @@ import math
 
 import torch.distributed
 from filelock import FileLock
-import numpy as np
 import torch
 
 import deepspeed
-from contextlib import ExitStack
 from arguments import get_args
-from configure_data import configure_data, prepare_tokenizer, build_multi_task_dataset
-import mpu
+from configure_data import configure_data, build_multi_task_dataset
 import pathlib
 
-from train_utils import setup_model_and_optimizer, train_step
 from utils import Timers
-from utils import save_checkpoint
-from utils import load_checkpoint
-from utils import report_memory
-from utils import print_and_save_args
-from utils import print_rank_0
-from utils import get_sample_writer, get_log_dir, get_hostname
-import torch.distributed as dist
+from utils import save_checkpoint, load_checkpoint
+from utils import report_memory, print_and_save_args, print_rank_0
+from utils import get_sample_writer, get_log_dir
+from blocklm_utils import build_mask_matrix
+from SwissArmyTransformer.SwissArmyTransformer.training.deepspeed_training import initialize_distributed, \
+    set_random_seed, setup_model_and_optimizer, train_step
+from SwissArmyTransformer.SwissArmyTransformer.tokenization import get_tokenizer
+from SwissArmyTransformer.SwissArmyTransformer import mpu
+from SwissArmyTransformer.SwissArmyTransformer.model import GLMModel
+from learning_rates import get_learning_rate_scheduler
 
 
 def get_masks_and_position_ids(data,
@@ -109,38 +108,6 @@ def get_masks_and_position_ids(data,
     return attention_mask, loss_mask, position_ids
 
 
-def get_two_batch(data, args):
-    keys = ['text', 'target', 'loss_mask']
-    datatype = torch.int64
-    # Broadcast data.
-    data_b = mpu.broadcast_data(keys, data, datatype)
-    source_tokens = data_b['text'].long()
-    target_tokens = data_b['target'].long()
-    loss_mask = data_b['loss_mask'].float()
-    labels = target_tokens[:, 1:].contiguous()
-    loss_mask = loss_mask[:, 1:].contiguous()
-    target_tokens = target_tokens[:, :-1].contiguous()
-    _, _, source_position_ids = get_masks_and_position_ids(
-        source_tokens,
-        args.eod_token,
-        reset_position_ids=False,
-        reset_attention_mask=False,
-        loss_mask=None,
-        attention_mask=None,
-        set_loss_mask=False)
-    target_mask, _, target_position_ids = get_masks_and_position_ids(
-        target_tokens,
-        args.eod_token,
-        reset_position_ids=False,
-        reset_attention_mask=False,
-        loss_mask=None,
-        attention_mask=None,
-        set_loss_mask=False)
-    if args.fp16:
-        target_mask = target_mask.half()
-    return source_tokens, target_tokens, source_position_ids, target_position_ids, labels, target_mask, loss_mask
-
-
 def get_batch(data, args):
     ''' get_batch subdivides the source data into chunks of
     length args.seq_length. If source is equal to the example
@@ -195,16 +162,15 @@ def get_batch(data, args):
             attention_mask=attention_mask,
             mem_length=args.mem_length,
             set_loss_mask=not args.transformer_xl)
-        # Convert
-        if args.fp16:
-            attention_mask = attention_mask.half()
+    else:
+        attention_mask = build_mask_matrix(attention_mask, tokens.size(0), tokens.size(1))
+    # Convert
+    if args.fp16:
+        attention_mask = attention_mask.half()
     return tokens, labels, loss_mask, attention_mask, position_ids
 
 
-tokenizer = None
-
-
-def forward_step(data_iterator, model, args, timers, mems):
+def forward_step(data_iterator, model, args, timers):
     """Forward step."""
 
     # Get the batch.
@@ -221,45 +187,12 @@ def forward_step(data_iterator, model, args, timers, mems):
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
     timers('batch generator').stop()
 
-    # print_rank_0("get batch")
-
-    def print_masked_text(batch_id):
-        block_position_ids = position_ids[:, 1]
-        position_ids_ = position_ids[:, 0]
-        sep = attention_mask.item() if torch.numel(attention_mask) == 1 else attention_mask[batch_id].item()
-        text, last_segment = "", []
-        for i, token_id in enumerate(tokens[batch_id, :sep].tolist()):
-            token = tokenizer.IdToToken(token_id)
-            if token.startswith('[MASK') or token.endswith('MASK]'):
-                if last_segment:
-                    text += tokenizer.DecodeIds(last_segment)
-                    last_segment = []
-                text += f" [{position_ids_[batch_id, i].item()}, {token}]"
-            else:
-                last_segment.append(token_id)
-        if last_segment:
-            text += tokenizer.DecodeIds(last_segment)
-        print(text.encode('utf-8'))
-        last_index = None
-        for i in range(sep, tokens.size(1)):
-            if tokenizer.IdToToken(tokens[batch_id, i].item()).startswith("<|startofpiece"):
-                if last_index is not None:
-                    print(tokenizer.DecodeIds(tokens[batch_id, last_index: i].tolist()).encode('utf-8'), "|",
-                          tokenizer.DecodeIds(labels[batch_id, last_index: i].tolist()).encode('utf-8'),
-                          position_ids_[batch_id, last_index: i].tolist(),
-                          block_position_ids[batch_id, last_index:i].tolist())
-                last_index = i
-        if last_index is not None:
-            print(tokenizer.DecodeIds(tokens[batch_id, last_index:].tolist()).encode('utf-8'), "|",
-                  tokenizer.DecodeIds(labels[batch_id, last_index:].tolist()).encode('utf-8'),
-                  position_ids_[batch_id, last_index:].tolist(), block_position_ids[batch_id, last_index:].tolist())
-
     if data is not None and "mode" in data:
         mode = data['mode']
     else:
         mode = 'bert'
 
-    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    logits = model(tokens, position_ids, attention_mask)
     losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                               labels)
     loss_mask = loss_mask.view(-1)
@@ -267,7 +200,7 @@ def forward_step(data_iterator, model, args, timers, mems):
     if loss_mask.sum().item() > 0:
         loss = loss / loss_mask.sum()
 
-    return loss, mems, mode
+    return loss, {mode: 1}
 
 
 def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
@@ -330,14 +263,13 @@ def train(model, optimizer, lr_scheduler,
 
     timers('interval time').start()
     report_memory_flag = True
-    mems = []
     while args.iteration < args.train_iters:
 
-        lm_loss, skipped_iter, mems = train_step(train_data_iterator,
-                                                 model,
-                                                 optimizer,
-                                                 lr_scheduler,
-                                                 args, timers, mems=mems, forward_step_func=forward_step)
+        lm_loss, skipped_iter = train_step(train_data_iterator,
+                                           model,
+                                           optimizer,
+                                           lr_scheduler,
+                                           args, timers, hooks={'forward_step': forward_step})
         skipped_iters += skipped_iter
         args.iteration += 1
 
@@ -355,13 +287,6 @@ def train(model, optimizer, lr_scheduler,
             if report_memory_flag:
                 report_memory('after {} iterations'.format(args.iteration))
                 report_memory_flag = False
-            # for i in range(torch.distributed.get_world_size()):
-            #     if i == torch.distributed.get_rank():
-            #         print(get_hostname())
-            #         timers.log(['forward', 'backward', 'optimizer',
-            #                     'batch generator', 'data loader'],
-            #                    normalizer=args.log_interval, reset=False)
-            #     torch.distributed.barrier()
             if args.deepspeed or args.DDP_impl == 'torch':
                 timers.log(['forward', 'backward', 'optimizer',
                             'batch generator', 'data loader'],
@@ -466,50 +391,6 @@ def evaluate_and_print_results(prefix, data_iterator, model,
     '''
 
 
-def set_deepspeed_activation_checkpointing(args):
-    deepspeed.checkpointing.configure(mpu, deepspeed_config=args.deepspeed_config, num_checkpoints=args.num_layers)
-    mpu.checkpoint = deepspeed.checkpointing.checkpoint
-    mpu.get_cuda_rng_tracker = deepspeed.checkpointing.get_cuda_rng_tracker
-    mpu.model_parallel_cuda_manual_seed = deepspeed.checkpointing.model_parallel_cuda_manual_seed
-
-
-def initialize_distributed(args):
-    """Initialize torch.distributed."""
-
-    # Manually set the device ids.
-    device = args.rank % torch.cuda.device_count()
-    if args.local_rank is not None:
-        device = args.local_rank
-    torch.cuda.set_device(device)
-    # Call the init process
-    init_method = 'tcp://'
-    args.master_ip = os.getenv('MASTER_ADDR', 'localhost')
-    args.master_port = os.getenv('MASTER_PORT', '6000')
-    init_method += args.master_ip + ':' + args.master_port
-    torch.distributed.init_process_group(
-        backend=args.distributed_backend,
-        world_size=args.world_size, rank=args.rank,
-        init_method=init_method)
-
-    # Set the model-parallel / data-parallel communicators.
-    mpu.initialize_model_parallel(args.model_parallel_size)
-
-    # Optional DeepSpeed Activation Checkpointing Features
-    #
-    if hasattr(args, "deepspeed") and args.deepspeed and args.deepspeed_activation_checkpointing:
-        set_deepspeed_activation_checkpointing(args)
-
-
-def set_random_seed(seed):
-    """Set random seed for reproducability."""
-
-    if seed is not None and seed > 0:
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        mpu.model_parallel_cuda_manual_seed(seed)
-
-
 def get_train_val_test_data(args, tokenizer):
     """Load the data on rank zero and boradcast number of tokens to all GPUS."""
 
@@ -565,15 +446,15 @@ def main():
     set_random_seed(args.seed)
 
     # Data stuff.
-    global tokenizer
-    tokenizer = prepare_tokenizer(args)
+    tokenizer = get_tokenizer(args)
     train_data, val_data, test_data, = get_train_val_test_data(args, tokenizer)
     multi_train_data, multi_val_data = None, None
     if args.multi_task_ratio > 0.0:
         multi_train_data, multi_val_data = build_multi_task_dataset(args, tokenizer)
 
     # Model, optimizer, and learning rate.
-    model, optimizer, lr_scheduler = setup_model_and_optimizer(args)
+    model, optimizer = setup_model_and_optimizer(args, model_cls=GLMModel)
+    lr_scheduler = get_learning_rate_scheduler(optimizer, args) if optimizer is not None else None
 
     if args.load is not None:
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
@@ -626,20 +507,15 @@ def main():
     else:
         multi_val_iterator = None
 
-    # TODO: figure out how to properly set this especially when resuming training
     iteration = 0
     if args.train_iters > 0:
         if args.do_train:
-            with ExitStack() as stack:
-                def save_on_exit(args_, model_, optimizer_, lr_scheduler_):
-                    save_checkpoint(args_.iteration, model_, optimizer_, lr_scheduler_, args_)
-
-                # stack.callback(save_on_exit, args, model, optimizer, lr_scheduler)
-                iteration, skipped = train(model, optimizer,
-                                           lr_scheduler,
-                                           (train_data_iterator, multi_train_iterator),
-                                           (val_data_iterator, multi_val_iterator),
-                                           timers, args, summary_writer=summary_writer)
+            # stack.callback(save_on_exit, args, model, optimizer, lr_scheduler)
+            iteration, skipped = train(model, optimizer,
+                                       lr_scheduler,
+                                       (train_data_iterator, multi_train_iterator),
+                                       (val_data_iterator, multi_val_iterator),
+                                       timers, args, summary_writer=summary_writer)
 
         if args.do_valid:
             prefix = 'the end of training for val data'

@@ -332,7 +332,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
     if not success:
         return 0
 
-    if args.deepspeed and not no_deepspeed:
+    if args.deepspeed and not no_deepspeed and not args.old_checkpoint:
 
         checkpoint_name, sd = model.load_checkpoint(load_dir, tag,
                                                     load_optimizer_states=not args.no_load_optim and not no_load_optim,
@@ -360,6 +360,12 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
         # Model.
         if args.deepspeed:
             model = model.module
+
+        # Process the checkpoint for GLM
+        if args.block_lm and args.old_checkpoint:
+            sd['module']['transformer.word_embeddings.weight'] = sd['module']['word_embeddings.weight']
+            del sd['module']['word_embeddings.weight']
+
         missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
         if missing_keys or unexpected_keys:
             print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
