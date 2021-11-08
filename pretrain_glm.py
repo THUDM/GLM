@@ -199,8 +199,9 @@ def forward_step(data_iterator, model, args, timers):
     loss = torch.sum(losses.view(-1) * loss_mask)
     if loss_mask.sum().item() > 0:
         loss = loss / loss_mask.sum()
-
-    return loss, {mode: torch.cuda.FloatTensor(1)}
+    metrics = {name: torch.cuda.FloatTensor([1]) if name == mode else torch.cuda.FloatTensor([0]) for name in
+               ['bert', 'sentence', 'gpt', 'multi-task']}
+    return loss, metrics
 
 
 def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
@@ -266,10 +267,10 @@ def train(model, optimizer, lr_scheduler,
     while args.iteration < args.train_iters:
 
         lm_loss, skipped_iter, metrics = train_step(train_data_iterator,
-                                           model,
-                                           optimizer,
-                                           lr_scheduler,
-                                           args, timers, hooks={'forward_step': forward_step})
+                                                    model,
+                                                    optimizer,
+                                                    lr_scheduler,
+                                                    args, timers, hooks={'forward_step': forward_step})
         skipped_iters += skipped_iter
         args.iteration += 1
 
@@ -316,7 +317,6 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
 
     total_lm_loss, total_gpt_loss, total_bert_loss, total_sent_loss, total_multi_loss = 0, 0, 0, 0, 0
     gpt_iters, bert_iters, sent_iters, multi_iters = 0, 0, 0, 0
-    mems = []
     with torch.no_grad():
         iteration = 0
         while iteration < args.eval_iters:
@@ -324,7 +324,7 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
             if verbose and iteration % args.log_interval == 0:
                 print_rank_0('Evaluating iter {}/{}'.format(iteration, args.eval_iters))
             # Forward evaluation.
-            lm_loss, mems, mode = forward_step_func(data_iterator, model, args, timers, mems=mems)
+            lm_loss, mode = forward_step_func(data_iterator, model, args, timers)
 
             '''when contiguous memory optimizations are enabled, the buffers
             allocated by the optimizations are deallocated during backward pass
@@ -335,16 +335,17 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
 
             lm_loss = lm_loss.data.detach().float().item()
             total_lm_loss += lm_loss
-            if mode == 'gpt':
+            mode = {name: value.item() for name, value in mode.items()}
+            if mode['gpt'] != 0.0:
                 total_gpt_loss += lm_loss
                 gpt_iters += 1
-            elif mode == 'bert':
+            elif mode['bert'] != 0.0:
                 total_bert_loss += lm_loss
                 bert_iters += 1
-            elif mode == 'sentence':
+            elif mode['sentence'] != 0.0:
                 total_sent_loss += lm_loss
                 sent_iters += 1
-            elif mode == 'multi-task':
+            elif mode['multi-task'] != 0.0:
                 total_multi_loss += lm_loss
                 multi_iters += 1
     # Move model back to the train mode.

@@ -86,7 +86,7 @@ def add_training_args(parser):
                        help='chunk size (number of layers) for checkpointing')
     group.add_argument('--train-iters', type=int, default=1000000,
                        help='total number of iterations to train over all training runs')
-    group.add_argument('--log-interval', type=int, default=50,
+    group.add_argument('--log-interval', type=int, default=100,
                        help='report interval')
     group.add_argument('--exit-interval', type=int, default=None,
                        help='Exit the program after this many new iterations.')
