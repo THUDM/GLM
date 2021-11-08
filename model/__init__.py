@@ -13,6 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .modeling_glm import GLMModel, GLMFPrefixModel, glm_get_params_for_weight_decay_optimization
+from .modeling_glm import GLMFPrefixModel
 from .downstream import GLMForMultiTokenCloze, GLMForMultiTokenClozeFast, GLMForSingleTokenCloze, \
     GLMForSequenceClassification

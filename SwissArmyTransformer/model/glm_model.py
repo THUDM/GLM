@@ -19,8 +19,8 @@ class BlockPositionEmbeddingMixin(BaseMixin):
         return position_embeddings + block_position_embeddings
 
 class GLMModel(BaseModel):
-    def __init__(self, args, transformer=None):
-        super().__init__(args, transformer=transformer)
+    def __init__(self, args, transformer=None, parallel_output=True):
+        super().__init__(args, transformer=transformer, parallel_output=parallel_output)
         self.add_mixin('block_position_embedding', 
             BlockPositionEmbeddingMixin(args.max_sequence_length, args.hidden_size)
         )

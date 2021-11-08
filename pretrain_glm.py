@@ -35,6 +35,7 @@ from utils import save_checkpoint, load_checkpoint
 from utils import report_memory, print_and_save_args, print_rank_0
 from utils import get_sample_writer, get_log_dir
 from blocklm_utils import build_mask_matrix
+from model.modeling_glm import GLMFPrefixModel
 from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, \
     set_random_seed, setup_model_and_optimizer, train_step
 from SwissArmyTransformer.tokenization import get_tokenizer
@@ -455,7 +456,8 @@ def main():
         multi_train_data, multi_val_data = build_multi_task_dataset(args, tokenizer)
 
     # Model, optimizer, and learning rate.
-    model, optimizer = setup_model_and_optimizer(args, model_cls=GLMModel)
+    model_cls = GLMFPrefixModel if args.prefix_prompt else GLMModel
+    model, optimizer = setup_model_and_optimizer(args, model_cls=model_cls)
     lr_scheduler = get_learning_rate_scheduler(optimizer, args) if optimizer is not None else None
 
     if args.load is not None:
