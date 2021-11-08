@@ -121,9 +121,10 @@ def make_data_loader(dataset, tokenizer, batch_size, num_iters, args, shuffle=Fa
     world_size = torch.distributed.get_world_size(group=mpu.get_data_parallel_group())
     rank = torch.distributed.get_rank(group=mpu.get_data_parallel_group())
     if args.loader_scatter is not None:
-        rank = rank // args.loader_scatter
-        world_size = world_size // args.loader_scatter
-        batch_size = batch_size // args.loader_scatter
+        loader_scatter = min(args.loader_scatter, mpu.get_data_parallel_world_size())
+        rank = rank // loader_scatter
+        world_size = world_size // loader_scatter
+        batch_size = batch_size // loader_scatter
     distributed = world_size > 1
     if args.transformer_xl:
         batch_sampler = data_utils.samplers.DistributedSequentialSampler(len(dataset),
