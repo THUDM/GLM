@@ -2,15 +2,15 @@
 
 import torch
 import torch.nn
-from .modeling_glm import GLMModel
+from SwissArmyTransformer.model import GLMModel
 
 
 class GLMForMultiTokenCloze(torch.nn.Module):
-    def __init__(self, language_model: GLMModel, take_softmax=True, length_penalty=0.0):
-        super(GLMForMultiTokenCloze, self).__init__()
-        self.model = language_model
-        self.take_softmax = take_softmax
-        self.length_penalty = length_penalty
+    def __init__(self, args):
+        super().__init__()
+        self.model = GLMModel(args, parallel_output=False)
+        self.take_softmax = True
+        self.length_penalty = args.length_penalty
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         # [h.remove() for h in self.hook_handles]
@@ -22,6 +22,9 @@ class GLMForMultiTokenCloze(torch.nn.Module):
 
     def named_parameters(self, prefix: str = '', recurse: bool = True):
         return self.model.named_parameters(prefix=prefix, recurse=recurse)
+
+    def disable_untrainable_params(self):
+        self.model.disable_untrainable_params()
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
         if target_ids == None:
@@ -112,10 +115,10 @@ class GLMForMultiTokenClozeFast(torch.nn.Module):
 
 
 class GLMForSingleTokenCloze(torch.nn.Module):
-    def __init__(self, language_model, take_softmax=False):
+    def __init__(self, args):
         super().__init__()
-        self.model = language_model
-        self.take_softmax = take_softmax
+        self.model = GLMModel(args, parallel_output=False)
+        self.take_softmax = args.adapet
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         # [h.remove() for h in self.hook_handles]
@@ -127,6 +130,9 @@ class GLMForSingleTokenCloze(torch.nn.Module):
 
     def named_parameters(self, prefix: str = '', recurse: bool = True):
         return self.model.named_parameters(prefix=prefix, recurse=recurse)
+
+    def disable_untrainable_params(self):
+        self.model.disable_untrainable_params()
 
     def forward(self, input_ids, position_ids, attention_mask, target_ids=None, logit_mask=None, prompt_pos=None):
         if target_ids is None:

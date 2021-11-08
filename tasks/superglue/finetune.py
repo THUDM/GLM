@@ -23,6 +23,7 @@ from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em, squad_ex
 from tasks.superglue.pvp import PVPS
 from tasks.eval_utils import accuracy_func_provider
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
+from model.downstream import GLMForMultiTokenCloze, GLMForSingleTokenCloze
 
 DEFAULT_METRICS = {
     "record": [("EM", qa_exact_match), ("F1", qa_f1)],
@@ -93,12 +94,10 @@ def main(args):
             multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
         args.multi_token = multi_token
         if not multi_token:
-            model_kwargs["model_type"] = "multiple_choice" if args.cloze_eval else "classification"
-            model_kwargs["multi_token"] = False
-            model_kwargs["num_labels"] = len(processor.get_labels())
+            model_kwargs["model_cls"] = GLMForSingleTokenCloze
+            args.num_labels = len(processor.get_labels())
         else:
-            model_kwargs["model_type"] = "multiple_choice"
-            model_kwargs["multi_token"] = True
-            model_kwargs["num_labels"] = 1
+            model_kwargs["model_cls"] = GLMForMultiTokenCloze
+            args.num_labels = 1
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider)

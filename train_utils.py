@@ -20,8 +20,6 @@ def load_pretrained(model, checkpoint_path, args, task_tokens=None):
     sd = torch.load(checkpoint_name, map_location='cpu')
     if args.deepspeed:
         model = model.module
-    if hasattr(model, "model"):
-        model = model.model
 
     # Model.
     def extend_embedding_weights(state_weights, model_weights):
@@ -31,20 +29,28 @@ def load_pretrained(model, checkpoint_path, args, task_tokens=None):
         new_weights[:original_length] = state_weights
         return new_weights
 
-    if args.block_lm:
-        if "transformer.block_position_embeddings.weight" in sd["module"]:
-            position_weights = sd['module']["transformer.position_embeddings.weight"]
-            if args.max_position_embeddings + 1 > position_weights.shape[0]:
-                sd['module']["transformer.position_embeddings.weight"] = extend_embedding_weights(
-                    position_weights, model.state_dict()["transformer.position_embeddings.weight"].data)
-                print_rank_0(f"Extend position embedding to {args.max_position_embeddings + 1}")
-        if "transformer.block_position_embeddings.weight" in sd["module"]:
-            block_position_weights = sd['module']["transformer.block_position_embeddings.weight"]
-            if args.max_position_embeddings + 1 > block_position_weights.shape[0]:
-                sd['module']["transformer.block_position_embeddings.weight"] = extend_embedding_weights(
-                    block_position_weights,
-                    model.state_dict()["transformer.block_position_embeddings.weight"].data)
-                print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
+    if args.block_lm and args.old_checkpoint:
+        sd['module']['transformer.word_embeddings.weight'] = sd['module']['word_embeddings.weight']
+        del sd['module']['word_embeddings.weight']
+        sd['module']['mixins.block_position_embedding.block_position_embeddings.weight'] = sd['module'][
+            'transformer.block_position_embeddings.weight']
+        del sd['module']['transformer.block_position_embeddings.weight']
+
+    # TODO: Fix this with mixin
+    # if args.block_lm:
+    #     if "mixins.block_position_embedding.block_position_embeddings.weight" in sd["module"]:
+    #         position_weights = sd['module']['mixins.block_position_embedding.block_position_embeddings.weight']
+    #         if args.max_position_embeddings + 1 > position_weights.shape[0]:
+    #             sd['module']["transformer.position_embeddings.weight"] = extend_embedding_weights(
+    #                 position_weights, model.state_dict()["transformer.position_embeddings.weight"].data)
+    #             print_rank_0(f"Extend position embedding to {args.max_position_embeddings + 1}")
+    #     if "transformer.block_position_embeddings.weight" in sd["module"]:
+    #         block_position_weights = sd['module']["transformer.block_position_embeddings.weight"]
+    #         if args.max_position_embeddings + 1 > block_position_weights.shape[0]:
+    #             sd['module']["transformer.block_position_embeddings.weight"] = extend_embedding_weights(
+    #                 block_position_weights,
+    #                 model.state_dict()["transformer.block_position_embeddings.weight"].data)
+    #             print_rank_0(f"Extend block position embedding to {args.max_position_embeddings + 1}")
     missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
     if missing_keys or unexpected_keys:
         print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
