@@ -362,6 +362,9 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
         if args.block_lm and args.old_checkpoint:
             sd['module']['transformer.word_embeddings.weight'] = sd['module']['word_embeddings.weight']
             del sd['module']['word_embeddings.weight']
+            sd['module']['mixins.block_position_embedding.block_position_embeddings.weight'] = sd['module'][
+                'transformer.block_position_embeddings.weight']
+            del sd['module']['transformer.block_position_embeddings.weight']
 
         missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
         if missing_keys or unexpected_keys:

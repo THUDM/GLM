@@ -18,7 +18,7 @@ gpt_options=" \
        --hidden-size 1024 \
        --num-attention-heads 16 \
        --seq-length 512 \
-       --max-position-embeddings 512 \
+       --max-sequence-length 513 \
        --prefix-prompt 100 \
        --save /dataset/fd5061f6/english_data/checkpoints \
        --load /dataset/fd5061f6/english_data/checkpoints/blocklm-roberta-large-blank \
@@ -27,6 +27,7 @@ gpt_options=" \
        --no-load-rng \
        --no-load-iteration \
        --no-deepspeed-load \
+       --old-checkpoint \
        --new-save-directory \
        --save-interval 5000 \
        --train-iters 50000 \
@@ -44,7 +45,6 @@ gpt_options=" \
        --lr-decay-ratio 0.1 \
        --warmup .1 \
        --checkpoint-activations \
-       --deepspeed-activation-checkpointing \
        --fp16 \
 "
 gpt_options="${gpt_options}
