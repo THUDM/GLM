@@ -35,11 +35,11 @@ from utils import save_checkpoint, load_checkpoint
 from utils import report_memory, print_and_save_args, print_rank_0
 from utils import get_sample_writer, get_log_dir
 from blocklm_utils import build_mask_matrix
-from SwissArmyTransformer.SwissArmyTransformer.training.deepspeed_training import initialize_distributed, \
+from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, \
     set_random_seed, setup_model_and_optimizer, train_step
-from SwissArmyTransformer.SwissArmyTransformer.tokenization import get_tokenizer
-from SwissArmyTransformer.SwissArmyTransformer import mpu
-from SwissArmyTransformer.SwissArmyTransformer.model import GLMModel
+from SwissArmyTransformer.tokenization import get_tokenizer
+from SwissArmyTransformer import mpu
+from SwissArmyTransformer.model import GLMModel
 from learning_rates import get_learning_rate_scheduler
 
 
@@ -192,7 +192,7 @@ def forward_step(data_iterator, model, args, timers):
     else:
         mode = 'bert'
 
-    logits = model(tokens, position_ids, attention_mask)
+    logits, *mems = model(tokens, position_ids, attention_mask)
     losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(),
                                               labels)
     loss_mask = loss_mask.view(-1)
@@ -200,7 +200,7 @@ def forward_step(data_iterator, model, args, timers):
     if loss_mask.sum().item() > 0:
         loss = loss / loss_mask.sum()
 
-    return loss, {mode: 1}
+    return loss, {mode: torch.cuda.FloatTensor(1)}
 
 
 def report_iteration_metrics(summary_writer, optimizer, lr, loss, elapsed_time, step, total_step, args):
@@ -265,7 +265,7 @@ def train(model, optimizer, lr_scheduler,
     report_memory_flag = True
     while args.iteration < args.train_iters:
 
-        lm_loss, skipped_iter = train_step(train_data_iterator,
+        lm_loss, skipped_iter, metrics = train_step(train_data_iterator,
                                            model,
                                            optimizer,
                                            lr_scheduler,
@@ -447,6 +447,7 @@ def main():
 
     # Data stuff.
     tokenizer = get_tokenizer(args)
+    args.eod_token = tokenizer.get_command('eos').Id
     train_data, val_data, test_data, = get_train_val_test_data(args, tokenizer)
     multi_train_data, multi_val_data = None, None
     if args.multi_task_ratio > 0.0:

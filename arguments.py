@@ -331,6 +331,32 @@ def add_finetune_config_args(parser):
     return parser
 
 
+def add_glm_args(parser):
+    """Arguments for GLM"""
+    group = parser.add_argument_group('GLM', 'GLM Configurations')
+    group.add_argument('--block-lm', action='store_true', help="whether use the BlockLM pre-training")
+    group.add_argument('--masked-lm', action='store_true', help='whether to use the mlm objective')
+    group.add_argument('--bert-prob', type=float, default=0.5)
+    group.add_argument('--gpt-infill-prob', type=float, default=0.5)
+    group.add_argument('--gpt-min-ratio', type=float, default=0.5)
+    group.add_argument('--gap-sentence-prob', type=float, default=0.0)
+    group.add_argument('--gap-sentence-ratio', type=float, default=0.15)
+    group.add_argument('--avg-block-length', type=int, default=3)
+    group.add_argument('--short-seq-prob', type=float, default=0.0)
+    group.add_argument('--single-span-prob', type=float, default=0.0)
+    group.add_argument('--task-mask', action='store_true', help="Use different mask for generation and blank filling")
+    group.add_argument('--no-shuffle-block', action='store_true', help="not shuffle the blocks when filling the blank")
+    group.add_argument('--no-block-position', action='store_true',
+                       help='Use (rough) absolute positions instead of block positions')
+    group.add_argument('--sentinel-token', action='store_true',
+                       help="Use sentinel (mask) tokens to replace 2d position encoding")
+    group.add_argument('--block-mask-prob', type=float, default=0.0)
+    group.add_argument('--context-mask-ratio', type=float, default=0.0)
+    group.add_argument('--random-position', action='store_true',
+                       help="Use random start position to cover all the position embeddings")
+    return parser
+
+
 def get_args(arg_list=None):
     """Parse all the args."""
 
@@ -341,6 +367,7 @@ def get_args(arg_list=None):
     parser = add_text_generate_args(parser)
     parser = add_data_args(parser)
     parser = add_finetune_config_args(parser)
+    parser = add_glm_args(parser)
 
     # Include DeepSpeed configuration arguments
     parser = deepspeed.add_config_arguments(parser)
@@ -348,6 +375,8 @@ def get_args(arg_list=None):
     args = parser.parse_args(arg_list)
     if not args.train_data and not args.data_dir:
         print('WARNING: No training data specified')
+
+    args.tokenizer_type = "glm_" + args.tokenizer_type
 
     args.cuda = torch.cuda.is_available()
 

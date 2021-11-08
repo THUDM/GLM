@@ -1,6 +1,6 @@
 import torch
 import torch.utils.data
-import mpu
+from SwissArmyTransformer import mpu
 import random
 import copy
 import numpy as np
@@ -477,7 +477,7 @@ class ConstructBlockStrategy:
  # conventional transformer
 def build_mask_matrix(separator, batch_size, seq_length, memory_length=0):
     dtype = torch.float
-    m = torch.ones((1, seq_length, seq_length), dtype=dtype)
+    m = torch.ones((1, seq_length, seq_length), dtype=dtype, device=separator.device)
     m = torch.tril(m)
     is_scalar = torch.numel(separator) == 1
     if is_scalar:

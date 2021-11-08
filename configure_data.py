@@ -29,7 +29,7 @@ from itertools import accumulate
 from bisect import bisect_right
 from tasks.superglue.dataset import SuperGlueDataset
 
-from SwissArmyTransformer.SwissArmyTransformer import mpu
+from SwissArmyTransformer import mpu
 
 
 class MultiTaskDataset(torch.utils.data.Dataset):

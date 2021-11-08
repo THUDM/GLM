@@ -21,7 +21,7 @@ import random
 import torch
 import datetime
 
-import mpu
+from SwissArmyTransformer import mpu
 from utils import print_rank_0, get_spare_port, debug_finetune_data
 from tasks.data_utils import build_data_loader
 from finetune_glm import process_batch

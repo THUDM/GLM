@@ -3,7 +3,7 @@ import torch
 from apex.optimizers import FusedAdam as Adam
 from torch import distributed as dist
 
-from SwissArmyTransformer.SwissArmyTransformer import mpu
+from SwissArmyTransformer import mpu
 from fp16 import FP16_Module, FP16_Optimizer, DynamicLossScaler
 from learning_rates import AnnealingLR
 from model import GLMModel, GLMFPrefixModel, glm_get_params_for_weight_decay_optimization
