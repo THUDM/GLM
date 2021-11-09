@@ -7,18 +7,18 @@ source $1    # Model
 source $2    # Task
 
 NUM_WORKERS=1
-NUM_GPUS_PER_WORKER=8
+NUM_GPUS_PER_WORKER=2
 MP_SIZE=1
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2"
-DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --master_port $MASTER_PORT --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER}"
+DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --master_port $MASTER_PORT -i localhost:3,4"
 
 EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 mkdir logs
 run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --deepspeed \
-       --deepspeed_config config_tasks/config_blocklm_10B.json \
+       --deepspeed_config config_tasks/config_blocklm_large.json \
        --finetune \
        --cloze-eval \
        --experiment-name ${EXPERIMENT_NAME} \
@@ -38,7 +38,7 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --pattern-id 0 \
        --fp16 \
        --model-parallel-size ${MP_SIZE} \
-       --epochs ${XXLARGE_EPOCH} \
+       --epochs ${EPOCH_SINGLE} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
 

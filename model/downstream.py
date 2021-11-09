@@ -139,8 +139,8 @@ class GLMForSingleTokenCloze(torch.nn.Module):
             return self.model(input_ids, position_ids, attention_mask)
         assert len(input_ids.shape) == 2
         outputs, *mems = self.model(input_ids, position_ids, attention_mask, prompt_pos=prompt_pos)
-        batch_ids = torch.arange(outputs.size(0), dtype=attention_mask.dtype, device=attention_mask.device)
-        target_logits = outputs[batch_ids, attention_mask]
+        batch_ids = torch.arange(outputs.size(0), dtype=torch.long, device=input_ids.device)
+        target_logits = outputs[logit_mask.nonzero(as_tuple=True)]
         if self.take_softmax:
             target_prob = torch.nn.functional.log_softmax(target_logits, dim=-1)
         else:
