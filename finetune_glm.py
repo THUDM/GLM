@@ -17,7 +17,7 @@ from SwissArmyTransformer import mpu
 import torch
 import torch.utils.data
 
-from utils import print_rank_0, Timers
+from utils import print_rank_0, Timers, get_spare_port
 from SwissArmyTransformer.training.deepspeed_training import setup_model_and_optimizer, train_step
 from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, set_random_seed
 from SwissArmyTransformer.tokenization import get_tokenizer
@@ -453,7 +453,8 @@ if __name__ == '__main__':
 
     # Pytorch distributed.
     initialize_distributed(args)
-
+    args.eval_port = get_spare_port(args)
+    print_rank_0(f"Using port {args.eval_port} for evaluation")
     # Random seeds for reproducability.
     set_random_seed(args.seed)
     from tasks.superglue.dataset import PROCESSORS

@@ -121,9 +121,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
     model.eval()
-    port = get_spare_port(args)
-    print_rank_0(f"Using port {port}")
-    store = torch.distributed.TCPStore(args.master_ip, port,
+    store = torch.distributed.TCPStore(args.master_ip, args.eval_port,
                                        torch.distributed.get_world_size(),
                                        torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
     # file_path = os.path.join("/cache", args.experiment_name + "_store")
