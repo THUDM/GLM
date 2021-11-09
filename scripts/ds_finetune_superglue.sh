@@ -7,7 +7,7 @@ source $1    # Model
 source $2    # Task
 
 NUM_WORKERS=1
-NUM_GPUS_PER_WORKER=8
+NUM_GPUS_PER_WORKER=2
 MP_SIZE=1
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
@@ -18,13 +18,13 @@ EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 mkdir logs
 run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --deepspeed \
-       --deepspeed_config config_tasks/config_blocklm_10B.json \
+       --deepspeed_config config_tasks/config_blocklm_large.json \
        --finetune \
        --cloze-eval \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
+       --save ${SAVE_PATH} \
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
        --eval-batch-size 16 \
@@ -36,7 +36,6 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        $TRAIN_ARGS \
        $COMMON_ARGS \
        --pattern-id 0 \
-       --fp16 \
        --model-parallel-size ${MP_SIZE} \
        --epochs ${XXLARGE_EPOCH} \
        --overwrite \
