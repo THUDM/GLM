@@ -1384,14 +1384,15 @@ def get_verbalization_ids(word: str, tokenizer, force_single_token: bool) -> Uni
            corresponds to multiple tokens.
     :return: either the list of token ids or the single token id corresponding to this word
     """
-    if force_single_token:
-        verbalization_id = tokenizer.TokenToId(word)
-        assert verbalization_id not in tokenizer.command_id_map, \
-            f'Verbalization {word} is mapped to a special token {tokenizer.IdToToken(verbalization_id)}'
-        return verbalization_id
-    else:
-        ids = tokenizer.EncodeAsIds(word).tokenization
+    ids = tokenizer.EncodeAsIds(word).tokenization
+    if not force_single_token:
         return ids
+    assert len(ids) == 1, \
+        f'Verbalization "{word}" does not correspond to a single token, got {tokenizer.DecodeIds(ids)}'
+    verbalization_id = ids[0]
+    assert verbalization_id not in tokenizer.command_id_map, \
+        f'Verbalization {word} is mapped to a special token {tokenizer.IdToToken(verbalization_id)}'
+    return verbalization_id
 
 
 

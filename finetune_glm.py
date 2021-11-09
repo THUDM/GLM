@@ -18,8 +18,7 @@ import torch
 import torch.utils.data
 from configure_data import prepare_tokenizer
 
-from utils import print_rank_0
-from utils import Timers
+from utils import print_rank_0, Timers, get_spare_port
 from train_utils import setup_model_and_optimizer, train_step, load_pretrained
 from utils import load_checkpoint, save_checkpoint
 from pretrain_glm import report_iteration_metrics
@@ -450,7 +449,8 @@ if __name__ == '__main__':
 
     # Pytorch distributed.
     initialize_distributed(args)
-
+    args.eval_port = get_spare_port(args)
+    print_rank_0(f"Using port {args.eval_port} for evaluation")
     # Random seeds for reproducability.
     set_random_seed(args.seed)
     from tasks.superglue.dataset import PROCESSORS
