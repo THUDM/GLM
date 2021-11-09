@@ -396,6 +396,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                 optimizer.refresh_fp32_params()
             else:
                 optimizer._model_params_to_master_params()
+    args.old_checkpoint = False
     torch.distributed.barrier()
     timers('pretrained checkpoint').stop()
     args.iteration = 0
