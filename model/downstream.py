@@ -3,12 +3,16 @@
 import torch
 import torch.nn
 from SwissArmyTransformer.model import GLMModel
+from .modeling_glm import GLMFPrefixModel
 
 
 class GLMForMultiTokenCloze(torch.nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.model = GLMModel(args, parallel_output=False)
+        if args.prefix_prompt > 0:
+            self.model = GLMFPrefixModel(args, parallel_output=False)
+        else:
+            self.model = GLMModel(args, parallel_output=False)
         self.take_softmax = True
         self.length_penalty = args.length_penalty
 
@@ -117,7 +121,10 @@ class GLMForMultiTokenClozeFast(torch.nn.Module):
 class GLMForSingleTokenCloze(torch.nn.Module):
     def __init__(self, args):
         super().__init__()
-        self.model = GLMModel(args, parallel_output=False)
+        if args.prefix_prompt > 0:
+            self.model = GLMFPrefixModel(args, parallel_output=False)
+        else:
+            self.model = GLMModel(args, parallel_output=False)
         self.take_softmax = args.adapet
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):

@@ -88,8 +88,14 @@ class GLMFPrefixModel(GLMModel):
         self.prefix_length = args.prefix_prompt
         self.num_layers = args.num_layers
         self.hidden_size = args.hidden_size
+        self.freeze_transformer = args.freeze_transformer
         self.prefix_encoder = PrefixEncoder(prefix_length=args.prefix_prompt, num_layers=args.num_layers,
                                             hidden_size=args.hidden_size)
+
+    def disable_untrainable_params(self):
+        if self.freeze_transformer:
+            print_rank_0("Freeze transformer model")
+            self.transformer.requires_grad_(False)
 
     def get_prompt(self, batch_size):
         prefix_hidden_states = self.prefix_encoder.embedding.weight.half()
