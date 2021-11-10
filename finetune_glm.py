@@ -285,7 +285,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     global tokenizer
     timers = Timers()
     tokenizer = get_tokenizer(args)
-    pretrain_glm.tokenizer = tokenizer
+
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
     # Train and validation data loaders.
@@ -413,6 +413,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     timers.log(['train/valid/test dataset/dataloder', 'callback function',
                 'model and optimizer', 'pretrained checkpoint'])
     print_rank_0('training ...')
+    args.tokenizer = tokenizer
 
     # Finetune the model.
     score_dict = None

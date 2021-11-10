@@ -66,7 +66,6 @@ class PVP(ABC):
         self.max_segment_length = max_segment_length
         self.task_mask = args.task_mask
         self.continuous_prompt = args.continuous_prompt
-        self.prefix_prompt = args.prefix_prompt
         if self.continuous_prompt:
             print_rank_0(f"Prompt tokens in pvp {self.num_prompt_tokens} spell length {self.spell_length}")
 
@@ -195,8 +194,6 @@ class PVP(ABC):
             return parts
 
         parts_a = encode_input(raw_parts_a)
-        if self.prefix_prompt > 0:
-            parts_a = [([prompt_id] * self.prefix_prompt, False)] + parts_a
 
         parts_b = None
         if raw_parts_b:
