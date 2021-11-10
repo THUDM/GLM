@@ -417,6 +417,8 @@ def get_args(arg_list=None):
             args.fp16 = False
         if args.checkpoint_activations:
             args.deepspeed_activation_checkpointing = True
+        else:
+            args.deepspeed_activation_checkpointing = False
         if "train_micro_batch_size_per_gpu" in deepspeed_config:
             args.batch_size = deepspeed_config["train_micro_batch_size_per_gpu"]
         if "gradient_accumulation_steps" in deepspeed_config:
