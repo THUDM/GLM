@@ -54,7 +54,7 @@ class AnnealingLR(_LRScheduler):
         self.num_iters = last_iter + 1
         self.end_iter = num_iters
         self.decay_style = decay_style.lower() if isinstance(decay_style, str) else None
-        self.decay_ratio = 1 / decay_ratio
+        self.decay_ratio = decay_ratio
         self.step(self.num_iters)
         if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
             print(f'learning rate decaying style {self.decay_style}, ratio {self.decay_ratio}')
@@ -66,11 +66,11 @@ class AnnealingLR(_LRScheduler):
         else:
             if self.decay_style == self.DECAY_STYLES[0]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
-                return self.start_lr - self.start_lr * (1 - 1 / self.decay_ratio) * decay_step_ratio
+                return self.start_lr - self.start_lr * (1 - self.decay_ratio) * decay_step_ratio
             elif self.decay_style == self.DECAY_STYLES[1]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
-                return self.start_lr / self.decay_ratio * (
-                        (math.cos(math.pi * decay_step_ratio) + 1) * (self.decay_ratio - 1) / 2 + 1)
+                return self.start_lr * (
+                        (math.cos(math.pi * decay_step_ratio) + 1) / 2 * (1 - self.decay_ratio) + self.decay_ratio)
             elif self.decay_style == self.DECAY_STYLES[2]:
                 # TODO: implement exponential decay
                 raise NotImplementedError
