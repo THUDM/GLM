@@ -373,6 +373,7 @@ class BaseTransformer(torch.nn.Module):
         
             l, num_layers = 0, len(self.layers)
             chunk_length = self.checkpoint_num_layers
+            hidden_states.requires_grad_(True)
             while l < num_layers:
                 args = [hidden_states, attention_mask]
                 if branch_input is not None:
@@ -407,7 +408,7 @@ class BaseTransformer(torch.nn.Module):
 
         if not self.parallel_output:
             logits_parallel = gather_from_model_parallel_region(logits_parallel)
-            
+
         if branch_input is not None:
             return (logits_parallel, branch_input, *output_per_layers)
         
