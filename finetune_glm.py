@@ -158,7 +158,8 @@ def finetune_forward_step(batch, model, args, timers):
 
     # Reduce loss for logging.
 
-    return loss, {}
+    return loss, {'bert': torch.cuda.FloatTensor([0]), 'sentence': torch.cuda.FloatTensor([0]),
+                  'gpt': torch.cuda.FloatTensor([0]), 'multi-task': torch.cuda.FloatTensor([1])}
 
 
 def _build_infinite_size_dataloader(dataloader):
