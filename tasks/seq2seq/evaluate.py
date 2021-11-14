@@ -310,8 +310,8 @@ class DecoderEvaluater:
                         next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems,
                                                          return_memory=True)
                         next_token_logits = next_token_logits[:, -1]
+                    next_token_logits = self.processors(tokens, next_token_logits)
                     next_token_scores = F.log_softmax(next_token_logits, dim=-1)
-                    next_token_scores = self.processors(tokens, next_token_scores)
                     next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
                     vocab_size = next_token_scores.shape[-1]
                     next_token_scores = next_token_scores.view(batch_size, args.num_beams * vocab_size)
