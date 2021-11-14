@@ -26,6 +26,40 @@ from SwissArmyTransformer.mpu.transformer import standard_attention, split_tenso
 from utils import print_rank_0
 
 
+class ExtendBlockPositionEmbeddingMixin(BaseMixin):
+    def __init__(self, max_sequence_length, hidden_size, additional_sequence_length, init_method_std=0.02):
+        super().__init__()
+        self.max_sequence_length = max_sequence_length
+        self.hidden_size = hidden_size
+        self.block_position_embeddings = torch.nn.Embedding(max_sequence_length, hidden_size)
+        self.additional_position_embeddings = torch.nn.Embedding(additional_sequence_length, hidden_size)
+        self.additional_block_position_embeddings = torch.nn.Embedding(additional_sequence_length, hidden_size)
+        torch.nn.init.normal_(self.block_position_embeddings.weight, mean=0.0, std=init_method_std)
+        torch.nn.init.normal_(self.additional_position_embeddings.weight, mean=0.0, std=init_method_std)
+        torch.nn.init.normal_(self.additional_block_position_embeddings.weight, mean=0.0, std=init_method_std)
+
+    def position_embedding_forward(self, position_ids, **kwargs):
+        position_ids, block_position_ids = position_ids[:, 0], position_ids[:, 1]
+        position_embeddings = torch.cat(
+            (self.transformer.position_embeddings.weight, self.additional_position_embeddings.weight), dim=0)
+        position_embeddings = F.embedding(position_ids, position_embeddings)
+        block_position_embeddings = torch.cat(
+            (self.block_position_embeddings.weight, self.additional_block_position_embeddings.weight), dim=0)
+        block_position_embeddings = F.embedding(block_position_ids, block_position_embeddings)
+        return position_embeddings + block_position_embeddings
+
+
+class GLMCustomModel(GLMModel):
+    def __init__(self, args, transformer=None, parallel_output=True):
+        super().__init__(args, transformer=transformer, parallel_output=parallel_output)
+        if hasattr(args, "additional_sequence_length"):
+            self.del_mixin('block_position_embedding')
+            self.add_mixin('block_position_embedding',
+                           ExtendBlockPositionEmbeddingMixin(args.max_sequence_length, args.hidden_size,
+                                                             args.additional_sequence_length))
+            print_rank_0(f"Extend additional sequence length {args.additional_sequence_length}")
+
+
 class PrefixEncoder(torch.nn.Module):
     """
     The torch.nn model to encode the prefix
@@ -52,7 +86,7 @@ class PrefixEncoder(torch.nn.Module):
         return prefix_hidden_states
 
 
-class GLMFPrefixModel(GLMModel):
+class GLMFPrefixModel(GLMCustomModel):
     def __init__(self, args, transformer=None, parallel_output=True):
         super(GLMFPrefixModel, self).__init__(args, transformer=transformer, parallel_output=parallel_output)
         print_rank_0(f"Create prefix prompt of length {args.prefix_prompt}")

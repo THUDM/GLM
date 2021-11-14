@@ -64,6 +64,11 @@ class BaseModel(torch.nn.Module):
         if reinit:
             new_mixin.reinit(self.transformer, **self.mixins) # also pass current mixins
         self.collect_hooks_()
+
+    def del_mixin(self, name):
+        assert name in self.mixins
+        del self.mixins[name]
+        self.collect_hooks_()
         
     def get_mixin(self, name):
         return self.mixins[name]

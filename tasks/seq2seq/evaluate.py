@@ -4,8 +4,11 @@ import random
 import re
 import torch
 import torch.nn.functional as F
-import mpu
+from SwissArmyTransformer import mpu
+from SwissArmyTransformer.model.cached_autoregressive_model import CachedAutoregressiveMixin
+from SwissArmyTransformer.generation.autoregressive_sampling import update_mems
 from utils import print_rank_0
+from blocklm_utils import build_mask_matrix
 from generation_utils import BeamSearchScorer, LogitsProcessorList, MinLengthLogitsProcessor, \
     NoRepeatNGramLogitsProcessor
 from rouge_score import rouge_scorer
@@ -202,13 +205,13 @@ def squad_fix_tokenization(text):
     tokens = text.split()
     i = 0
     while i < len(tokens):
-        if tokens[i] in [",", ".", ":"] and i > 0 and i+1 < len(tokens):
+        if tokens[i] in [",", ".", ":"] and i > 0 and i + 1 < len(tokens):
             if tokens[i - 1][-1].isdigit() and tokens[i + 1][0].isdigit():
                 if tokens[i] == ',' and len(tokens[i + 1]) > 3:
                     pass
                 else:
                     tokens[i - 1] = tokens[i - 1] + tokens[i] + tokens[i + 1]
-                    tokens = tokens[:i] + tokens[i+2:]
+                    tokens = tokens[:i] + tokens[i + 2:]
                     i -= 1
         i += 1
     text = ' '.join(tokens)
@@ -240,6 +243,9 @@ def process_batch(batch, args):
     tokens = batch['text'].long().cuda()
     attention_mask = batch['attention_mask'].long().cuda()
     position_ids = batch['position_id'].long().cuda()
+    attention_mask = build_mask_matrix(attention_mask, tokens.size(0), tokens.size(1))
+    if args.fp16:
+        attention_mask = attention_mask.half()
     if tokens.dim() == 3:
         tokens = tokens.squeeze(1)
         attention_mask = attention_mask.squeeze(1)
@@ -269,6 +275,9 @@ class DecoderEvaluater:
         model.eval()
         local_predictions = {}
         print_rank_0("Distributed store created")
+        if args.deepspeed:
+            model = model.module
+        model.add_mixin('auto-regressive', CachedAutoregressiveMixin())
         with torch.no_grad():
             # For all the batches in the dataset.
             for idx, data in enumerate(dataloader):
@@ -287,28 +296,31 @@ class DecoderEvaluater:
                 beam_scores = beam_scores.view((batch_size * args.num_beams,))
                 # Run the model forward.
                 counter = 0
+                mems = []
+                context_length = tokens.size(1)
                 while counter < args.tgt_seq_length:
                     if counter == 0:
-                        next_token_logits, *mems = model(tokens, position_ids, attention_mask, return_memory=True)
+                        next_token_logits, *mems = model(tokens, position_ids, attention_mask)
                         seq_length = next_token_logits.size(1)
                         next_token_logits = next_token_logits[:, -1]
                         next_token_logits = next_token_logits.unsqueeze(1).repeat(1, args.num_beams, 1).view(
                             batch_size * args.num_beams, -1)
-                        mems = [mem.unsqueeze(1).repeat(1, args.num_beams, 1, 1).view(batch_size * args.num_beams,
-                                                                                      seq_length, -1) for mem in mems]
+                        mems = torch.stack([mem.unsqueeze(1).repeat(1, args.num_beams, 1, 1).view(
+                            batch_size * args.num_beams, seq_length, -1) for mem in mems], dim=0)
                         position_ids = tokens.new_ones(batch_size, args.num_beams, 2, 1)
                         for i, text in enumerate(tokens.tolist()):
                             mask_pos = text.index(self.mask_token)
                             position_ids[i, :, 0] = mask_pos
                         position_ids = position_ids.reshape(batch_size * args.num_beams, 2, 1)
                         tokens = tokens.new_zeros(batch_size * args.num_beams, 0)
-                        attention_mask = tokens.new_zeros([batch_size * args.num_beams])
                     else:
                         if not args.no_block_position:
                             position_ids[:, 1] = counter + 1
                         last_token = tokens[:, -1:]
-                        next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems,
-                                                         return_memory=True)
+                        attention_mask = attention_mask.new_ones(
+                            (batch_size * args.num_beams, 1, 1, context_length + counter))
+                        next_token_logits, *mem_kv = model(last_token, position_ids, attention_mask, mems=mems)
+                        mems = update_mems(mem_kv, mems, max_memory_length=1000000)
                         next_token_logits = next_token_logits[:, -1]
                     next_token_scores = F.log_softmax(next_token_logits, dim=-1)
                     next_token_scores = self.processors(tokens, next_token_scores)
@@ -341,7 +353,7 @@ class DecoderEvaluater:
                     beam_idx = beam_outputs["next_beam_indices"]
                     beam_next_tokens = beam_next_tokens.unsqueeze(-1)
                     tokens = torch.cat([tokens[beam_idx, :], beam_next_tokens], dim=-1)
-                    mems = [mem[beam_idx] for mem in mems] if mems else []
+                    mems = mems[:, beam_idx]
                     if beam_scorer.is_done:
                         break
                     counter += 1
@@ -365,11 +377,12 @@ class DecoderEvaluater:
                 if (idx + 1) % args.log_interval == 0:
                     print_rank_0(f"Iteration {idx + 1} / {len(dataloader)}")
         model.train()
+        model.del_mixin('auto-regressive')
         torch.distributed.barrier()
         print_rank_0("Evaluation completed")
         gathered_predictions = [None for i in range(torch.distributed.get_world_size())]
         torch.distributed.all_gather_object(gathered_predictions, local_predictions)
-        gathered_predictions = {uid: pred for preds in gathered_predictions for uid, pred in preds.items() }
+        gathered_predictions = {uid: pred for preds in gathered_predictions for uid, pred in preds.items()}
         predictions, examples, scores = [], [], []
         for uid, example in example_dict.items():
             prediction = gathered_predictions[uid]
