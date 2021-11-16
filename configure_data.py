@@ -23,7 +23,6 @@ import torch
 import torch.utils.data
 import data_utils
 from blocklm_utils import ConstructBlockStrategy
-from data_utils.tokenization import make_tokenizer
 from utils import print_rank_0
 from itertools import accumulate
 from bisect import bisect_right
