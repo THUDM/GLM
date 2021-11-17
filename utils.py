@@ -40,12 +40,12 @@ def get_sample_writer(log_dir, iteration=0):
         log_dir=log_dir, purge_step=iteration)
 
 
-def print_rank_0(message):
+def print_rank_0(*message):
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
-            print(message, flush=True)
+            print(*message, flush=True)
     else:
-        print(message, flush=True)
+        print(*message, flush=True)
 
 
 def get_hostname():

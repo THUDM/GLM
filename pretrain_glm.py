@@ -27,18 +27,16 @@ import torch
 
 import deepspeed
 from arguments import get_args
-from configure_data import configure_data, build_multi_task_dataset
+from configure_data import configure_data, build_multi_task_dataset, make_tokenizer
 import pathlib
 
 from utils import Timers
 from utils import save_checkpoint, load_checkpoint
-from utils import report_memory, print_and_save_args, print_rank_0
-from utils import get_sample_writer, get_log_dir
+from utils import report_memory, print_and_save_args, print_rank_0, get_sample_writer, get_log_dir
 from blocklm_utils import build_mask_matrix
 from model.modeling_glm import GLMFPrefixModel
 from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, \
     set_random_seed, setup_model_and_optimizer, train_step
-from SwissArmyTransformer.tokenization import get_tokenizer
 from SwissArmyTransformer import mpu
 from SwissArmyTransformer.model import GLMModel
 from learning_rates import get_learning_rate_scheduler
@@ -448,8 +446,7 @@ def main():
     set_random_seed(args.seed)
 
     # Data stuff.
-    tokenizer = get_tokenizer(args)
-    args.eod_token = tokenizer.get_command('eos').Id
+    tokenizer = make_tokenizer(args)
     train_data, val_data, test_data, = get_train_val_test_data(args, tokenizer)
     multi_train_data, multi_val_data = None, None
     if args.multi_task_ratio > 0.0:

@@ -29,6 +29,18 @@ from bisect import bisect_right
 from tasks.superglue.dataset import SuperGlueDataset
 
 from SwissArmyTransformer import mpu
+from SwissArmyTransformer.tokenization import get_tokenizer
+from data_utils import BertWordPieceTokenizer
+
+
+def make_tokenizer(args):
+    outer_tokenizer = None
+    if args.tokenizer_type == "glm_BertWordPieceTokenizer":
+        outer_tokenizer = BertWordPieceTokenizer(tokenizer_model_type=args.tokenizer_model_type, add_block_symbols=True,
+                                                 add_task_mask=args.task_mask,
+                                                 add_decoder_mask=args.block_mask_prob > 0.0)
+    tokenizer = get_tokenizer(args, outer_tokenizer=outer_tokenizer)
+    args.eod_token = tokenizer.get_command('eos').Id
 
 
 class MultiTaskDataset(torch.utils.data.Dataset):

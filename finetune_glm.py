@@ -20,12 +20,11 @@ import torch.utils.data
 from utils import print_rank_0, Timers, get_spare_port
 from SwissArmyTransformer.training.deepspeed_training import setup_model_and_optimizer, train_step
 from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, set_random_seed
-from SwissArmyTransformer.tokenization import get_tokenizer
 from pretrain_glm import report_iteration_metrics, evaluate_and_print_results
 from learning_rates import get_learning_rate_scheduler
 from train_utils import load_pretrained
 from utils import load_checkpoint, save_checkpoint
-from configure_data import make_data_loader
+from configure_data import make_data_loader, make_tokenizer
 from blocklm_utils import build_mask_matrix
 
 
@@ -285,7 +284,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     """Main finetune function used across all tasks."""
     global tokenizer
     timers = Timers()
-    tokenizer = get_tokenizer(args)
+    tokenizer = make_tokenizer(args)
 
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
