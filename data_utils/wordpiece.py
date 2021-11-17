@@ -96,8 +96,8 @@ class BertTokenizer(object):
             raise ValueError(
                 "Can't find a vocabulary file at path '{}'. To load the vocabulary from a Google pretrained "
                 "model use `tokenizer = BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)`".format(vocab_file))
-        self.vocab = load_vocab(vocab_file)
-        self.ids_to_tokens = collections.OrderedDict(
+        self._vocab = load_vocab(vocab_file)
+        self._tokens = collections.OrderedDict(
             [(ids, tok) for tok, ids in self.vocab.items()])
         self.do_basic_tokenize = do_basic_tokenize
         if do_basic_tokenize:
@@ -105,6 +105,17 @@ class BertTokenizer(object):
                                                 never_split=never_split)
         self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab)
         self.max_len = max_len if max_len is not None else int(1e12)
+
+    def __len__(self):
+        return len(self.vocab)
+
+    @property
+    def tokens(self):
+        return self._tokens
+
+    @property
+    def vocab(self):
+        return self._vocab
 
     def tokenize(self, text):
         if self.do_basic_tokenize:
@@ -133,7 +144,7 @@ class BertTokenizer(object):
         """Converts a sequence of ids in wordpiece tokens using the vocab."""
         tokens = []
         for i in ids:
-            tokens.append(self.ids_to_tokens[i])
+            tokens.append(self._tokens[i])
         return tokens
 
     @classmethod
@@ -410,8 +421,6 @@ class BertWordPieceTokenizer(Tokenizer):
         print_rank_0('loaded', tokenizer_model_type)
         # disable max len warnings by increasing max len
         text_tokenizer.max_len = int(1e12)
-        super().__init__(text_tokenizer)
-
         # set command tokens from wordpiece tokenizer values
         num_tokens = len(text_tokenizer.vocab)
 
@@ -482,8 +491,8 @@ class BertWordPieceTokenizer(Tokenizer):
         for Id in ids:
             if Id in self.command_id_map:
                 Tokens.append(self.command_id_map[Id].token)
-            elif Id in self.text_tokenizer.ids_to_tokens:
-                Tokens.append(self.text_tokenizer.ids_to_tokens[Id])
+            elif Id in self.text_tokenizer.tokens:
+                Tokens.append(self.text_tokenizer.tokens[Id])
         new_tokens = []
         for token in Tokens:
             if token.startswith('##') and len(new_tokens) > 0:

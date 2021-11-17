@@ -25,7 +25,7 @@ from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDatas
 from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWriter, LazyLoader, exists_scatter, \
     get_scatter_path
 from utils import print_rank_0
-from wordpiece import BertWordPieceTokenizer
+from .wordpiece import BertWordPieceTokenizer
 
 TRAIN_DATA = 0
 VAL_DATA = 1

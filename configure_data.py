@@ -41,6 +41,7 @@ def make_tokenizer(args):
                                                  add_decoder_mask=args.block_mask_prob > 0.0)
     tokenizer = get_tokenizer(args, outer_tokenizer=outer_tokenizer)
     args.eod_token = tokenizer.get_command('eos').Id
+    return tokenizer
 
 
 class MultiTaskDataset(torch.utils.data.Dataset):
