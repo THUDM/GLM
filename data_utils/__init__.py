@@ -24,9 +24,8 @@ from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDatas
     GPT2Dataset, XLDataset, BlockDataset
 from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWriter, LazyLoader, exists_scatter, \
     get_scatter_path
-from .tokenization import Tokenization, CommandToken, Tokenizer, CharacterLevelTokenizer, BertWordPieceTokenizer, \
-    GPT2BPETokenizer, make_tokenizer
 from utils import print_rank_0
+from .wordpiece import BertWordPieceTokenizer
 
 TRAIN_DATA = 0
 VAL_DATA = 1

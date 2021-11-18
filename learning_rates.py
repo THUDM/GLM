@@ -18,6 +18,28 @@ import torch
 from torch.optim.lr_scheduler import _LRScheduler
 import math
 
+def get_learning_rate_scheduler(optimizer, args):
+    """Build the learning rate scheduler."""
+
+    # Add linear learning rate scheduler.
+    if args.lr_decay_iters is not None:
+        num_iters = args.lr_decay_iters
+    else:
+        num_iters = args.train_iters
+    if args.finetune:
+        num_iters = num_iters // args.gradient_accumulation_steps
+    num_iters = max(1, num_iters)
+    init_step = -1
+    warmup_iter = args.warmup * num_iters
+    lr_scheduler = AnnealingLR(optimizer,
+                               start_lr=args.lr,
+                               warmup_iter=warmup_iter,
+                               num_iters=num_iters - warmup_iter,
+                               decay_style=args.lr_decay_style,
+                               last_iter=init_step,
+                               decay_ratio=args.lr_decay_ratio)
+
+    return lr_scheduler
 
 class AnnealingLR(_LRScheduler):
     """Anneals the learning rate from start to zero along a cosine curve."""
@@ -32,7 +54,7 @@ class AnnealingLR(_LRScheduler):
         self.num_iters = last_iter + 1
         self.end_iter = num_iters
         self.decay_style = decay_style.lower() if isinstance(decay_style, str) else None
-        self.decay_ratio = 1 / decay_ratio
+        self.decay_ratio = decay_ratio
         self.step(self.num_iters)
         if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
             print(f'learning rate decaying style {self.decay_style}, ratio {self.decay_ratio}')
@@ -44,11 +66,11 @@ class AnnealingLR(_LRScheduler):
         else:
             if self.decay_style == self.DECAY_STYLES[0]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
-                return self.start_lr - self.start_lr * (1 - 1 / self.decay_ratio) * decay_step_ratio
+                return self.start_lr - self.start_lr * (1 - self.decay_ratio) * decay_step_ratio
             elif self.decay_style == self.DECAY_STYLES[1]:
                 decay_step_ratio = min(1.0, (self.num_iters - self.warmup_iter) / self.end_iter)
-                return self.start_lr / self.decay_ratio * (
-                        (math.cos(math.pi * decay_step_ratio) + 1) * (self.decay_ratio - 1) / 2 + 1)
+                return self.start_lr * (
+                        (math.cos(math.pi * decay_step_ratio) + 1) / 2 * (1 - self.decay_ratio) + self.decay_ratio)
             elif self.decay_style == self.DECAY_STYLES[2]:
                 # TODO: implement exponential decay
                 raise NotImplementedError

@@ -15,7 +15,8 @@
 
 """Race."""
 import torch
-import mpu
+from SwissArmyTransformer import mpu
+from model import GLMCustomModel
 import json
 import functools
 from tasks.eval_utils import accuracy_func_provider
@@ -29,7 +30,7 @@ from tasks.superglue.evaluate import squad_exact_match, squad_f1
 global_tokenizer = None
 
 
-def seq2seq_forward_step(data, model, args, timers, mems):
+def seq2seq_forward_step(data, model, args, timers):
     """Forward step."""
 
     # Get the batch.
@@ -39,7 +40,7 @@ def seq2seq_forward_step(data, model, args, timers, mems):
     if timers is not None:
         timers('batch generator').stop()
     # Forward model.
-    logits, *mems = model(tokens, position_ids, attention_mask, *mems)
+    logits, *mems = model(tokens, position_ids, attention_mask)
     # logits, loss_mask = logits[:, args.src_seq_length:], loss_mask[:, args.src_seq_length:]
     # target_ids = target_ids[:, args.src_seq_length:]
     losses = mpu.vocab_parallel_cross_entropy(logits.contiguous().float(), labels)
@@ -50,7 +51,8 @@ def seq2seq_forward_step(data, model, args, timers, mems):
     loss_mask = loss_mask.reshape(-1)
     # The loss is not normalized for fair comparison
     loss = torch.sum(losses.reshape(-1) * loss_mask) / loss_mask.sum()
-    return loss, mems, 'bert'
+    return loss, {'bert': torch.cuda.FloatTensor([0]), 'sentence': torch.cuda.FloatTensor([0]),
+                  'gpt': torch.cuda.FloatTensor([0]), 'multi-task': torch.cuda.FloatTensor([1])}
 
 
 def train_valid_datasets_provider(args, tokenizer):
@@ -135,11 +137,13 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 
 def main(args):
-    if args.src_seq_length > args.max_position_embeddings:
-        args.max_position_embeddings = args.src_seq_length
+    max_length = max(args.src_seq_length, args.tgt_seq_length)
+    if max_length > args.max_sequence_length:
+        args.additional_sequence_length = max_length - args.max_sequence_length
     if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum',
                              'squad', 'squad_v1', 'extraction', 'cmrc']:
-        finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
+        finetune(args, train_valid_datasets_provider, {"model_cls": GLMCustomModel},
+                 end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:
         raise NotImplementedError(args.task)

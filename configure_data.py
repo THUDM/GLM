@@ -23,13 +23,25 @@ import torch
 import torch.utils.data
 import data_utils
 from blocklm_utils import ConstructBlockStrategy
-from data_utils.tokenization import make_tokenizer
 from utils import print_rank_0
 from itertools import accumulate
 from bisect import bisect_right
 from tasks.superglue.dataset import SuperGlueDataset
 
-import mpu
+from SwissArmyTransformer import mpu
+from SwissArmyTransformer.tokenization import get_tokenizer
+from data_utils import BertWordPieceTokenizer
+
+
+def make_tokenizer(args):
+    outer_tokenizer = None
+    if args.tokenizer_type == "glm_BertWordPieceTokenizer":
+        outer_tokenizer = BertWordPieceTokenizer(tokenizer_model_type=args.tokenizer_model_type, add_block_symbols=True,
+                                                 add_task_mask=args.task_mask,
+                                                 add_decoder_mask=args.block_mask_prob > 0.0)
+    tokenizer = get_tokenizer(args, outer_tokenizer=outer_tokenizer)
+    args.eod_token = tokenizer.get_command('eos').Id
+    return tokenizer
 
 
 class MultiTaskDataset(torch.utils.data.Dataset):
@@ -115,41 +127,6 @@ class DataConfig:
             k = k.replace('-', '_')
             if not hasattr(args, k):
                 setattr(args, k, v)
-
-
-def prepare_tokenizer(args):
-    add_sentinel_token = 0
-    if args.sentinel_token:
-        add_sentinel_token = args.max_position_embeddings
-    tokenizer = make_tokenizer(args.tokenizer_type, None, args.tokenizer_path, args.vocab_size,
-                               args.tokenizer_model_type, add_block_symbols=args.block_lm, cache_dir=args.cache_dir,
-                               add_sentinel_token=add_sentinel_token, add_task_mask=args.task_mask,
-                               add_decoder_mask=args.block_mask_prob > 0.0 or args.context_mask_ratio > 0.0,
-
-                               no_fix_command=args.no_fix_command)
-    if mpu.get_model_parallel_rank() == 0:
-        num_tokens = tokenizer.num_tokens
-        eod_token = tokenizer.get_command('eos').Id
-        assert eod_token == tokenizer.get_command('pad').Id
-        before = num_tokens
-        after = before
-        multiple = args.make_vocab_size_divisible_by
-        while (after % multiple) != 0:
-            after += 1
-        print_rank_0('> padded vocab (size: {}) with {} dummy '
-                     'tokens (new size: {})'.format(before, after - before, after))
-        print_rank_0('> found end-of-document token: {}'.format(eod_token))
-        token_counts = torch.cuda.LongTensor([after, eod_token])
-    else:
-        token_counts = torch.cuda.LongTensor([0, 0])
-    # Broadcast num tokens.
-    torch.distributed.broadcast(token_counts,
-                                mpu.get_model_parallel_src_rank(),
-                                group=mpu.get_model_parallel_group())
-    num_tokens = token_counts[0].item()
-    eod_token = token_counts[1].item()
-    args.vocab_size, args.eod_token = num_tokens, eod_token
-    return tokenizer
 
 
 def make_data_loader(dataset, tokenizer, batch_size, num_iters, args, shuffle=False, block_collate=False):
@@ -251,10 +228,6 @@ def make_loaders(args, tokenizer):
     # equivalent values in the arg dict
     if eval_seq_length:
         eval_set_args['seq_length'] = eval_seq_length
-    if args.eval_max_preds_per_seq:
-        eval_set_args['max_preds_per_seq'] = args.eval_max_preds_per_seq
-    if args.eval_text_key is not None:
-        eval_set_args['text_key'] = args.eval_text_key
 
     # make datasets splits and tokenizer
     train, valid, test = None, None, None

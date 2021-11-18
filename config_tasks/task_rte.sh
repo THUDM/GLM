@@ -6,6 +6,7 @@ MAX_SEQ_LEN=256
 LR_SINGLE=1e-5
 EPOCH_SINGLE=50
 XXLARGE_EPOCH=50
+PROMPT_EPOCH=200
 
 TRAIN_ARGS="--lr-decay-style linear \
             --warmup 0.1 \

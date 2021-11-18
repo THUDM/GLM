@@ -19,121 +19,45 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import mpu
-from model.prompt import PromptSpell
+from SwissArmyTransformer import mpu
+from SwissArmyTransformer.model import GLMModel
+from SwissArmyTransformer.model.mixins import BaseMixin
+from SwissArmyTransformer.mpu.transformer import standard_attention, split_tensor_along_last_dim
 from utils import print_rank_0
 
 
-def init_method_normal(std=0.02):
-    """Init method based on normal distribution.
-
-    This is only used for embeddings. The transformer has its
-    own initializer.
-    """
-
-    def init_(tensor):
-        return torch.nn.init.normal_(tensor, mean=0.0, std=std)
-
-    return init_
-
-
-class GLMModel(torch.nn.Module):
-    """GLM Language model.
-
-    The output of the forward method are the logits (parallel or
-    serial depending on the `parallel_output` flag.
-    """
-
-    def __init__(self,
-                 num_layers,
-                 vocab_size,
-                 hidden_size,
-                 num_attention_heads,
-                 embedding_dropout_prob,
-                 attention_dropout_prob,
-                 output_dropout_prob,
-                 max_sequence_length,
-                 max_memory_length,
-                 checkpoint_activations,
-                 checkpoint_num_layers=1,
-                 parallel_output=True,
-                 relative_encoding=False,
-                 block_position_encoding=False,
-                 output_predict=True,
-                 spell_length=None,
-                 spell_func='lstm',
-                 attention_scale=1.0,
-                 ):
-
-        super(GLMModel, self).__init__()
-
-        self.parallel_output = parallel_output
-        self.output_predict = output_predict
+class ExtendBlockPositionEmbeddingMixin(BaseMixin):
+    def __init__(self, max_sequence_length, hidden_size, additional_sequence_length, init_method_std=0.02):
+        super().__init__()
+        self.max_sequence_length = max_sequence_length
         self.hidden_size = hidden_size
-        self.num_layers = num_layers
+        self.block_position_embeddings = torch.nn.Embedding(max_sequence_length, hidden_size)
+        self.additional_position_embeddings = torch.nn.Embedding(additional_sequence_length, hidden_size)
+        self.additional_block_position_embeddings = torch.nn.Embedding(additional_sequence_length, hidden_size)
+        torch.nn.init.normal_(self.block_position_embeddings.weight, mean=0.0, std=init_method_std)
+        torch.nn.init.normal_(self.additional_position_embeddings.weight, mean=0.0, std=init_method_std)
+        torch.nn.init.normal_(self.additional_block_position_embeddings.weight, mean=0.0, std=init_method_std)
 
-        init_method = init_method_normal(std=0.02)
+    def position_embedding_forward(self, position_ids, **kwargs):
+        position_ids, block_position_ids = position_ids[:, 0], position_ids[:, 1]
+        position_embeddings = torch.cat(
+            (self.transformer.position_embeddings.weight, self.additional_position_embeddings.weight), dim=0)
+        position_embeddings = F.embedding(position_ids, position_embeddings)
+        block_position_embeddings = torch.cat(
+            (self.block_position_embeddings.weight, self.additional_block_position_embeddings.weight), dim=0)
+        block_position_embeddings = F.embedding(block_position_ids, block_position_embeddings)
+        return position_embeddings + block_position_embeddings
 
-        # Word embeddings (parallel).
-        self.word_embeddings = mpu.VocabParallelEmbedding(
-            vocab_size, hidden_size, init_method=init_method)
 
-        # Transformer
-        self.transformer = mpu.GPT2ParallelTransformer(num_layers,
-                                                       hidden_size,
-                                                       num_attention_heads,
-                                                       max_sequence_length,
-                                                       max_memory_length,
-                                                       embedding_dropout_prob,
-                                                       attention_dropout_prob,
-                                                       output_dropout_prob,
-                                                       checkpoint_activations,
-                                                       checkpoint_num_layers,
-                                                       attention_scale=attention_scale,
-                                                       relative_encoding=relative_encoding,
-                                                       block_position_encoding=block_position_encoding)
-        if spell_length is not None:
-            self.prompt_spell = PromptSpell(spell_length, self.hidden_size, spell_func)
-
-    def freeze_transformer(self, tune_prefix_layers=None):
-        log_str = "Freeze transformer"
-        self.word_embeddings.requires_grad_(False)
-        self.transformer.requires_grad_(False)
-        if tune_prefix_layers is not None:
-            log_str += f" tune {tune_prefix_layers} prefix layers"
-            for i in range(tune_prefix_layers):
-                self.transformer.layers[i].requires_grad_(True)
-        print_rank_0(log_str)
-
-    def forward(self, input_ids, position_ids, attention_mask, *mems, return_memory=False, detach_memory=True,
-                prompt_pos=None):
-        # Embeddings.
-        batch_size = input_ids.size(0)
-        words_embeddings = self.word_embeddings(input_ids)
-        embeddings = words_embeddings
-        if prompt_pos is not None:
-            embeddings = embeddings.clone()
-            prompt_embeds = self.prompt_spell()
-            batch_index = torch.arange(batch_size, device=input_ids.device).unsqueeze(1)
-            embeddings[batch_index, prompt_pos] = prompt_embeds
-        # Transformer.
-        transformer_output = self.transformer(embeddings, position_ids, attention_mask, mems,
-                                              return_memory=return_memory, detach_memory=detach_memory)
-        logits, hidden_layers = transformer_output
-        outputs = hidden_layers
-
-        if self.output_predict:
-            # Parallel logits.
-            logits_parallel = mpu.copy_to_model_parallel_region(
-                logits)
-            logits_parallel = F.linear(logits_parallel, self.word_embeddings.weight)
-
-            if self.parallel_output:
-                return (logits_parallel, *outputs)
-
-            return (mpu.gather_from_model_parallel_region(logits_parallel), *outputs)
-        else:
-            return (logits, *outputs)
+class GLMCustomModel(GLMModel):
+    def __init__(self, args, transformer=None, parallel_output=True):
+        super().__init__(args, transformer=transformer, parallel_output=parallel_output)
+        if hasattr(args, "additional_sequence_length"):
+            self.del_mixin('block_position_embedding')
+            self.add_mixin('block_position_embedding',
+                           ExtendBlockPositionEmbeddingMixin(args.max_sequence_length, args.hidden_size,
+                                                             args.additional_sequence_length))
+            print_rank_0(f"Extend additional sequence length {args.additional_sequence_length}")
 
 
 class PrefixEncoder(torch.nn.Module):
@@ -145,68 +69,78 @@ class PrefixEncoder(torch.nn.Module):
 
     def __init__(self, prefix_length, num_layers, hidden_size):
         super().__init__()
+        self.prefix_length = prefix_length
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
         self.embedding = torch.nn.Embedding(prefix_length, num_layers * hidden_size)
 
-    def forward(self, prefix: torch.Tensor):
-        past_key_values = self.embedding(prefix)
-        return past_key_values
-
-
-class GLMFPrefixModel(GLMModel):
-    def __init__(self, prefix_prompt, num_layers, hidden_size, **kwargs):
-        super(GLMFPrefixModel, self).__init__(num_layers=num_layers, hidden_size=hidden_size, **kwargs)
-        print_rank_0(f"Create prefix prompt of length {prefix_prompt}")
-        self.prefix_length = prefix_prompt
-        self.prefix_tokens = torch.arange(self.prefix_length).long()
-        self.prefix_encoder = PrefixEncoder(prefix_length=prefix_prompt, num_layers=num_layers, hidden_size=hidden_size)
-
-    def get_prompt(self, batch_size, device):
-        prefix_tokens = self.prefix_tokens.unsqueeze(0).expand(batch_size, -1).to(device)
-        prefix_hidden_states = self.prefix_encoder(prefix_tokens).half()
-        # bsz, seqlen, _ = past_key_values.shape
+    def forward(self, batch_size):
+        prefix_hidden_states = self.embedding.weight
+        prefix_hidden_states = prefix_hidden_states.unsqueeze(0).expand(batch_size, -1, -1)
         prefix_hidden_states = prefix_hidden_states.view(
             batch_size,
             self.prefix_length,
             self.num_layers,
             self.hidden_size
         )
-        prefix_hidden_states = prefix_hidden_states.permute([2, 0, 1, 3]).split(1)
-        prefix_hidden_states = [value[0] for value in prefix_hidden_states]
         return prefix_hidden_states
 
-    def forward(self, input_ids, position_ids, attention_mask, *mems, return_memory=False, detach_memory=True,
-                prompt_pos=None
-                ):
-        batch_size = input_ids.shape[0]
-        prompt_hidden_states = self.get_prompt(batch_size=batch_size, device=input_ids.device)
-        mems = [torch.cat((mem, prompt), dim=1) for mem, prompt in
-                zip(mems, prompt_hidden_states)] if mems else prompt_hidden_states
-        output, *mems = super().forward(input_ids, position_ids, attention_mask, *mems, return_memory=return_memory,
-                                       detach_memory=detach_memory)
-        if return_memory:
-            mems = [mem[:, self.prefix_length:] for mem in mems]
-        return (output, *mems)
 
+class GLMFPrefixModel(GLMCustomModel):
+    def __init__(self, args, transformer=None, parallel_output=True):
+        super(GLMFPrefixModel, self).__init__(args, transformer=transformer, parallel_output=parallel_output)
+        print_rank_0(f"Create prefix prompt of length {args.prefix_prompt}")
+        self.prefix_length = args.prefix_prompt
+        self.num_layers = args.num_layers
+        self.hidden_size = args.hidden_size
+        self.freeze_transformer = args.freeze_transformer
+        self.prefix_encoder = PrefixEncoder(prefix_length=args.prefix_prompt, num_layers=args.num_layers,
+                                            hidden_size=args.hidden_size)
 
-def glm_get_params_for_weight_decay_optimization(module):
-    weight_decay_params = {'params': []}
-    no_weight_decay_params = {'params': [], 'weight_decay': 0.0}
-    for module_ in module.modules():
-        if isinstance(module_, (mpu.LayerNorm, torch.nn.LayerNorm)):
-            no_weight_decay_params['params'].extend(
-                [p for p in list(module_._parameters.values())
-                 if p is not None and p.requires_grad])
+    def disable_untrainable_params(self):
+        if self.freeze_transformer:
+            print_rank_0("Freeze transformer model")
+            self.transformer.requires_grad_(False)
+            self.mixins['block_position_embedding'].requires_grad_(False)
+
+    def attention_forward(self, hidden_states, mask, layer_id=None, log_attention_weights=None, prefixs=None,
+                          **kwargs):
+        attn_module = self.transformer.layers[layer_id].attention
+        prefix = prefixs[:, :, layer_id] if prefixs is not None else None
+        query_length = hidden_states.size(1)
+        if prefix is None:  # the first time, mem is None
+            mixed_raw_layer = attn_module.query_key_value(hidden_states)
+            (mixed_query_layer,
+             mixed_key_layer,
+             mixed_value_layer) = split_tensor_along_last_dim(mixed_raw_layer, 3)
         else:
-            weight_decay_params['params'].extend(
-                [p for n, p in list(module_._parameters.items())
-                 if p is not None and p.requires_grad and n != 'bias'])
-            no_weight_decay_params['params'].extend(
-                [p for n, p in list(module_._parameters.items())
-                 if p is not None and p.requires_grad and n == 'bias'])
+            cat = torch.cat((prefix, hidden_states), 1)
+            mixed_raw_layer = attn_module.query_key_value(cat)
+            (mixed_query_layer,
+             mixed_key_layer,
+             mixed_value_layer) = split_tensor_along_last_dim(mixed_raw_layer, 3)
+            mixed_query_layer = mixed_query_layer[:, -query_length:]
+        # same as training
+        query_layer = attn_module._transpose_for_scores(mixed_query_layer)
+        key_layer = attn_module._transpose_for_scores(mixed_key_layer)
+        value_layer = attn_module._transpose_for_scores(mixed_value_layer)
+        context_layer = standard_attention(query_layer, key_layer, value_layer, mask, None,
+                                           log_attention_weights=log_attention_weights)
 
-    if len(weight_decay_params['params']) == 0:
-        return (no_weight_decay_params,)
-    elif len(no_weight_decay_params['params']) == 0:
-        return (weight_decay_params,)
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (attn_module.hidden_size_per_partition,)
+        context_layer = context_layer.view(*new_context_layer_shape)
+        output = attn_module.dense(context_layer)
 
-    return weight_decay_params, no_weight_decay_params
+        # new mem this layer
+        new_mem = mixed_raw_layer.detach()[..., -(mixed_raw_layer.shape[-1] // 3 * 2):].contiguous()
+
+        return output, new_mem
+
+    def forward(self, input_ids, position_ids, attention_mask, *, branch_input=None, **kw_args):
+        batch_size, seq_length = input_ids.shape[0], input_ids.shape[1]
+        prompt_hidden_states = self.prefix_encoder(batch_size=batch_size)
+        attention_mask = torch.cat(
+            (attention_mask.new_ones(batch_size, 1, seq_length, self.prefix_length), attention_mask), dim=-1)
+        output, *mems = super().forward(input_ids, position_ids, attention_mask, prefixs=prompt_hidden_states)
+        return (output, *mems)

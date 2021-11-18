@@ -6,6 +6,7 @@ MAX_SEQ_LEN=512
 LR_SINGLE=1e-5
 EPOCH_SINGLE=15
 XXLARGE_EPOCH=12
+PROMPT_EPOCH=30
 
 TRAIN_ARGS="--batch-size 16 \
             --lr-decay-style linear \

@@ -12,49 +12,50 @@ from filelock import FileLock
 import pretrain_glm
 from pretrain_glm import forward_step as lm_forward_step
 import pathlib
-import mpu
+from SwissArmyTransformer import mpu
 
 import torch
 import torch.utils.data
-from configure_data import prepare_tokenizer
 
 from utils import print_rank_0, Timers, get_spare_port
-from train_utils import setup_model_and_optimizer, train_step, load_pretrained
+from SwissArmyTransformer.training.deepspeed_training import setup_model_and_optimizer, train_step
+from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, set_random_seed
+from pretrain_glm import report_iteration_metrics, evaluate_and_print_results
+from learning_rates import get_learning_rate_scheduler
+from train_utils import load_pretrained
 from utils import load_checkpoint, save_checkpoint
-from pretrain_glm import report_iteration_metrics
-from pretrain_glm import evaluate_and_print_results
-from pretrain_glm import initialize_distributed
-from pretrain_glm import set_random_seed
-from configure_data import make_data_loader
+from configure_data import make_data_loader, make_tokenizer
+from blocklm_utils import build_mask_matrix
 
 
 def process_batch(batch, args):
     """Process batch and produce inputs for the model."""
     keys = ["text", "label"]
-    if args.pretrained_bert:
-        keys += ["padding_mask", "types"]
-    else:
-        keys += ["mask", "position"]
-        if args.cloze_eval:
-            if args.fast_decode:
-                keys += ["dec_text", "dec_position", "dec_mask", "dec_target", "dec_logit_mask"]
-            else:
-                keys += ["target", "logit_mask"]
-                if args.segment_length > 0:
-                    keys += ["segment_id"]
-                if args.continuous_prompt:
-                    keys += ["prompt_pos"]
+    keys += ["mask", "position"]
+    if args.cloze_eval:
+        if args.fast_decode:
+            keys += ["dec_text", "dec_position", "dec_mask", "dec_target", "dec_logit_mask"]
+        else:
+            keys += ["target", "logit_mask"]
+            if args.segment_length > 0:
+                keys += ["segment_id"]
+            if args.continuous_prompt:
+                keys += ["prompt_pos"]
     if args.variable_num_choices:
         keys.append("loss_mask")
     # Broadcast data.
     datatype = torch.int64
     data_b = mpu.broadcast_data(keys, batch, datatype)
 
-    if "padding_mask" in data_b:
-        attention_mask = data_b['padding_mask'].float().cuda().contiguous()
-        if args.fp16:
-            attention_mask = attention_mask.half()
-        data_b["padding_mask"] = attention_mask
+    if data_b['mask'].ndim == 2:
+        prefix_sizes = data_b['mask'].size()
+        attention_mask = data_b['mask'].reshape(-1)
+        attention_mask = build_mask_matrix(attention_mask, attention_mask.size(0), data_b['text'].size(-1))
+        data_b['mask'] = attention_mask.reshape(*prefix_sizes, *attention_mask.size()[1:])
+    else:
+        data_b['mask'] = build_mask_matrix(data_b['mask'], data_b['text'].size(0), data_b['text'].size(1))
+    if args.fp16:
+        data_b['mask'] = data_b['mask'].half()
     return data_b
 
 
@@ -77,7 +78,7 @@ def mix_forward_step(batch_and_dataloader, model, args, times, mems):
         return finetune_forward_step(batch_and_dataloader[0], model, args, times, mems)
 
 
-def finetune_forward_step(batch, model, args, timers, mems):
+def finetune_forward_step(batch, model, args, timers):
     """Simple forward step with cross-entropy loss."""
     # Get the batch.
     timers('batch generator').start()
@@ -156,7 +157,8 @@ def finetune_forward_step(batch, model, args, timers, mems):
 
     # Reduce loss for logging.
 
-    return loss, mems, 'bert'
+    return loss, {'bert': torch.cuda.FloatTensor([0]), 'sentence': torch.cuda.FloatTensor([0]),
+                  'gpt': torch.cuda.FloatTensor([0]), 'multi-task': torch.cuda.FloatTensor([1])}
 
 
 def _build_infinite_size_dataloader(dataloader):
@@ -229,7 +231,7 @@ def _train(model, optimizer, lr_scheduler, forward_step,
             else:
                 data = batch
             lm_loss, skipped_iter, _ = train_step(data, model, optimizer, lr_scheduler, args,
-                                                  timers, forward_step_func=forward_step, single_step=True)
+                                                  timers, hooks={'forward_step': forward_step}, single_step=True)
             args.iteration += 1
             total_lm_loss += lm_loss.data.detach().float()
 
@@ -282,8 +284,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     """Main finetune function used across all tasks."""
     global tokenizer
     timers = Timers()
-    tokenizer = prepare_tokenizer(args)
-    pretrain_glm.tokenizer = tokenizer
+    tokenizer = make_tokenizer(args)
+
     if args.save:
         args.save = os.path.join(args.save, args.experiment_name)
     # Train and validation data loaders.
@@ -326,7 +328,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                 train_block_dataloader = FakeDataloader(args.train_iters)
                 valid_block_dataloader = FakeDataloader(None)
             train_block_dataloader, valid_block_dataloader = iter(train_block_dataloader), iter(valid_block_dataloader)
-
+    if args.train_data is None:
+        args.train_data = args.data_dir
     timers('train/valid/test dataset/dataloder').stop()
     # Build calback function.
     timers('callback function').start()
@@ -339,7 +342,8 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
 
     # Build model, optimizer and learning rate scheduler.
     timers('model and optimizer').start()
-    model, optimizer, lr_scheduler = setup_model_and_optimizer(args, **model_kwargs)
+    model, optimizer = setup_model_and_optimizer(args, **model_kwargs)
+    lr_scheduler = get_learning_rate_scheduler(optimizer, args) if optimizer is not None else None
     timers('model and optimizer').stop()
 
     # If pretrained checkpoint is provided and we have not trained for
@@ -392,6 +396,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                 optimizer.refresh_fp32_params()
             else:
                 optimizer._model_params_to_master_params()
+    args.old_checkpoint = False
     torch.distributed.barrier()
     timers('pretrained checkpoint').stop()
     args.iteration = 0
@@ -408,6 +413,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
     timers.log(['train/valid/test dataset/dataloder', 'callback function',
                 'model and optimizer', 'pretrained checkpoint'])
     print_rank_0('training ...')
+    args.tokenizer = tokenizer
 
     # Finetune the model.
     score_dict = None

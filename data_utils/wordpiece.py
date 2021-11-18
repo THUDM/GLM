@@ -23,6 +23,8 @@ import unicodedata
 from io import open
 
 from .file_utils import cached_path
+from SwissArmyTransformer.tokenization.glm.tokenization import Tokenizer, CommandToken
+from utils import print_rank_0
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +96,8 @@ class BertTokenizer(object):
             raise ValueError(
                 "Can't find a vocabulary file at path '{}'. To load the vocabulary from a Google pretrained "
                 "model use `tokenizer = BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)`".format(vocab_file))
-        self.vocab = load_vocab(vocab_file)
-        self.ids_to_tokens = collections.OrderedDict(
+        self._vocab = load_vocab(vocab_file)
+        self._tokens = collections.OrderedDict(
             [(ids, tok) for tok, ids in self.vocab.items()])
         self.do_basic_tokenize = do_basic_tokenize
         if do_basic_tokenize:
@@ -103,6 +105,17 @@ class BertTokenizer(object):
                                                 never_split=never_split)
         self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab)
         self.max_len = max_len if max_len is not None else int(1e12)
+
+    def __len__(self):
+        return len(self.vocab)
+
+    @property
+    def tokens(self):
+        return self._tokens
+
+    @property
+    def vocab(self):
+        return self._vocab
 
     def tokenize(self, text):
         if self.do_basic_tokenize:
@@ -131,7 +144,7 @@ class BertTokenizer(object):
         """Converts a sequence of ids in wordpiece tokens using the vocab."""
         tokens = []
         for i in ids:
-            tokens.append(self.ids_to_tokens[i])
+            tokens.append(self._tokens[i])
         return tokens
 
     @classmethod
@@ -388,3 +401,103 @@ def _is_punctuation(char):
     if cat.startswith("P"):
         return True
     return False
+
+
+class BertWordPieceTokenizer(Tokenizer):
+    """
+    Loads a pretrained WordPiece tokenizer from `cache_dir` for tokenization
+    in BERT training. Default to bert-large-uncased tokenizer.
+    """
+
+    def __init__(self, tokenizer_model_type=None, cache_dir=None, add_block_symbols=False, add_sentinel_token=0,
+                 add_task_mask=False, add_decoder_mask=False, **kwargs):
+        # default to bert-large-uncased tokenizer
+        if tokenizer_model_type not in PRETRAINED_VOCAB_ARCHIVE_MAP:
+            tokenizer_model_type = 'bert-large-uncased'
+            print_rank_0('loading BertWordPieceTokenizer (', tokenizer_model_type, ') from cache_dir ', cache_dir)
+        do_lower_case = not ('-cased' in tokenizer_model_type or 'chinese' in tokenizer_model_type)
+        text_tokenizer = BertTokenizer.from_pretrained(tokenizer_model_type, do_lower_case=do_lower_case,
+                                                       cache_dir=cache_dir)
+        print_rank_0('loaded', tokenizer_model_type)
+        # disable max len warnings by increasing max len
+        text_tokenizer.max_len = int(1e12)
+        # set command tokens from wordpiece tokenizer values
+        num_tokens = len(text_tokenizer.vocab)
+
+        command_tokens = [
+            CommandToken('pad', '[PAD]', text_tokenizer.vocab['[PAD]']),
+            CommandToken('ENC', '[CLS]', text_tokenizer.vocab['[CLS]']),
+            CommandToken('MASK', '[MASK]', text_tokenizer.vocab['[MASK]']),
+            CommandToken('unk', '[UNK]', text_tokenizer.vocab['[UNK]']),
+            CommandToken('sep', '[SEP]', text_tokenizer.vocab['[SEP]']),
+            CommandToken('eos', '[PAD]', text_tokenizer.vocab['[PAD]']),
+        ]
+        if add_block_symbols:
+            command_tokens.extend([
+                CommandToken('sop', '<|startofpiece|>', num_tokens),
+                CommandToken('eop', '<|endofpiece|>', num_tokens + 1)
+            ])
+            num_tokens += 2
+            if add_task_mask:
+                command_tokens.extend([
+                    CommandToken('gMASK', '[gMASK]', num_tokens),
+                    CommandToken('sMASK', '[sMASK]', num_tokens + 1)
+                ])
+                num_tokens += 2
+            if add_decoder_mask:
+                command_tokens.extend([
+                    CommandToken('dBLOCK', '[dBLOCK]', num_tokens)
+                ])
+                num_tokens += 1
+        if add_sentinel_token > 0:
+            for i in range(1, add_sentinel_token):
+                command_tokens.extend([CommandToken(f'MASK{i}', f'[MASK{i}]', num_tokens),
+                                       CommandToken(f'sop{i}', f'<|startofpiece{i}|>', num_tokens + 1)])
+                num_tokens += 2
+        super().__init__(text_tokenizer, command_tokens=command_tokens)
+
+    def _encode(self, text):
+        tokens = self.text_tokenizer.tokenize(text)
+        ids = self.text_tokenizer.convert_tokens_to_ids(tokens)
+        return ids
+
+    @staticmethod
+    def clean_up_tokenization(out_string: str) -> str:
+        """
+        Clean up a list of simple English tokenization artifacts like spaces before punctuations and abbreviated forms.
+
+        Args:
+            out_string (:obj:`str`): The text to clean up.
+
+        Returns:
+            :obj:`str`: The cleaned-up string.
+        """
+        out_string = (
+            out_string.replace(" .", ".")
+                .replace(" ?", "?")
+                .replace(" !", "!")
+                .replace(" ,", ",")
+                .replace(" ' ", "'")
+                .replace(" n't", "n't")
+                .replace(" 'm", "'m")
+                .replace(" 's", "'s")
+                .replace(" 've", "'ve")
+                .replace(" 're", "'re")
+        )
+        return out_string
+
+    def _decode(self, ids):
+        Tokens = []
+        for Id in ids:
+            if Id in self.command_id_map:
+                Tokens.append(self.command_id_map[Id].token)
+            elif Id in self.text_tokenizer.tokens:
+                Tokens.append(self.text_tokenizer.tokens[Id])
+        new_tokens = []
+        for token in Tokens:
+            if token.startswith('##') and len(new_tokens) > 0:
+                new_tokens[-1] += token[2:]
+            else:
+                new_tokens.append(token)
+        output = ' '.join(new_tokens)
+        return output

@@ -26,7 +26,7 @@ import torch
 import torch.utils.data
 from torch.utils.data.dataloader import default_collate
 
-import mpu
+from SwissArmyTransformer import mpu
 
 
 def clean_text(text):

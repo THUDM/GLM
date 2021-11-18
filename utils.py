@@ -23,8 +23,7 @@ import torch
 import json
 import subprocess
 
-from fp16 import FP16_Optimizer
-import mpu
+from SwissArmyTransformer import mpu
 from tensorboardX import SummaryWriter
 
 SUMMARY_WRITER_DIR_NAME = 'runs'
@@ -41,12 +40,12 @@ def get_sample_writer(log_dir, iteration=0):
         log_dir=log_dir, purge_step=iteration)
 
 
-def print_rank_0(message):
+def print_rank_0(*message):
     if torch.distributed.is_initialized():
         if torch.distributed.get_rank() == 0:
-            print(message, flush=True)
+            print(*message, flush=True)
     else:
-        print(message, flush=True)
+        print(*message, flush=True)
 
 
 def get_hostname():
@@ -94,8 +93,6 @@ def print_params_min_max_norm(optimizer, iteration):
     rank = torch.distributed.get_rank()
     string = 'iteration, rank, index, model-parallel,min, max, norm\n'
     optimizer_ = optimizer
-    if isinstance(optimizer, FP16_Optimizer):
-        optimizer_ = optimizer.optimizer
     for param_group in optimizer_.param_groups:
         for param in param_group['params']:
             index += 1
@@ -257,7 +254,8 @@ def save_checkpoint(iteration, model, optimizer, lr_scheduler, args, tag=None, b
                 sd['np_rng_state'] = np.random.get_state()
                 sd['torch_rng_state'] = torch.get_rng_state()
                 sd['cuda_rng_state'] = torch.cuda.get_rng_state()
-                sd['rng_tracker_states'] = mpu.get_cuda_rng_tracker().get_states()
+                if args.checkpoint_activations:
+                    sd['rng_tracker_states'] = mpu.get_cuda_rng_tracker().get_states()
 
             ensure_directory_exists(checkpoint_name)
             torch.save(sd, checkpoint_name)
@@ -330,7 +328,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
     if not success:
         return 0
 
-    if args.deepspeed and not no_deepspeed:
+    if args.deepspeed and not no_deepspeed and not args.old_checkpoint:
 
         checkpoint_name, sd = model.load_checkpoint(load_dir, tag,
                                                     load_optimizer_states=not args.no_load_optim and not no_load_optim,
@@ -358,6 +356,15 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
         # Model.
         if args.deepspeed:
             model = model.module
+
+        # Process the checkpoint for GLM
+        if args.block_lm and args.old_checkpoint:
+            sd['module']['transformer.word_embeddings.weight'] = sd['module']['word_embeddings.weight']
+            del sd['module']['word_embeddings.weight']
+            sd['module']['mixins.block_position_embedding.block_position_embeddings.weight'] = sd['module'][
+                'transformer.block_position_embeddings.weight']
+            del sd['module']['transformer.block_position_embeddings.weight']
+
         missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
         if missing_keys or unexpected_keys:
             print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
