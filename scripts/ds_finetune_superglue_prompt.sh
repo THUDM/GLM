@@ -7,24 +7,24 @@ source $1    # Model
 source $2    # Task
 
 NUM_WORKERS=1
-NUM_GPUS_PER_WORKER=8
+NUM_GPUS_PER_WORKER=4
 MP_SIZE=1
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 
 OPTIONS_NCCL="NCCL_DEBUG=info NCCL_IB_DISABLE=0 NCCL_NET_GDR_LEVEL=2"
-DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --master_port $MASTER_PORT --num_nodes ${NUM_WORKERS} --num_gpus ${NUM_GPUS_PER_WORKER}"
+DISTRIBUTED_ARGS="${OPTIONS_NCCL} deepspeed --master_port $MASTER_PORT -i localhost:0,1,2,3"
 
 EXPERIMENT_NAME=${EXPERIMENT_NAME}_${DATESTR}
 mkdir logs
 run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --deepspeed \
-       --deepspeed_config config_tasks/config_blocklm_10B.json \
+       --deepspeed_config config_tasks/config_blocklm_large_prompt.json \
        --finetune \
        --cloze-eval \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
+       --save ${SAVE_PATH} \
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
        --eval-batch-size 16 \
@@ -35,11 +35,13 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        $MODEL_ARGS \
        $TRAIN_ARGS \
        $COMMON_ARGS \
+       --pattern-id 0 \
        --fp16 \
+       --prefix-prompt 100 \
+       --freeze-transformer \
+       --warmup 0.01 \
        --model-parallel-size ${MP_SIZE} \
-       --continuous-prompt \
-       --num-prompt-tokens 3 \
-       --epochs ${XXLARGE_EPOCH} \
+       --epochs ${PROMPT_EPOCH} \
        --overwrite \
        2>&1 | tee logs/log-${EXPERIMENT_NAME}.txt"
 
