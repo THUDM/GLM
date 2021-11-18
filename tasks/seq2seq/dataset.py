@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import string
 import time
 import unidecode
 import torch
@@ -12,45 +11,43 @@ from tqdm import tqdm
 from utils import print_rank_0
 from data_utils.corpora import punctuation_standardization
 from data_utils.lazy_loader import exists_lazy, LazyWriter, LazyLoader
+from .pvp import PVPS
 
 
-def gigaword_detokenize(string, is_target=False):
-    _tok_dict = {"(": "-lrb-", ")": "-rrb-",
-                 "[": "-lsb-", "]": "-rsb-",
-                 "{": "-lcb-", "}": "-rcb-",
-                 '&': '&amp;', '<': '&lt;', '>': '&gt;'}
-    string = string.replace('UNK', '[UNK]')
-    string = string.replace('<unk>', '[UNK]')
-    for key, value in _tok_dict.items():
-        string = string.replace(value, key)
-    # string = string.replace("''", "\"")
-    # string = string.replace("``", "\"")
-    # string = string.replace("`", "'")
-    # string = string.replace(" n't", "n't")
-    # string = string.replace(" 's", "'s")
-    # string = string.replace(" 'd", "'d")
-    # string = string.replace(" 'll", "'ll")
-    return string
+class DataProcessor:
+    def __init__(self, data_dir, tokenizer, lazy_seq2seq_loader=False, **kwargs):
+        self.data_dir = data_dir
+        self.tokenizer = tokenizer
+        self.lazy_seq2seq_loader = lazy_seq2seq_loader
 
+    def _yield_examples(self, split):
+        raise NotImplementedError
 
-def cnndm_detokenize(string, is_target=False):
-    _tok_dict = {"(": "-LRB-", ")": "-RRB-",
-                 "[": "-LSB-", "]": "-RSB-",
-                 "{": "-LCB-", "}": "-RCB-"}
-    if not is_target:
-        string = string.replace("<S_SEP>", "")
-    else:
-        string = string.replace("<S_SEP>", "[SEP]")
-    for key, value in _tok_dict.items():
-        string = string.replace(value, key)
-    string = string.replace("''", "\"")
-    string = string.replace("``", "\"")
-    string = string.replace("`", "'")
-    string = string.replace(" n't", "n't")
-    string = string.replace(" 's", "'s")
-    string = string.replace(" 'd", "'d")
-    string = string.replace(" 'll", "'ll")
-    return string
+    def create_examples(self, split):
+        print_rank_0(f"Creating {split} dataset from {self.data_dir}")
+        if not self.lazy_seq2seq_loader:
+            example_list = []
+            for idx, example in enumerate(self._yield_examples(split)):
+                if (idx + 1) % 20000 == 0:
+                    print_rank_0(f"Complete {idx + 1} examples")
+                example_list.append(example)
+                if idx > 100:
+                    break
+        else:
+            if (not exists_lazy(self.data_dir,
+                                data_type=split) and torch.distributed.get_rank() == 0):
+                example_writer = LazyWriter(self.data_dir, data_type=split, is_array=False)
+                for idx, example in enumerate(self._yield_examples(split)):
+                    if (idx + 1) % 20000 == 0:
+                        print_rank_0(f"Complete {idx + 1} examples")
+                    example_writer.write(example)
+            else:
+                while not os.path.exists(LazyWriter.get_len_path(self.data_dir, data_type=split)):
+                    time.sleep(1)
+            example_list = LazyLoader(self.data_dir, data_type=split, map_fn=InputExample.from_json_string,
+                                      mem_map=True, is_array=False)
+        print_rank_0(f"Creating {len(example_list)} examples for {split}")
+        return example_list
 
 
 def blanklm_detokenize(string, is_target=False):
@@ -59,14 +56,11 @@ def blanklm_detokenize(string, is_target=False):
     return string
 
 
-class SummmaryProcessor:
-    def __init__(self, task, data_dir, tokenizer, lazy_seq2seq_loader=False):
-        self.task = task
-        self.data_dir = data_dir
-        self.tokenizer = tokenizer
-        self.lazy_seq2seq_loader = lazy_seq2seq_loader
+class SummaryProcessor(DataProcessor):
+    def detokenize(self, string, is_target=False):
+        return string
 
-    def create_examples(self, split):
+    def _yield_examples(self, split):
         if split == "train":
             filename = "train"
         elif split == "dev":
@@ -75,63 +69,73 @@ class SummmaryProcessor:
             filename = "test"
         else:
             raise NotImplementedError(split)
-        print_rank_0(f"Creating {self.task}-{split} dataset from {self.data_dir}")
-        if not self.lazy_seq2seq_loader or (not exists_lazy(self.data_dir,
-                                                            data_type=split) and torch.distributed.get_rank() == 0):
-            if self.task == "gigaword":
-                detokenizer = gigaword_detokenize
-            elif self.task == "cnn_dm":
-                detokenizer = cnndm_detokenize
-            else:
-                detokenizer = None
-            source_texts, target_texts = [], []
-            with open(os.path.join(self.data_dir, f"{filename}.source"), encoding='utf-8') as file:
-                for line in file:
-                    line = line.strip()
-                    line = punctuation_standardization(line)
-                    line = detokenizer(line) if detokenizer else line
-                    source_texts.append(line)
-            with open(os.path.join(self.data_dir, f"{filename}.target"), encoding='utf-8') as file:
-                for line in file:
-                    line = line.strip()
-                    line = punctuation_standardization(line)
-                    line = detokenizer(line, is_target=True) if detokenizer else line
-                    target_texts.append(line)
-            assert len(source_texts) == len(target_texts)
-            if self.lazy_seq2seq_loader:
-                example_writer = LazyWriter(self.data_dir, data_type=split, is_array=False)
-            else:
-                example_list = []
-            for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
-                if (idx + 1) % 20000 == 0:
-                    print_rank_0(f"Complete {idx + 1} examples")
-                guid = "%s-%s" % (split, idx)
-                meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
-                example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
-                if idx < 10:
-                    print_rank_0(
-                        (source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
-                if self.lazy_seq2seq_loader:
-                    example_writer.write(example.to_json_string())
-                else:
-                    example_list.append(example)
-            if self.lazy_seq2seq_loader:
-                example_writer.close()
+        source_texts, target_texts = [], []
+        with open(os.path.join(self.data_dir, f"{filename}.source"), encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                line = punctuation_standardization(line)
+                line = self.detokenize(line)
+                source_texts.append(line)
+        with open(os.path.join(self.data_dir, f"{filename}.target"), encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                line = punctuation_standardization(line)
+                line = self.detokenize(line, is_target=True)
+                target_texts.append(line)
+        assert len(source_texts) == len(target_texts)
+        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+            guid = "%s-%s" % (split, idx)
+            meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
+            example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+            if idx < 10:
+                print_rank_0(
+                    (source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
+            yield example
+
+
+class CNNDMProcessor(SummaryProcessor):
+    def detokenize(self, string, is_target=False):
+        _tok_dict = {"(": "-LRB-", ")": "-RRB-",
+                     "[": "-LSB-", "]": "-RSB-",
+                     "{": "-LCB-", "}": "-RCB-"}
+        if not is_target:
+            string = string.replace("<S_SEP>", "")
         else:
-            while not os.path.exists(LazyWriter.get_len_path(self.data_dir, data_type=split)):
-                time.sleep(1)
-        if self.lazy_seq2seq_loader:
-            example_list = LazyLoader(self.data_dir, data_type=split, map_fn=InputExample.from_json_string,
-                                      mem_map=True, is_array=False)
-        return example_list
+            string = string.replace("<S_SEP>", "[SEP]")
+        for key, value in _tok_dict.items():
+            string = string.replace(value, key)
+        string = string.replace("''", "\"")
+        string = string.replace("``", "\"")
+        string = string.replace("`", "'")
+        string = string.replace(" n't", "n't")
+        string = string.replace(" 's", "'s")
+        string = string.replace(" 'd", "'d")
+        string = string.replace(" 'll", "'ll")
+        return string
 
 
-class CMRCProcessor:
-    def __init__(self, data_dir, tokenizer):
-        self.data_dir = data_dir
-        self.tokenizer = tokenizer
+class GGWProcessor(SummaryProcessor):
+    def detokenize(self, string, is_target=False):
+        _tok_dict = {"(": "-lrb-", ")": "-rrb-",
+                     "[": "-lsb-", "]": "-rsb-",
+                     "{": "-lcb-", "}": "-rcb-",
+                     '&': '&amp;', '<': '&lt;', '>': '&gt;'}
+        string = string.replace('UNK', '[UNK]')
+        string = string.replace('<unk>', '[UNK]')
+        for key, value in _tok_dict.items():
+            string = string.replace(value, key)
+        # string = string.replace("''", "\"")
+        # string = string.replace("``", "\"")
+        # string = string.replace("`", "'")
+        # string = string.replace(" n't", "n't")
+        # string = string.replace(" 's", "'s")
+        # string = string.replace(" 'd", "'d")
+        # string = string.replace(" 'll", "'ll")
+        return string
 
-    def create_examples(self, split):
+
+class CMRCProcessor(DataProcessor):
+    def _yield_examples(self, split):
         if split == "train":
             filename = "train.json"
         elif split == "dev":
@@ -140,8 +144,6 @@ class CMRCProcessor:
             filename = "test.json"
         else:
             raise NotImplementedError(split)
-        print_rank_0(f"Creating CMRC-{split} dataset from {self.data_dir}")
-        example_list = []
         idx = 0
         with open(os.path.join(self.data_dir, filename), encoding='utf-8') as file:
             dataset = json.load(file)
@@ -161,18 +163,12 @@ class CMRCProcessor:
                             if idx < 10:
                                 print_rank_0(
                                     (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
-                            example_list.append(example)
+                            yield example
                             idx += 1
-        print_rank_0(f"Creating {len(example_list)} examples for {split}")
-        return example_list
 
 
-class SQuADGenerationProcessor:
-    def __init__(self, data_dir, tokenizer):
-        self.data_dir = data_dir
-        self.tokenizer = tokenizer
-
-    def create_examples(self, split):
+class SQuADQGProcessor(DataProcessor):
+    def _yield_examples(self, split):
         if split == "train":
             filename = "train.json"
         elif split == "dev":
@@ -181,8 +177,6 @@ class SQuADGenerationProcessor:
             filename = "test.json"
         else:
             raise NotImplementedError(split)
-        print_rank_0(f"Creating SQuAD-{split} dataset from {self.data_dir}")
-        example_list = []
         idx = 0
         with open(os.path.join(self.data_dir, filename), encoding='utf-8') as file:
             dataset = json.load(file)
@@ -204,54 +198,8 @@ class SQuADGenerationProcessor:
                             if idx < 10:
                                 print_rank_0(
                                     (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
-                            example_list.append(example)
+                            yield example
                             idx += 1
-        print_rank_0(f"Creating {len(example_list)} examples for {split}")
-        return example_list
-
-
-def generate_token_to_char_map(tokens, raw_text, tokenizer):
-    # Use heuristics to construct the token to char mapping for BertTokenizer
-
-    def _is_whitespace(c):
-        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
-            return True
-        return False
-
-    def _normalize(s):
-        # if s in tokenizer.command_token_map:
-        #     return s
-        return unidecode.unidecode(s.lower())
-
-    def _compare(s1, s2):
-        return _normalize(s1) == _normalize(s2)
-
-    tokens = [tokenizer.IdToToken(token) for token in tokens]
-    text = raw_text
-    token_to_char = []
-    char_id = 0
-    mismatch = 0
-    for i, token in enumerate(tokens):
-        while char_id + 1 < len(text) and _is_whitespace(text[char_id]):
-            char_id += 1
-        assert char_id < len(text)
-        if token.startswith("##"):
-            token = token[2:].strip()
-        if _compare(token, text[char_id:char_id + len(token)]):
-            token_to_char.append((char_id, char_id + len(token)))
-            char_id += len(token)
-        else:
-            if token != '[UNK]':
-                mismatch += 1
-            token_len = 1 if token == '[UNK]' else len(token)
-            token_to_char.append((char_id, char_id + token_len))
-            char_id += token_len
-            if i + 1 < len(tokens):
-                pos = text[char_id:].find(tokens[i + 1])
-                if pos != -1 and pos < 20:
-                    char_id += pos
-
-    return token_to_char
 
 
 class SQuADProcessor:
@@ -340,12 +288,8 @@ class SQuADProcessor:
         return example_list
 
 
-class XSumProcessor:
-    def __init__(self, data_dir, tokenizer):
-        self.data_dir = data_dir
-        self.tokenizer = tokenizer
-
-    def create_examples(self, split):
+class XSumProcessor(DataProcessor):
+    def _yield_examples(self, split):
         if split == "train":
             key = "train"
         elif split == "dev":
@@ -354,11 +298,9 @@ class XSumProcessor:
             key = "test"
         else:
             raise NotImplementedError(split)
-        print_rank_0(f"Creating XSUM-{split} dataset from {self.data_dir}")
         with open(os.path.join(self.data_dir, "XSum-TRAINING-DEV-TEST-SPLIT-90-5-5.json")) as file:
             id_list = json.load(file)
         id_list = id_list[key]
-        source_texts, target_texts = [], []
         for i, idx in enumerate(id_list):
             with open(os.path.join(self.data_dir, f"{idx}.summary")) as file:
                 key, sentences = None, []
@@ -380,22 +322,23 @@ class XSumProcessor:
                         source_text = " ".join(sentences)
                     elif key == "FIRST-SENTENCE":
                         target_text = " ".join(sentences)
-                source_texts.append(source_text)
-                target_texts.append(target_text)
-                if (i + 1) % 1000 == 0:
-                    print_rank_0(f"Complete {i + 1} examples")
-        assert len(source_texts) == len(target_texts)
-        example_list = []
-        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
-            if (idx + 1) % 20000 == 0:
-                print_rank_0(f"Complete {idx + 1} examples")
-            guid = "%s-%s" % (split, idx)
-            meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
-            example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
-            if idx < 10:
-                print_rank_0((source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
-            example_list.append(example)
-        return example_list
+                guid = "%s-%s" % (split, i)
+                meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
+                example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+                if i < 10:
+                    print_rank_0(
+                        (source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
+                yield example
+
+
+PROCESSORS = {
+    "gigaword": GGWProcessor,
+    "cnn_dm": CNNDMProcessor,
+    "cnn_dm_original": SummaryProcessor,
+    "xsum": XSumProcessor,
+    "squad_generation": SQuADQGProcessor,
+    "cmrc": CMRCProcessor
+}
 
 
 class Seq2SeqDataset(torch.utils.data.Dataset):
@@ -406,17 +349,11 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
         self.split = split
         self.tokenizer = tokenizer
         self.dataset_name = split
-        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original"]:
-            self.processor = SummmaryProcessor(self.task, self.data_dir, tokenizer,
-                                               lazy_seq2seq_loader=args.lazy_seq2seq_loader)
-        elif self.task in ["xsum"]:
-            self.processor = XSumProcessor(self.data_dir, tokenizer)
-        elif self.task in ["squad_generation"]:
-            self.processor = SQuADGenerationProcessor(self.data_dir, tokenizer)
-        elif self.task in ["squad", "squad_v1"]:
+        if self.task in ["squad", "squad_v1"]:
             self.processor = SQuADProcessor(self.data_dir, tokenizer, self.max_src_length, args)
-        elif self.task in ['cmrc']:
-            self.processor = CMRCProcessor(self.data_dir, tokenizer)
+        elif self.task in PROCESSORS:
+            self.processor = PROCESSORS[self.task](self.data_dir, tokenizer,
+                                                   lazy_seq2seq_loader=args.lazy_seq2seq_loader)
         else:
             raise NotImplementedError(self.task)
         example_list = self.processor.create_examples(split)
@@ -430,56 +367,12 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         example = self.example_list[idx]
-        cls_id = self.tokenizer.get_command('ENC').Id
-        mask_token = 'sMASK' if self.args.task_mask else 'MASK'
-        mask_id = self.tokenizer.get_command(mask_token).Id
         pad_id = self.tokenizer.get_command('pad').Id
         sop_id = self.tokenizer.get_command('sop').Id
         eop_id = self.tokenizer.get_command('eop').Id
-        if self.task in ["gigaword", "cnn_dm", "cnn_dm_original", "xsum"]:
-            source_text, target_text = example.text_a, example.text_b
-            source_tokens = self.tokenizer.EncodeAsIds(" " + source_text).tokenization
-            prompt = [cls_id, mask_id] + self.tokenizer.EncodeAsIds(" Content:").tokenization
-            if len(source_tokens) > self.max_src_length - len(prompt):
-                source_tokens = source_tokens[:self.max_src_length - len(prompt)]
-            source_tokens = prompt + source_tokens
-        elif self.task == "squad_generation":
-            source_text = example.text_a
-            target_text, answer = example.meta["question"], example.meta["answer"]
-            source_tokens = self.tokenizer.EncodeAsIds(source_text.rstrip() + " Question:").tokenization
-            answer_tokens = self.tokenizer.EncodeAsIds(" Answer: " + answer).tokenization
-            if len(source_tokens) > self.max_src_length - len(answer_tokens) - 2:
-                max_src_length = self.max_src_length - len(answer_tokens) - 2
-                answer_pattern = self.tokenizer.EncodeAsIds(" " + answer).tokenization
-
-                def sub_finder(mylist, pattern):
-                    matches = []
-                    for i in range(len(mylist)):
-                        if mylist[i] == pattern[0] and mylist[i:i + len(pattern)] == pattern:
-                            matches.append(i)
-                    return matches
-
-                answer_indices = sub_finder(source_tokens, answer_pattern)
-                if len(answer_indices) == 0:
-                    print(f"Answer {answer} not exists in the source text")
-                    source_tokens = source_tokens[:max_src_length]
-                else:
-                    start_index = max(answer_indices[0] - max_src_length // 2, 0)
-                    source_tokens = source_tokens[start_index: start_index + max_src_length]
-            source_tokens = [cls_id] + source_tokens + [mask_id] + answer_tokens
-        elif self.task in ["cmrc"]:
+        if self.task in ["squad", "squad_v1"]:
+            cls_id = self.tokenizer.get_command('ENC').Id
             mask_id = self.tokenizer.get_command('MASK').Id
-            source_text = example.text_a
-            target_text = example.meta["answer"].strip()
-            question = example.meta["question"].strip()
-            source_tokens = self.tokenizer.EncodeAsIds(source_text.rstrip()).tokenization
-            question_tokens = self.tokenizer.EncodeAsIds("问题：" + question + "答案：").tokenization
-            max_src_length = self.max_src_length - len(question_tokens) - 2
-            if max_src_length <= 0:
-                print(question)
-                question_tokens = question_tokens[self.max_src_length // 4]
-            source_tokens = [cls_id] + question_tokens + [mask_id] + source_tokens[:max_src_length]
-        elif self.task in ["squad", "squad_v1"]:
             source_text = example.text_a
             target_text = example.meta["answer"].strip()
             question = example.meta["question"].strip()
@@ -491,6 +384,11 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
                 print(question)
             assert max_src_length > 0
             source_tokens = [cls_id] + question_tokens + [mask_id, period_id] + source_tokens[:max_src_length]
+        elif self.task in PVPS:
+            pvp = PVPS[self.task](self.tokenizer, max_src_length=self.max_src_length,
+                                  max_tgt_length=self.max_tgt_length, task_mask=self.args.task_mask)
+            mask_id = pvp.mask_id
+            source_tokens, target_text = pvp.encode(example)
         else:
             raise NotImplementedError
         if len(source_tokens) < self.max_src_length:
@@ -504,7 +402,6 @@ class Seq2SeqDataset(torch.utils.data.Dataset):
             target_tokens = target_tokens + [eop_id]
             if len(target_tokens) > self.max_tgt_length:
                 target_tokens = target_tokens[:self.max_tgt_length]
-                target_truncated = True
             loss_mask = [1] * len(target_tokens)
             if len(target_tokens) < self.max_tgt_length:
                 loss_mask += [0] * (self.max_tgt_length - len(target_tokens))
