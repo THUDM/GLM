@@ -31,8 +31,6 @@ class DataProcessor:
                 if (idx + 1) % 20000 == 0:
                     print_rank_0(f"Complete {idx + 1} examples")
                 example_list.append(example)
-                if idx > 100:
-                    break
         else:
             if (not exists_lazy(self.data_dir,
                                 data_type=split) and torch.distributed.get_rank() == 0):
@@ -87,7 +85,7 @@ class SummaryProcessor(DataProcessor):
             guid = "%s-%s" % (split, idx)
             meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
             example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
-            if idx < 10:
+            if idx < 3:
                 print_rank_0(
                     (source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
             yield example
@@ -195,7 +193,7 @@ class SQuADQGProcessor(DataProcessor):
                                 "question": question,
                                 "ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(question).tokenization)}
                             example = InputExample(guid=guid, text_a=context, meta=meta)
-                            if idx < 10:
+                            if idx < 3:
                                 print_rank_0(
                                     (context.encode('utf-8'), answer.encode('utf-8'), meta["ref"].encode('utf-8')))
                             yield example
@@ -325,7 +323,7 @@ class XSumProcessor(DataProcessor):
                 guid = "%s-%s" % (split, i)
                 meta = {"ref": self.tokenizer.DecodeIds(self.tokenizer.EncodeAsIds(target_text).tokenization)}
                 example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
-                if i < 10:
+                if i < 3:
                     print_rank_0(
                         (source_text.encode('utf-8'), target_text.encode('utf-8'), meta["ref"].encode('utf-8')))
                 yield example
