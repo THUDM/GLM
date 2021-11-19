@@ -67,22 +67,44 @@ class PrefixEncoder(torch.nn.Module):
     Output shape: (batch-size, prefix-length, layers*hidden)
     """
 
-    def __init__(self, prefix_length, num_layers, hidden_size):
+    def __init__(self, prefix_length, num_layers, hidden_size, prompt_func='none'):
         super().__init__()
         self.prefix_length = prefix_length
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.embedding = torch.nn.Embedding(prefix_length, num_layers * hidden_size)
+        self.prompt_func = prompt_func
+        if prompt_func == 'lstm':
+            self.lstm_head = torch.nn.LSTM(input_size=self.hidden_size,
+                                           hidden_size=self.hidden_size,
+                                           num_layers=2,
+                                           bidirectional=True,
+                                           batch_first=False)
+            self.mlp_head = torch.nn.Sequential(torch.nn.Linear(2 * self.hidden_size, self.hidden_size),
+                                                torch.nn.ReLU(),
+                                                torch.nn.Linear(self.hidden_size, self.hidden_size))
+        elif prompt_func == 'mlp':
+            self.mlp_head = torch.nn.Sequential(torch.nn.Linear(self.hidden_size, self.hidden_size),
+                                                torch.nn.ReLU(),
+                                                torch.nn.Linear(self.hidden_size, self.hidden_size))
+        elif prompt_func != 'none':
+            raise NotImplementedError(prompt_func)
 
-    def forward(self, batch_size):
+    def forward(self, batch_size, layer_id):
         prefix_hidden_states = self.embedding.weight
+        prefix_hidden_states = prefix_hidden_states.view(self.prefix_length,
+                                                         self.num_layers,
+                                                         self.hidden_size)
+        prefix_hidden_states = prefix_hidden_states[:, layer_id: layer_id + 1]
+        if self.prompt_func == 'lstm':
+            prefix_hidden_states = self.lstm_head(prefix_hidden_states)[0]
+            prefix_hidden_states = self.mlp_head(prefix_hidden_states)
+        elif self.prompt_func == 'mlp':
+            prefix_hidden_states = self.mlp_head(prefix_hidden_states)
+        else:
+            pass
+        prefix_hidden_states = prefix_hidden_states.squeeze(1)
         prefix_hidden_states = prefix_hidden_states.unsqueeze(0).expand(batch_size, -1, -1)
-        prefix_hidden_states = prefix_hidden_states.view(
-            batch_size,
-            self.prefix_length,
-            self.num_layers,
-            self.hidden_size
-        )
         return prefix_hidden_states
 
 
@@ -95,7 +117,7 @@ class GLMFPrefixModel(GLMCustomModel):
         self.hidden_size = args.hidden_size
         self.freeze_transformer = args.freeze_transformer
         self.prefix_encoder = PrefixEncoder(prefix_length=args.prefix_prompt, num_layers=args.num_layers,
-                                            hidden_size=args.hidden_size)
+                                            hidden_size=args.hidden_size, prompt_func=args.prompt_func)
 
     def disable_untrainable_params(self):
         if self.freeze_transformer:
@@ -103,10 +125,9 @@ class GLMFPrefixModel(GLMCustomModel):
             self.transformer.requires_grad_(False)
             self.mixins['block_position_embedding'].requires_grad_(False)
 
-    def attention_forward(self, hidden_states, mask, layer_id=None, log_attention_weights=None, prefixs=None,
-                          **kwargs):
+    def attention_forward(self, hidden_states, mask, layer_id=None, log_attention_weights=None, **kwargs):
         attn_module = self.transformer.layers[layer_id].attention
-        prefix = prefixs[:, :, layer_id] if prefixs is not None else None
+        prefix = self.prefix_encoder(hidden_states.size(0), layer_id)
         query_length = hidden_states.size(1)
         if prefix is None:  # the first time, mem is None
             mixed_raw_layer = attn_module.query_key_value(hidden_states)
@@ -139,8 +160,7 @@ class GLMFPrefixModel(GLMCustomModel):
 
     def forward(self, input_ids, position_ids, attention_mask, *, branch_input=None, **kw_args):
         batch_size, seq_length = input_ids.shape[0], input_ids.shape[1]
-        prompt_hidden_states = self.prefix_encoder(batch_size=batch_size)
         attention_mask = torch.cat(
             (attention_mask.new_ones(batch_size, 1, seq_length, self.prefix_length), attention_mask), dim=-1)
-        output, *mems = super().forward(input_ids, position_ids, attention_mask, prefixs=prompt_hidden_states)
+        output, *mems = super().forward(input_ids, position_ids, attention_mask)
         return (output, *mems)
