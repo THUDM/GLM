@@ -16,7 +16,7 @@
 """Race."""
 import torch
 from SwissArmyTransformer import mpu
-from model import GLMCustomModel
+from model import GLMCustomModel, GLMFPrefixModel
 import json
 import functools
 from tasks.eval_utils import accuracy_func_provider
@@ -142,7 +142,11 @@ def main(args):
         args.additional_sequence_length = max_length - args.max_sequence_length
     if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum',
                              'squad', 'squad_v1', 'extraction', 'cmrc']:
-        finetune(args, train_valid_datasets_provider, {"model_cls": GLMCustomModel},
+        if args.prefix_prompt > 0:
+            model_cls = GLMFPrefixModel
+        else:
+            model_cls = GLMCustomModel
+        finetune(args, train_valid_datasets_provider, {"model_cls": model_cls},
                  end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

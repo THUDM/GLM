@@ -23,6 +23,7 @@ from SwissArmyTransformer import mpu
 from SwissArmyTransformer.model import GLMModel
 from SwissArmyTransformer.model.mixins import BaseMixin
 from SwissArmyTransformer.mpu.transformer import standard_attention, split_tensor_along_last_dim
+from SwissArmyTransformer.model.cached_autoregressive_model import CachedAutoregressiveMixin
 from utils import print_rank_0
 
 
@@ -110,6 +111,7 @@ class PrefixEncoder(torch.nn.Module):
 
 class GLMFPrefixModel(GLMCustomModel):
     def __init__(self, args, transformer=None, parallel_output=True):
+        self.autoregressive_hooks = set()
         super(GLMFPrefixModel, self).__init__(args, transformer=transformer, parallel_output=parallel_output)
         print_rank_0(f"Create prefix prompt of length {args.prefix_prompt}")
         self.prefix_length = args.prefix_prompt
@@ -125,22 +127,36 @@ class GLMFPrefixModel(GLMCustomModel):
             self.transformer.requires_grad_(False)
             self.mixins['block_position_embedding'].requires_grad_(False)
 
-    def attention_forward(self, hidden_states, mask, layer_id=None, log_attention_weights=None, **kwargs):
+    def add_mixin(self, name, new_mixin, reinit=False):
+        if hasattr(new_mixin, "attention_forward"):
+            if isinstance(new_mixin, CachedAutoregressiveMixin):
+                self.autoregressive_hooks.add(name)
+            else:
+                raise ValueError(f'Hook {name} conflicts at attention forward with prefix model.')
+        else:
+            super().add_mixin(name, new_mixin, reinit=reinit)
+
+    def del_mixin(self, name):
+        if name in self.autoregressive_hooks:
+            self.autoregressive_hooks.remove(name)
+        else:
+            super().del_mixin(name)
+
+    def attention_forward(self, hidden_states, mask, layer_id=None, log_attention_weights=None, mems=None, **kwargs):
         attn_module = self.transformer.layers[layer_id].attention
         prefix = self.prefix_encoder(hidden_states.size(0), layer_id)
-        query_length = hidden_states.size(1)
-        if prefix is None:  # the first time, mem is None
-            mixed_raw_layer = attn_module.query_key_value(hidden_states)
-            (mixed_query_layer,
-             mixed_key_layer,
-             mixed_value_layer) = split_tensor_along_last_dim(mixed_raw_layer, 3)
-        else:
-            cat = torch.cat((prefix, hidden_states), 1)
-            mixed_raw_layer = attn_module.query_key_value(cat)
-            (mixed_query_layer,
-             mixed_key_layer,
-             mixed_value_layer) = split_tensor_along_last_dim(mixed_raw_layer, 3)
-            mixed_query_layer = mixed_query_layer[:, -query_length:]
+        mem = mems[layer_id] if mems is not None and self.autoregressive_hooks else None
+        batch_size, query_length = hidden_states.size(0), hidden_states.size(1)
+        cat = torch.cat((prefix, hidden_states), 1)
+        mixed_raw_layer = attn_module.query_key_value(cat)
+        (mixed_query_layer,
+         mixed_key_layer,
+         mixed_value_layer) = split_tensor_along_last_dim(mixed_raw_layer, 3)
+        mixed_query_layer = mixed_query_layer[:, -query_length:]
+        if mem is not None:
+            memk, memv = split_tensor_along_last_dim(mem.expand(batch_size, -1, -1), 2)
+            mixed_key_layer = torch.cat((memk, mixed_key_layer), dim=1)
+            mixed_value_layer = torch.cat((memv, mixed_value_layer), dim=1)
         # same as training
         query_layer = attn_module._transpose_for_scores(mixed_query_layer)
         key_layer = attn_module._transpose_for_scores(mixed_key_layer)
@@ -154,13 +170,16 @@ class GLMFPrefixModel(GLMCustomModel):
         output = attn_module.dense(context_layer)
 
         # new mem this layer
-        new_mem = mixed_raw_layer.detach()[..., -(mixed_raw_layer.shape[-1] // 3 * 2):].contiguous()
+        if self.autoregressive_hooks:
+            new_mem = mixed_raw_layer.detach()[:, -query_length:, -(mixed_raw_layer.shape[-1] // 3 * 2):].contiguous()
+            return output, new_mem
+        else:
+            return output, None
 
-        return output, new_mem
-
-    def forward(self, input_ids, position_ids, attention_mask, *, branch_input=None, **kw_args):
+    def forward(self, input_ids, position_ids, attention_mask, *args, **kw_args):
         batch_size, seq_length = input_ids.shape[0], input_ids.shape[1]
+        memory_mask, input_mask = attention_mask[:, :, :, :-seq_length], attention_mask[:, :, :, -seq_length:]
         attention_mask = torch.cat(
-            (attention_mask.new_ones(batch_size, 1, seq_length, self.prefix_length), attention_mask), dim=-1)
-        output, *mems = super().forward(input_ids, position_ids, attention_mask)
+            (memory_mask, attention_mask.new_ones(batch_size, 1, seq_length, self.prefix_length), input_mask), dim=-1)
+        output, *mems = super().forward(input_ids, position_ids, attention_mask, *args, **kw_args)
         return (output, *mems)
