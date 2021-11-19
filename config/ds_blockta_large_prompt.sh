@@ -29,6 +29,7 @@ gpt_options=" \
        --num-attention-heads 16 \
        --seq-length 512 \
        --max-sequence-length 513 \
+       --prefix-prompt 100 \
        --save /dataset/fd5061f6/english_data/checkpoints \
        ${PRE_OPTIONS}
        --save-interval 5000 \
