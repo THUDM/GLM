@@ -13,7 +13,7 @@ gpt_options=" \
        --hidden-size 768 \
        --num-attention-heads 12 \
        --seq-length 512 \
-       --max-position-embeddings 512 \
+       --max-sequence-length 513 \
        --save /root/data/checkpoints \
        --train-iters 150000 \
        --resume-dataloader \
@@ -28,7 +28,6 @@ gpt_options=" \
        --lr-decay-ratio 0.05 \
        --warmup .05 \
        --checkpoint-activations \
-       --deepspeed-activation-checkpointing \
        --fp16 \
 "
 gpt_options="${gpt_options}

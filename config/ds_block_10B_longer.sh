@@ -20,7 +20,7 @@ gpt_options=" \
        --hidden-size 4096 \
        --num-attention-heads 64 \
        --seq-length 640 \
-       --max-position-embeddings 1024 \
+       --max-sequence-length 1025 \
        --save /mnt/model_checkpoints \
        --load /cache/blocklm-10b-latest \
        --no-load-lr-scheduler \
@@ -47,7 +47,6 @@ gpt_options=" \
        --lr-decay-iters 50000 \
        --warmup 0.005 \
        --checkpoint-activations \
-       --deepspeed-activation-checkpointing \
        --fp16 \
 "
 gpt_options="${gpt_options}

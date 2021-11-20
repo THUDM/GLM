@@ -19,7 +19,7 @@ gpt_options=" \
        --hidden-size 4096 \
        --num-attention-heads 64 \
        --seq-length 512 \
-       --max-position-embeddings 1024 \
+       --max-sequence-length 1025 \
        --save /dataset/fd5061f6/english_data/checkpoints \
        --load /dataset/fd5061f6/english_data/checkpoints/blocklm-10b-chinese07-08-15-28 \
        --log-interval 50 \
@@ -39,7 +39,6 @@ gpt_options=" \
        --lr-decay-iters 120000 \
        --warmup 0.04 \
        --checkpoint-activations \
-       --deepspeed-activation-checkpointing \
        --fp16 \
 "
 gpt_options="${gpt_options}
