@@ -5,7 +5,8 @@ MODEL_ARGS="--block-lm \
             --num-layers 48 \
             --hidden-size 4096 \
             --num-attention-heads 64 \
-            --max-position-embeddings 1024 \
+            --max-sequence-length 1025 \
             --tokenizer-type ChineseSPTokenizer \
+            --tokenizer-model-type glm-10b \
             --no-fix-command \
             --load-pretrained ${CHECKPOINT_PATH}/blocklm-10b-chinese07-08-15-28"

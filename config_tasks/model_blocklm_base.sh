@@ -4,7 +4,7 @@ MODEL_ARGS="--block-lm \
             --hidden-size 768 \
             --num-attention-heads 12 \
             --max-sequence-length 513 \
-            --tokenizer-model-type bert-base-uncased \
             --tokenizer-type BertWordPieceTokenizer \
+            --tokenizer-model-type bert-base-uncased \
             --old-checkpoint \
             --load-pretrained ${CHECKPOINT_PATH}/blocklm-base-blank"
