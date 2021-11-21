@@ -23,8 +23,8 @@ gpt_options=" \
        --save /dataset/fd5061f6/english_data/checkpoints \
        --log-interval 50 \
        --eval-interval 1000 \
-       --save-interval 2000 \
-       --train-iters 150000 \
+       --save-interval 5000 \
+       --train-iters 500000 \
        --train-data multilingual \
        --dataset-temperature 0.3 \
        --loader-scatter 32 \
@@ -35,10 +35,10 @@ gpt_options=" \
        --tokenizer-model-type /dataset/fd5061f6/duzx16/tokenizer/mglm-unigram-250k/mglm250k-uni.model \
        --split 949,50,1 \
        --distributed-backend nccl \
-       --lr-decay-style cosine \
+       --lr-decay-style linear \
        --lr-decay-ratio 0.1 \
-       --lr-decay-iters 120000 \
-       --warmup 0.04 \
+       --lr-decay-iters 400000 \
+       --warmup 0.02 \
        --checkpoint-activations \
        --fp16 \
 "
