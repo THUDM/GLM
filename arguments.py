@@ -387,16 +387,10 @@ def get_args(arg_list=None):
         mpi_define_env(args)
     elif os.getenv('OMPI_COMM_WORLD_LOCAL_RANK'):
         # We are using (OpenMPI) mpirun for launching distributed data parallel processes
-        local_rank = int(os.getenv('OMPI_COMM_WORLD_LOCAL_RANK'))
-        local_size = int(os.getenv('OMPI_COMM_WORLD_LOCAL_SIZE'))
-
-        # Possibly running with Slurm
-        num_nodes = int(os.getenv('SLURM_JOB_NUM_NODES', '1'))
-        nodeid = int(os.getenv('SLURM_NODEID', '0'))
-
-        args.local_rank = local_rank
-        args.rank = nodeid * local_size + local_rank
-        args.world_size = num_nodes * local_size
+        args.local_rank = int(os.getenv('OMPI_COMM_WORLD_LOCAL_RANK'))
+        args.rank = int(os.getenv('OMPI_COMM_WORLD_RANK'))
+        args.world_size = int(os.getenv('OMPI_COMM_WORLD_SIZE'))
+        print("**********************************", args.rank, args.world_size, args.local_rank)
 
     if args.device == -1: # not set manually
         args.device = args.rank % torch.cuda.device_count()
