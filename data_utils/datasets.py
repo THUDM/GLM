@@ -14,37 +14,27 @@
 # limitations under the License.
 """dataset objects for jsons, csvs, and BERT datasets"""
 
-import os
-import time
-from operator import itemgetter
+import math
 from bisect import bisect_right
 from itertools import accumulate
-import json
-import csv
-import math
 import random
 import torch
-import tqdm
 
 from torch.utils import data
-import pandas as pd
 import numpy as np
 
-import nltk
-from nltk import tokenize
-
-from .lazy_loader import LazyLoader, exists_lazy
+from .lazy_loader import LazyLoader
 from utils import print_rank_0
+import SwissArmyTransformer.data_utils.configure_data
 
 
 class LengthSamplingDataset(data.Dataset):
     def __init__(self, ds):
         self.ds = ds
-        self.lengths = [ds.get_text_len(idx) for idx in range(len(ds))]
         if ds.is_lazy:
-            lens = map(lambda idx:self.ds.get_text_len(idx), range(len(self.ds)))
+            lens = map(lambda idx: self.ds.get_text_len(idx) // 10 + 1, range(len(self.ds)))
         else:
-            lens = map(lambda d: len(d['text']) if isinstance(d, dict) else len(d), self.ds)
+            lens = map(lambda d: len(d['tokens']) // 10 + 1 if isinstance(d, dict) else len(d), self.ds)
         self.weighting = list(accumulate(lens))
         self.total_len = self.weighting[-1] if self.weighting else 0
         print_rank_0(
@@ -134,6 +124,53 @@ class ConcatDataset(data.Dataset):
         return self.datasets[dataset_idx][sample_idx]
 
 
+class ScaleDataset(data.Dataset):
+    def __init__(self, ds, ratio, block_size=10000):
+        self.ds = ds
+        self.ds_len = len(self.ds)
+        self.ratio = ratio
+        reserved_ratios = ratio - math.floor(ratio)
+        self.reserved_len = int(math.floor(ratio) * self.ds_len)
+        if block_size is not None:
+            block_size = min(block_size, self.ds_len)
+        self.block_size = block_size
+        if reserved_ratios > 0:
+            indices_len = self.ds_len if block_size is None else block_size
+            indices = random.sample(range(indices_len), int(reserved_ratios * indices_len))
+            if block_size is None:
+                self.sub_dataset = SplitDataset(ds, indices)
+            else:
+                self.sub_dataset = BlockedRandomSplitDataset(ds, indices, block_size=block_size)
+            self.total_len = int(math.floor(ratio) * self.ds_len) + len(self.sub_dataset)
+        else:
+            self.sub_dataset = None
+            self.total_len = int(math.floor(ratio) * self.ds_len)
+
+    @property
+    def name(self):
+        return f"Scale {self.ratio} of " + self.ds.name
+
+    @property
+    def is_lazy(self):
+        return isinstance(self.ds, LazyLoader) or (
+                hasattr(self.ds, 'is_lazy') and self.ds.is_lazy)
+
+    def get_text_len(self, index):
+        if index < self.reserved_len:
+            return self.ds.get_text_len(index % self.ds_len)
+        else:
+            return self.sub_dataset.get_text_len(index % self.ds_len)
+
+    def __len__(self):
+        return self.total_len
+
+    def __getitem__(self, index):
+        if index < self.reserved_len:
+            return self.ds[index % self.ds_len]
+        else:
+            return self.sub_dataset[index % self.ds_len]
+
+
 class MultiSamplingDataset(data.Dataset):
     def __init__(self, datasets, reweight=True, temperature=1.0, max_limit=None):
         self.datasets = list(datasets)
@@ -186,6 +223,29 @@ class MultiSamplingDataset(data.Dataset):
         return item
 
 
+class BlockedRandomSplitDataset(SwissArmyTransformer.data_utils.configure_data.BlockedRandomSplitDataset):
+    @property
+    def is_lazy(self):
+        return isinstance(self.wrapped_data, LazyLoader) or (
+                hasattr(self.wrapped_data, 'is_lazy') and self.wrapped_data.is_lazy)
+
+    @property
+    def name(self):
+        return "Blocked split of " + self.wrapped_data.name
+
+    @property
+    def tokenizer(self):
+        return self.wrapped_data.tokenizer
+
+    @tokenizer.setter
+    def tokenizer(self, tokenizer):
+        self.wrapped_data._tokenizer = tokenizer
+
+    def get_text_len(self, index):
+        return self.wrapped_data.get_text_len(
+            (index // len(self.indices)) * self.block_size + self.indices[index % len(self.indices)])
+
+
 class SplitDataset(data.Dataset):
     """
     Dataset wrapper to access a subset of another dataset.
@@ -220,7 +280,7 @@ class SplitDataset(data.Dataset):
 
     @property
     def tokenizer(self):
-        return self.ds._tokenizer
+        return self.ds.tokenizer
 
     @tokenizer.setter
     def tokenizer(self, tokenizer):
@@ -231,7 +291,7 @@ class SplitDataset(data.Dataset):
             yield self.ds[idx]
 
 
-def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None):
+def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None, block_size=10000):
     """
     Split a dataset into subsets given proportions of how
     much to allocate per split. If a split is 0% returns None for that split.
@@ -242,6 +302,7 @@ def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None):
         shuffle (boolean): Randomly split dataset. Default: True
         save_splits: save split indices to file
         load_splits: load split indices from file
+        block_size: block size used to split dataset
     """
     if split is None:
         split = [.8, .2, .0]
@@ -250,29 +311,34 @@ def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None):
         raise Exception('Split cannot sum to 0.')
     split = np.array(split)
     split /= split_sum
-    ds_len = len(ds)
-    inds = np.arange(ds_len)
-    if shuffle:
-        rng = np.random.RandomState(1234)
-        rng.shuffle(inds)
+    assert block_size is None or block_size < len(ds)
+    indices_len = len(ds) if block_size is None else block_size
     if load_splits is not None:
-        inds = np.load(load_splits)
-        assert len(inds) == ds_len
+        indices = np.load(load_splits)
+        assert len(indices) == indices_len
         print_rank_0(f"Load split indices from {load_splits}")
-    elif save_splits is not None:
-        if torch.distributed.get_rank() == 0:
-            np.save(save_splits, inds)
-            print(f"Save split indices to {save_splits}")
+    else:
+        indices = np.arange(indices_len)
+        if shuffle:
+            rng = np.random.RandomState(1234)
+            rng.shuffle(indices)
+        if save_splits is not None:
+            if torch.distributed.get_rank() == 0:
+                np.save(save_splits, indices)
+                print(f"Save split indices to {save_splits}")
     start_idx = 0
     residual_idx = 0
     rtn_ds = [None] * len(split)
     for i, f in enumerate(split):
         if f != 0:
-            proportion = ds_len * split[i]
+            proportion = indices_len * split[i]
             residual_idx += proportion % 1
             split_ = int(int(proportion) + residual_idx)
-            split_inds = inds[start_idx:start_idx + max(split_, 1)]
-            rtn_ds[i] = SplitDataset(ds, split_inds)
+            split_inds = indices[start_idx:start_idx + max(split_, 1)]
+            if block_size is None:
+                rtn_ds[i] = SplitDataset(ds, split_inds)
+            else:
+                rtn_ds[i] = BlockedRandomSplitDataset(ds, split_inds, block_size)
             start_idx += split_
             residual_idx %= 1
     return rtn_ds

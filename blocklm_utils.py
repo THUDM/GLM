@@ -375,7 +375,7 @@ class ConstructBlockStrategy:
                     sentence_spans.append((last_index, len(tokens)))
                 if not sentence_spans and torch.distributed.get_rank() == 0:
                     try:
-                        print(self.tokenizer.DecodeIds(tokens[1:]))
+                        print(self.tokenizer.DecodeIds(tokens[1:].tolist()))
                     except IndexError:
                         print(tokens[1:])
                 rng.shuffle(sentence_spans)

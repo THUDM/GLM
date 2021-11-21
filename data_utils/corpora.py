@@ -58,6 +58,9 @@ class PromptDataset(data.Dataset):
         prompt_length = self.prompt_lens[idx] if self.prompt_lens else 0
         return prompt_length + self.text_lens[idx]
 
+    def get_size(self):
+        return len(self.texts.file)
+
     @property
     def name(self):
         return self._name

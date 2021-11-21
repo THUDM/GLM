@@ -21,7 +21,7 @@ from .corpora import get_corpora_class
 from .samplers import DistributedBatchSampler
 from .datasets import split_ds, ConcatDataset, SplitDataset, LengthSamplingDataset, MultiSamplingDataset, \
  \
-    GPT2Dataset, XLDataset, BlockDataset
+    GPT2Dataset, XLDataset, BlockDataset, ScaleDataset
 from .lazy_loader import exists_lazy, LazyWriter, MultiLazyWriter, ScatterLazyWriter, LazyLoader, exists_scatter, \
     get_scatter_path
 from utils import print_rank_0
@@ -115,6 +115,31 @@ def get_dataset(name, tokenizer, pre_tokenize, data_parallel_rank, loader_scatte
     return text
 
 
+def get_language_names():
+    cache_file = './languages.txt'
+    if os.path.exists(cache_file):
+        with open(cache_file) as file:
+            languages = list(map(lambda x: x.strip(), file.readlines()))
+    else:
+        multilingual = get_corpora_class('multilingual')
+        languages = multilingual.get_languages()
+        if torch.distributed.get_rank() == 0:
+            with open(cache_file, "w") as output:
+                output.write('\n'.join(languages))
+    return languages
+
+
+def get_datasets_fractions(_datasets, loader_fraction, dataset_temperature=1.0):
+    sizes = [ds.get_size() for ds in _datasets]
+    sum_sizes = sum(sizes)
+    fractions = [s / sum_sizes for s in sizes]
+    balanced_ratios = [f ** dataset_temperature for f in fractions]
+    sum_ratios = sum(balanced_ratios)
+    balanced_ratios = [r * loader_fraction / sum_ratios for r in balanced_ratios]
+    sample_fractions = [r / f for f, r in zip(fractions, balanced_ratios)]
+    return sample_fractions
+
+
 def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokenizer=None,
                  sample_one_document=False, pre_tokenize=False, ds_type='', save_splits=None, load_splits=None,
                  save_test_data=None, no_lazy_loader=False, loader_scatter=None, data_parallel_rank=None,
@@ -129,21 +154,15 @@ def make_dataset(path, seq_length, mem_length, shuffle=True, split=None, tokeniz
     new_paths = []
     for p in paths:
         if p == 'multilingual':
-            cache_file = './languages.txt'
-            if os.path.exists(cache_file):
-                with open(cache_file) as file:
-                    languages = list(map(lambda x: x.strip(), file.readlines()))
-            else:
-                multilingual = get_corpora_class('multilingual')
-                languages = multilingual.get_languages()
-                with open(cache_file, "w") as output:
-                    output.write('\n'.join(languages))
-            new_paths += [f'multilingual-{lang}' for lang in languages]
+            new_paths += [f'multilingual-{lang}' for lang in get_language_names()]
         else:
             new_paths.append(p)
     _datasets = [get_dataset(p, tokenizer=tokenizer, pre_tokenize=pre_tokenize, no_lazy_loader=no_lazy_loader,
-                             loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank,
-                             loader_fraction=loader_fraction) for p in new_paths]
+                             loader_scatter=loader_scatter, data_parallel_rank=data_parallel_rank) for p in new_paths]
+    if loader_fraction < 1.0:
+        sample_fractions = get_datasets_fractions(_datasets, loader_fraction, dataset_temperature=dataset_temperature)
+        _datasets = [ScaleDataset(ds, fraction) for ds, fraction in zip(_datasets, sample_fractions)]
+        dataset_temperature = 1.0
     if should_split(split):
         _datasets = [split_ds(ds, split, shuffle=shuffle, save_splits=save_splits, load_splits=load_splits) for ds in
                      _datasets]
