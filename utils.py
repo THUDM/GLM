@@ -171,21 +171,6 @@ class Timers:
         print_rank_0(string)
 
 
-def report_memory(name):
-    """Simple GPU memory report."""
-
-    mega_bytes = 1024.0 * 1024.0
-    string = name + ' memory (MB)'
-    string += ' | allocated: {}'.format(
-        torch.cuda.memory_allocated() / mega_bytes)
-    string += ' | max allocated: {}'.format(
-        torch.cuda.max_memory_allocated() / mega_bytes)
-    string += ' | cached: {}'.format(torch.cuda.memory_reserved() / mega_bytes)
-    string += ' | max cached: {}'.format(
-        torch.cuda.max_memory_reserved() / mega_bytes)
-    print_rank_0(string)
-
-
 def get_checkpoint_name(checkpoints_path, iteration, release=False, zero=False):
     if release:
         d = 'release'

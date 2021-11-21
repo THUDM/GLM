@@ -32,11 +32,12 @@ import pathlib
 
 from utils import Timers
 from utils import save_checkpoint, load_checkpoint
-from utils import report_memory, print_and_save_args, print_rank_0, get_sample_writer, get_log_dir
+from utils import print_and_save_args, print_rank_0, get_sample_writer, get_log_dir
 from blocklm_utils import build_mask_matrix
 from model.modeling_glm import GLMFPrefixModel
 from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, \
     set_random_seed, setup_model_and_optimizer, train_step
+from SwissArmyTransformer.training.utils import report_memory
 from SwissArmyTransformer import mpu
 from SwissArmyTransformer.model import GLMModel
 from learning_rates import get_learning_rate_scheduler
