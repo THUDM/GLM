@@ -126,8 +126,8 @@ def report_memory(name):
         torch.cuda.memory_allocated() / mega_bytes)
     string += ' | max allocated: {}'.format(
         torch.cuda.max_memory_allocated() / mega_bytes)
-    string += ' | cached: {}'.format(torch.cuda.memory_cached() / mega_bytes)
+    string += ' | cached: {}'.format(torch.cuda.memory_reserved() / mega_bytes)
     string += ' | max cached: {}'.format(
-        torch.cuda.memory_reserved() / mega_bytes)
+        torch.cuda.max_memory_reserved() / mega_bytes)
     print_rank_0(string)
 
