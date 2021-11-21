@@ -29,10 +29,10 @@ from utils import print_rank_0
 logger = logging.getLogger(__name__)
 
 PRETRAINED_VOCAB_ARCHIVE_MAP = {
-    'bert-base-uncased': ".pytorch_pretrained_bert/bert-base-uncased-vocab.txt",
-    'bert-large-uncased': ".pytorch_pretrained_bert/bert-large-uncased-vocab.txt",
-    'bert-base-cased': ".pytorch_pretrained_bert/bert-base-cased-vocab.txt",
-    'bert-large-cased': ".pytorch_pretrained_bert/bert-large-cased-vocab.txt",
+    'bert-base-uncased': "embed_assets/bert-base-uncased-vocab.txt",
+    'bert-large-uncased': "embed_assets/bert-large-uncased-vocab.txt",
+    'bert-base-cased': "embed_assets/bert-base-cased-vocab.txt",
+    'bert-large-cased': "embed_assets/bert-large-cased-vocab.txt",
     'bert-base-multilingual-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-uncased-vocab.txt",
     'bert-base-multilingual-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased-vocab.txt",
     'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese-vocab.txt",
