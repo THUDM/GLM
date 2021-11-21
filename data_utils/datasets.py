@@ -311,7 +311,8 @@ def split_ds(ds, split=None, shuffle=True, save_splits=None, load_splits=None, b
         raise Exception('Split cannot sum to 0.')
     split = np.array(split)
     split /= split_sum
-    assert block_size is None or block_size < len(ds)
+    if block_size is not None:
+        block_size = min(block_size, len(ds))
     indices_len = len(ds) if block_size is None else block_size
     if load_splits is not None:
         indices = np.load(load_splits)
