@@ -125,7 +125,7 @@ class GLMFPrefixModel(GLMCustomModel):
         if self.freeze_transformer:
             print_rank_0("Freeze transformer model")
             self.transformer.requires_grad_(False)
-            self.mixins['block_position_embedding'].requires_grad_(False)
+            self.mixins['block_position_embedding'].block_position_embeddings.requires_grad_(False)
 
     def add_mixin(self, name, new_mixin, reinit=False):
         if hasattr(new_mixin, "attention_forward"):
