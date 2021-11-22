@@ -177,7 +177,7 @@ class GLMFPrefixModel(GLMCustomModel):
             return output, None
 
     def forward(self, input_ids, position_ids, attention_mask, *args, **kw_args):
-        batch_size, seq_length = input_ids.shape[0], input_ids.shape[1]
+        batch_size, seq_length = attention_mask.shape[0], input_ids.shape[1]
         memory_mask, input_mask = attention_mask[:, :, :, :-seq_length], attention_mask[:, :, :, -seq_length:]
         attention_mask = torch.cat(
             (memory_mask, attention_mask.new_ones(batch_size, 1, seq_length, self.prefix_length), input_mask), dim=-1)

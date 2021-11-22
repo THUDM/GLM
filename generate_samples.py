@@ -19,6 +19,7 @@ import stat
 from functools import partial
 
 from arguments import get_args
+from model import GLMFPrefixModel
 from SwissArmyTransformer import mpu, get_tokenizer, initialize_distributed, set_random_seed
 from finetune_glm import load_pretrained
 from SwissArmyTransformer.model import GLMModel
@@ -50,7 +51,7 @@ def main(args):
     initialize_distributed(args)
     tokenizer = get_tokenizer(args)
     # build model
-    model = GLMModel(args)
+    model = GLMFPrefixModel(args) if args.prefix_prompt > 0 else GLMModel(args)
     model.add_mixin('auto-regressive', CachedAutoregressiveMixin())
     if args.fp16:
         model = model.half()
@@ -64,7 +65,7 @@ def main(args):
     if args.num_beams == 1:
         strategy = BaseStrategy(temperature=args.temperature, top_k=args.top_k, end_tokens=end_tokens)
     else:
-        strategy = BeamSearchStrategy(args.batch_size, length_penalty=args.length_penalty, consider_end=True,
+        strategy = BeamSearchStrategy(args.num_beams, length_penalty=args.length_penalty, consider_end=True,
                                       end_tokens=end_tokens, no_repeat_ngram_size=args.no_repeat_ngram_size,
                                       min_tgt_length=args.min_tgt_length)
 
@@ -109,7 +110,7 @@ def main(args):
                     seq + [tokenizer.get_command('sop').Id] + [-1] * (args.out_seq_length - len(seq) - 1),
                     device=args.device)
                 output = filling_sequence(model, input_seq,
-                                          batch_size=min(args.batch_size, mbz),
+                                          batch_size=args.num_beams,
                                           strategy=strategy,
                                           log_attention_weights=None,
                                           get_masks_and_position_ids=get_func
