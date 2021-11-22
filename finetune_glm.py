@@ -22,10 +22,35 @@ from SwissArmyTransformer.training.deepspeed_training import setup_model_and_opt
 from SwissArmyTransformer.training.deepspeed_training import initialize_distributed, set_random_seed
 from pretrain_glm import report_iteration_metrics, evaluate_and_print_results
 from learning_rates import get_learning_rate_scheduler
-from train_utils import load_pretrained
-from utils import load_checkpoint, save_checkpoint
+from utils import load_checkpoint, save_checkpoint, get_checkpoint_name, get_checkpoint_iteration
 from configure_data import make_data_loader, make_tokenizer
 from blocklm_utils import build_mask_matrix
+
+
+def load_pretrained(model, checkpoint_path, args):
+    load_dir, tag, release, success = get_checkpoint_iteration(checkpoint_path)
+    checkpoint_name = get_checkpoint_name(load_dir, tag, release)
+    if mpu.get_data_parallel_rank() == 0:
+        print('global rank {} is loading pretrained model {}'.format(
+            torch.distributed.get_rank(), checkpoint_name))
+    # Load the checkpoint.
+    sd = torch.load(checkpoint_name, map_location='cpu')
+    if args.deepspeed:
+        model = model.module
+
+    # Model.
+    if args.block_lm and args.old_checkpoint:
+        sd['module']['transformer.word_embeddings.weight'] = sd['module']['word_embeddings.weight']
+        del sd['module']['word_embeddings.weight']
+        sd['module']['mixins.block_position_embedding.block_position_embeddings.weight'] = sd['module'][
+            'transformer.block_position_embeddings.weight']
+        del sd['module']['transformer.block_position_embeddings.weight']
+
+    missing_keys, unexpected_keys = model.load_state_dict(sd['module'], strict=False)
+    if missing_keys or unexpected_keys:
+        print_rank_0(f"Missing keys {missing_keys}, unexpected keys {unexpected_keys}")
+    if args.continuous_prompt and args.prompt_init:
+        model.prompt_spell.init_embedding(model.word_embeddings.weight.data, task_tokens)
 
 
 def process_batch(batch, args):
