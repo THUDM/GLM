@@ -310,7 +310,7 @@ def train(model, optimizer, lr_scheduler,
     return args.iteration, skipped_iters
 
 
-def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=False):
+def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=False, **kwargs):
     """Evaluation."""
     # Turn on evaluation mode which disables dropout.
     model.eval()
@@ -324,7 +324,7 @@ def evaluate(data_iterator, model, args, timers, forward_step_func, verbose=Fals
             if verbose and iteration % args.log_interval == 0:
                 print_rank_0('Evaluating iter {}/{}'.format(iteration, args.eval_iters))
             # Forward evaluation.
-            lm_loss, mode = forward_step_func(data_iterator, model, args, timers)
+            lm_loss, mode = forward_step_func(data_iterator, model, args, timers, **kwargs)
 
             '''when contiguous memory optimizations are enabled, the buffers
             allocated by the optimizations are deallocated during backward pass
