@@ -35,8 +35,6 @@ def load_pretrained(model, checkpoint_path, args):
             torch.distributed.get_rank(), checkpoint_name))
     # Load the checkpoint.
     sd = torch.load(checkpoint_name, map_location='cpu')
-    if args.deepspeed:
-        model = model.module
 
     # Model.
     if args.block_lm and args.old_checkpoint:
@@ -403,7 +401,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                                             group=mpu.get_model_parallel_group())
                 task_tokens = task_tokens.tolist()
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-            load_pretrained(model, args.load_pretrained, args, task_tokens=task_tokens)
+            load_pretrained(model.module, args.load_pretrained, args, task_tokens=task_tokens)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:
