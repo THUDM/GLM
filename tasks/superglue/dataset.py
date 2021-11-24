@@ -218,22 +218,15 @@ class DataProcessor(ABC):
 class SuperGLUEProcessor(DataProcessor):
     def __init__(self, args):
         super(SuperGLUEProcessor, self).__init__(args)
-        self.few_superglue = args.few_superglue
 
     def get_train_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "train.jsonl"), "train")
 
     def get_dev_examples(self, data_dir, for_train=False):
-        if self.few_superglue:
-            return self._create_examples(os.path.join(data_dir, "dev32.jsonl"), "dev")
-        else:
-            return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
+        return self._create_examples(os.path.join(data_dir, "val.jsonl"), "dev")
 
     def get_test_examples(self, data_dir):
-        if self.few_superglue:
-            return self._create_examples(os.path.join(data_dir, "val.jsonl"), "test")
-        else:
-            return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
+        return self._create_examples(os.path.join(data_dir, "test.jsonl"), "test")
 
     def get_unlabeled_examples(self, data_dir):
         return self._create_examples(os.path.join(data_dir, "unlabeled.jsonl"), "unlabeled")
