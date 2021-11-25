@@ -401,7 +401,7 @@ def finetune(args, train_valid_datasets_provider, model_kwargs, forward_step=fin
                                             group=mpu.get_model_parallel_group())
                 task_tokens = task_tokens.tolist()
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-            load_pretrained(model.module, args.load_pretrained, args, task_tokens=task_tokens)
+            load_pretrained(model.module, args.load_pretrained, args)
         # This is critical when only model is loaded. We should make sure
         # master parameters are also updated.
         if args.fp16 and optimizer is not None:
