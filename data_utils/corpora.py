@@ -489,11 +489,11 @@ class Stories(LineReader):
 
 
 class BertBaseData(BertData):
-    PATH = '/root/data/formatted_one_article_per_line'
+    PATH = '/dataset/fd5061f6/english_data/bert_data/formatted_one_article_per_line'
 
 
 class BertLargeData(BertData):
-    PATH = '/dataset/c07bd62b/cognitive/zhengxiao/formatted_one_article_per_line_large'
+    PATH = '/dataset/fd5061f6/english_data/bert_data/formatted_one_article_per_line_large'
 
 
 class WuDaoCorpus(FileReader):
