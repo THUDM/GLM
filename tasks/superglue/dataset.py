@@ -348,92 +348,111 @@ class WscProcessor(SuperGLUEProcessor):
         text_b = target
         return text_a, text_b
 
+    def _build_example(self, example_json, set_type, cloze_eval=True):
+        idx = example_json['idx']
+        label = str(example_json['label']) if 'label' in example_json else None
+        guid = "%s-%s" % (set_type, idx)
+        examples = []
+        text_a = punctuation_standardization(example_json['text'])
+        meta = {
+            'span1_text': example_json['target']['span1_text'],
+            'span2_text': example_json['target']['span2_text'],
+            'span1_index': example_json['target']['span1_index'],
+            'span2_index': example_json['target']['span2_index']
+        }
+        if 'candidates' in example_json:
+            candidates = [cand['text'] for cand in example_json['candidates']]
+            # candidates = list(set(candidates))
+            filtered = []
+            for i, cand in enumerate(candidates):
+                if not cand in candidates[:i]:
+                    filtered.append(cand)
+            candidates = filtered
+
+        # the indices in the dataset are wrong for some examples, so we manually fix them
+        span1_index, span1_text = meta['span1_index'], meta['span1_text']
+        span2_index, span2_text = meta['span2_index'], meta['span2_text']
+        words_a = text_a.split()
+        words_a_lower = text_a.lower().split()
+        words_span1_text = span1_text.lower().split()
+        span1_len = len(words_span1_text)
+
+        if words_a_lower[span1_index:span1_index + span1_len] != words_span1_text:
+            for offset in [-1, +1]:
+                if words_a_lower[span1_index + offset:span1_index + span1_len + offset] == words_span1_text:
+                    span1_index += offset
+
+        # if words_a_lower[span1_index:span1_index + span1_len] != words_span1_text:
+        #     print_rank_0(f"Got '{words_a_lower[span1_index:span1_index + span1_len]}' but expected "
+        #                  f"'{words_span1_text}' at index {span1_index} for '{words_a}'")
+
+        if words_a[span2_index] != span2_text:
+            for offset in [-1, +1]:
+                if words_a[span2_index + offset] == span2_text:
+                    span2_index += offset
+
+            if words_a[span2_index] != span2_text and words_a[span2_index].startswith(span2_text):
+                words_a = words_a[:span2_index] \
+                          + [words_a[span2_index][:len(span2_text)], words_a[span2_index][len(span2_text):]] \
+                          + words_a[span2_index + 1:]
+
+        assert words_a[span2_index] == span2_text, \
+            f"Got '{words_a[span2_index]}' but expected '{span2_text}' at index {span2_index} for '{words_a}'"
+
+        text_a = ' '.join(words_a)
+        meta['span1_index'], meta['span2_index'] = span1_index, span2_index
+
+        if self.args.task == 'wsc_bi':
+            example = InputExample(guid=guid, text_a=text_a, text_b=span1_text,
+                                   label=label, meta=meta, idx=idx)
+            examples.append(example)
+            if set_type == 'train' and label == 'True':
+                for cand in candidates:
+                    example = InputExample(guid=guid, text_a=text_a, text_b=cand,
+                                           label='False', meta=meta, idx=idx)
+                    examples.append(example)
+            return examples
+
+        if cloze_eval and set_type == 'train' and label != 'True':
+            return []
+        if set_type == 'train' and 'candidates' in example_json and len(candidates) > 9:
+            for i in range(0, len(candidates), 9):
+                _meta = copy.deepcopy(meta)
+                _meta['candidates'] = candidates[i:i + 9]
+                if len(_meta['candidates']) < 9:
+                    _meta['candidates'] += candidates[:9 - len(_meta['candidates'])]
+                example = InputExample(guid=guid, text_a=text_a, label=label, meta=_meta, idx=idx)
+                examples.append(example)
+        else:
+            if 'candidates' in example_json:
+                meta['candidates'] = candidates
+            example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
+            examples.append(example)
+
     def _create_examples(self, path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
         examples = []
 
-        with open(path, encoding='utf8') as f:
+        with open(path, encoding='utf-8') as f:
             for line in f:
                 example_json = json.loads(line)
-                idx = example_json['idx']
-                label = str(example_json['label']) if 'label' in example_json else None
-                guid = "%s-%s" % (set_type, idx)
-                text_a = punctuation_standardization(example_json['text'])
-                meta = {
-                    'span1_text': example_json['target']['span1_text'],
-                    'span2_text': example_json['target']['span2_text'],
-                    'span1_index': example_json['target']['span1_index'],
-                    'span2_index': example_json['target']['span2_index']
-                }
-                if 'candidates' in example_json:
-                    candidates = [cand['text'] for cand in example_json['candidates']]
-                    # candidates = list(set(candidates))
-                    filtered = []
-                    for i, cand in enumerate(candidates):
-                        if not cand in candidates[:i]:
-                            filtered.append(cand)
-                    candidates = filtered
-
-                # the indices in the dataset are wrong for some examples, so we manually fix them
-                span1_index, span1_text = meta['span1_index'], meta['span1_text']
-                span2_index, span2_text = meta['span2_index'], meta['span2_text']
-                words_a = text_a.split()
-                words_a_lower = text_a.lower().split()
-                words_span1_text = span1_text.lower().split()
-                span1_len = len(words_span1_text)
-
-                if words_a_lower[span1_index:span1_index + span1_len] != words_span1_text:
-                    for offset in [-1, +1]:
-                        if words_a_lower[span1_index + offset:span1_index + span1_len + offset] == words_span1_text:
-                            span1_index += offset
-
-                # if words_a_lower[span1_index:span1_index + span1_len] != words_span1_text:
-                #     print_rank_0(f"Got '{words_a_lower[span1_index:span1_index + span1_len]}' but expected "
-                #                  f"'{words_span1_text}' at index {span1_index} for '{words_a}'")
-
-                if words_a[span2_index] != span2_text:
-                    for offset in [-1, +1]:
-                        if words_a[span2_index + offset] == span2_text:
-                            span2_index += offset
-
-                    if words_a[span2_index] != span2_text and words_a[span2_index].startswith(span2_text):
-                        words_a = words_a[:span2_index] \
-                                  + [words_a[span2_index][:len(span2_text)], words_a[span2_index][len(span2_text):]] \
-                                  + words_a[span2_index + 1:]
-
-                assert words_a[span2_index] == span2_text, \
-                    f"Got '{words_a[span2_index]}' but expected '{span2_text}' at index {span2_index} for '{words_a}'"
-
-                text_a = ' '.join(words_a)
-                meta['span1_index'], meta['span2_index'] = span1_index, span2_index
-
-                if self.args.task == 'wsc1':
-                    example = InputExample(guid=guid, text_a=text_a, text_b=span1_text,
-                                           label=label, meta=meta, idx=idx)
-                    examples.append(example)
-                    if set_type == 'train' and label == 'True':
-                        for cand in candidates:
-                            example = InputExample(guid=guid, text_a=text_a, text_b=cand,
-                                                   label='False', meta=meta, idx=idx)
-                            examples.append(example)
-                    continue
-
-                if cloze_eval and set_type == 'train' and label != 'True':
-                    continue
-                if set_type == 'train' and 'candidates' in example_json and len(candidates) > 9:
-                    for i in range(0, len(candidates), 9):
-                        _meta = copy.deepcopy(meta)
-                        _meta['candidates'] = candidates[i:i + 9]
-                        if len(_meta['candidates']) < 9:
-                            _meta['candidates'] += candidates[:9 - len(_meta['candidates'])]
-                        example = InputExample(guid=guid, text_a=text_a, label=label, meta=_meta, idx=idx)
-                        examples.append(example)
-                else:
-                    if 'candidates' in example_json:
-                        meta['candidates'] = candidates
-                    example = InputExample(guid=guid, text_a=text_a, label=label, meta=meta, idx=idx)
-                    examples.append(example)
-
+                examples += self._build_example(example_json, set_type, cloze_eval=cloze_eval)
         return examples
+
+
+class WSCFewNLUProcessor(WscProcessor):
+    def _create_examples(self, path: str, set_type: str, cloze_eval=True) -> List[InputExample]:
+        if set_type == "train":
+            examples = []
+            with open(path, encoding='utf-8') as f:
+                for line in f:
+                    example_json = json.loads(line)
+                    original_idx = example_json["idx"]
+                    for i, target_dict in enumerate([example_json["true_target"], example_json["false_target"]]):
+                        target_example = {"text": example_json["text"], "idx": original_idx * 2 + i}
+                        target_example.update(target_dict)
+                        examples += self._build_example(target_example, set_type, cloze_eval=cloze_eval)
+        else:
+            return super()._create_examples(path, set_type, cloze_eval=cloze_eval)
 
 
 class BoolQProcessor(SuperGLUEProcessor):
@@ -1374,7 +1393,8 @@ PROCESSORS = {
     "rte": RteProcessor,
     "cb": CbProcessor,
     "wsc": WscProcessor,
-    "wsc1": WscProcessor,
+    "wsc_bi": WscProcessor,
+    "wsc_fewnlu": WscProcessor,
     "boolq": BoolQProcessor,
     "copa": CopaProcessor,
     "multirc": MultiRcProcessor,
