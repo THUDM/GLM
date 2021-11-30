@@ -26,7 +26,7 @@ RUN apt-get update && \
         libcupti-dev \
         libjpeg-dev \
         libpng-dev \
-        screen jq psmisc dnsutils lsof musl-dev systemd
+        screen jq psmisc dnsutils lsof musl-dev systemd pssh
 
 ##############################################################################
 # Installation Latest Git
