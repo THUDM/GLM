@@ -107,7 +107,7 @@ def main(args):
             output_list = []
             for tim in range(max(args.batch_size // mbz, 1)):
                 input_seq = torch.cuda.LongTensor(
-                    seq + [tokenizer.get_command('sop').Id] + [-1] * (args.out_seq_length - len(seq) - 1),
+                    seq + [tokenizer.get_command('sop').Id] + [-1] * args.out_seq_length,
                     device=args.device)
                 output = filling_sequence(model, input_seq,
                                           batch_size=args.num_beams,
