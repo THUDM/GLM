@@ -29,7 +29,7 @@ for seed in 1234 5678 3456
          --experiment-name ${EXPERIMENT_NAME}/${seed} \
          --task ${TASK_NAME} \
          --data-dir ${DATA_PATH} \
-         --save ${CHECKPOINT_PATH} \
+         --save ${SAVE_PATH} \
          --seq-length ${MAX_SEQ_LEN} \
          --checkpoint-activations \
          --eval-batch-size 16 \
