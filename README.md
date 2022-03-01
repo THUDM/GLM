@@ -18,8 +18,7 @@ You can download the pretrained models used in the paper [here](https://mailstsi
 |  -----  | ----  | ---- | ----
 | GLM-Base | 110M | glm-base-blank.tar.bz2 | model_blocklm_base.sh
 | GLM-Large  | 335M | glm-large-blank.tar.bz2 | model_blocklm_large.sh
-| GLM-Large-Chinese  | 335M | glm-large-chinese.tar.bz2 | model_blocklm_large_chinese
-.sh
+| GLM-Large-Chinese  | 335M | glm-large-chinese.tar.bz2 | model_blocklm_large_chinese.sh
 | GLM-Large (multi-task) | 335M | glm-large-generation.tar.bz2 | model_blocklm_large_generation.sh
 | GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2 | model_blocklm_1.25_generation.sh
 | GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
