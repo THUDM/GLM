@@ -1,6 +1,6 @@
-DATA_ROOT=/root/data/superglue
-CHECKPOINT_PATH=/root/data/checkpoints
-SAVE_PATH=/root/data/finetune_checkpoints
+DATA_ROOT=/dataset/fd5061f6/tuteng/BlockLM/data
+CHECKPOINT_PATH=/dataset/fd5061f6/english_data/checkpoints
+SAVE_PATH=/dataset/fd5061f6/tuteng/BlockLM/finetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
 source $1    # Model

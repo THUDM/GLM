@@ -1,17 +1,8 @@
 {
-  "train_micro_batch_size_per_gpu": 20,
+  "train_micro_batch_size_per_gpu": 32,
   "gradient_accumulation_steps": 1,
-  "steps_per_print": 50,
+  "steps_per_print": 100,
   "gradient_clipping": 1.0,
-  "zero_optimization": {
-    "stage": 2,
-    "contiguous_gradients": false,
-    "overlap_comm": true,
-    "reduce_scatter": true,
-    "reduce_bucket_size": 50000000,
-    "allgather_bucket_size": 500000000
-  },
-  "zero_allow_untested_optimizer": true,
   "fp16": {
     "enabled": true,
     "loss_scale": 0,
@@ -22,13 +13,13 @@
   "optimizer": {
     "type": "Adam",
     "params": {
-      "lr": 0.0001,
+      "lr": 0.0004,
+      "weight_decay": 0.01,
       "betas": [
         0.9,
-        0.95
+        0.98
       ],
-      "eps": 1e-8,
-      "weight_decay": 1e-1
+      "eps": 1e-6
     }
   },
   "activation_checkpointing": {

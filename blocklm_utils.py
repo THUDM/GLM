@@ -85,6 +85,16 @@ class ConstructBlockStrategy:
             return True
         if ':' in tok:
             return True
+        if '。' in tok:
+            return True
+        if '？' in tok:
+            return True
+        if '！' in tok:
+            return True
+        if '；' in tok:
+            return True
+        if '…' in tok:
+            return True
         if '\n' in tok:
             return True
         return False
@@ -363,8 +373,11 @@ class ConstructBlockStrategy:
                         last_index = i + 1
                 if last_index < len(tokens):
                     sentence_spans.append((last_index, len(tokens)))
-                if not sentence_spans:
-                    print(self.tokenizer.DecodeIds(tokens[1:]).encode('utf-8'))
+                if not sentence_spans and torch.distributed.get_rank() == 0:
+                    try:
+                        print(self.tokenizer.DecodeIds(tokens[1:]))
+                    except IndexError:
+                        print(tokens[1:])
                 rng.shuffle(sentence_spans)
                 block_spans, block_length = [], 0
                 for start, end in sentence_spans:

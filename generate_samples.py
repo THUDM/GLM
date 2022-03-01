@@ -227,7 +227,7 @@ def read_context(tokenizer, args, output):
             context_tokens = tokenizer.EncodeAsIds(raw_text).tokenization
             if args.block_lm:
                 context_tokens = [tokenizer.get_command('ENC').Id] + context_tokens
-                if not raw_text.endswith('MASK]'):
+                if not raw_text.endswith('[gMASK]'):
                     context_tokens = context_tokens + [tokenizer.get_command('eos').Id]
             context_length = len(context_tokens)
 

@@ -40,6 +40,10 @@ DEFAULT_METRICS = {
     "mrpc": [("accuracy", accuracy_metric)],
     "cola": [("accuracy", accuracy_metric)],
     "squad": [("accuracy", accuracy_metric)],
+    "afqmc": [("accuracy", accuracy_metric)],
+    "tnews": [("accuracy", accuracy_metric)],
+    "cluewsc": [("accuracy", accuracy_metric)],
+    "cmrc": [("accuracy", accuracy_metric)],
 }
 
 
