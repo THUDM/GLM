@@ -14,17 +14,17 @@ Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM
 ## Pretrained Models
 You can download the pretrained models used in the paper [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR).
 
-| Name | Params | File | Config
-|  -----  | ----  | ---- | ----
-| GLM-Base | 110M | glm-base-blank.tar.bz2 | model_blocklm_base.sh
-| GLM-Large  | 335M | glm-large-blank.tar.bz2 | model_blocklm_large.sh
-| GLM-Large-Chinese  | 335M | glm-large-chinese.tar.bz2 | model_blocklm_large_chinese.sh
-| GLM-Large (multi-task) | 335M | glm-large-generation.tar.bz2 | model_blocklm_large_generation.sh
-| GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2 | model_blocklm_1.25_generation.sh
-| GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2 | model_blocklm_1.5_generation.sh
-| GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2 | model_blocklm_roberta_large.sh
+| Name | Params | File                                                                                                               | Config
+|  -----  | ----  |--------------------------------------------------------------------------------------------------------------------| ----
+| GLM-Base | 110M | glm-base-blank.tar.bz2                                                                                             | model_blocklm_base.sh
+| GLM-Large  | 335M | glm-large-blank.tar.bz2                                                                                            | model_blocklm_large.sh
+| GLM-Large-Chinese  | 335M | glm-large-chinese.tar.bz2                                                                                          | model_blocklm_large_chinese.sh
+| GLM-Large (multi-task) | 335M | glm-large-generation.tar.bz2                                                                                       | model_blocklm_large_generation.sh
+| GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2                                                                                        | model_blocklm_1.25_generation.sh
+| GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2                                                                                         | model_blocklm_1.5_generation.sh
+| GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2                                                                                    | model_blocklm_roberta_large.sh
 | GLM-XXLarge | 10B | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-XXLarge-10B-en.tar.bz2) | model_blocklm_10B.sh
-| GLM-XXLarge-Chinese | 10B | - | model_blocklm_10B_chinese.sh
+| GLM-XXLarge-Chinese | 10B | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-10B-zh.tar.bz2)                                                                                                     | model_blocklm_10B_chinese.sh
 
 ## Results
 
@@ -174,6 +174,10 @@ bash scripts/generate_block.sh \
      config_tasks/model_blocklm_10B_chinese.sh
 ```
 #### Example1 (Entity Prediction):
+
+Context: Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.
+
+GLM: the stanford university
 
 Context: 凯旋门位于意大利米兰市古城堡旁。1807年为纪念[MASK]而建，门高25米，顶上矗立两武士青铜古兵车铸像。
 
