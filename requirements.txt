@@ -21,3 +21,4 @@ tldextract
 transformers
 rouge_score
 fasttext
+unidecode
