@@ -11,6 +11,7 @@ from tasks.data_utils import InputExample
 from typing import List
 import functools
 from collections import defaultdict
+import unidecode
 
 
 def normalize_answer(s):
@@ -27,7 +28,7 @@ def normalize_answer(s):
         return ''.join(ch for ch in text if ch not in exclude)
 
     def lower(text):
-        return text.lower()
+        return unidecode.unidecode(text.lower())
 
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
@@ -71,6 +72,35 @@ def qa_evaluate(predictions, labels, examples: List[InputExample], metric):
     return score
 
 
+def squad_evaluate(predictions, labels, examples, metric):
+    assert len(examples) == len(predictions)
+    score = 0.0
+    idx2predictions = {}
+    idx2ground_truths = {}
+    for example, prediction in zip(examples, predictions):
+        idx = example.idx
+        if idx not in idx2predictions:
+            idx2predictions[idx] = []
+            idx2ground_truths[idx] = example.meta["answers"]
+        idx2predictions[idx].append(prediction)
+    # assert len(predictions) == len(idx2predictions)
+    for idx, predictions in idx2predictions.items():
+        prediction = 'N/A'
+        for i in range(len(predictions)):
+            prediction = predictions[i]
+            if prediction.lower().replace(' ', '') == 'n/a':
+                prediction = 'N/A'
+            else:
+                break
+        ground_truths = idx2ground_truths[idx]
+        if len(ground_truths) == 1 and ground_truths[0] == 'N/A':
+            score += (prediction == 'N/A')
+        else:
+            score += metric_max_over_ground_truths(metric, prediction, ground_truths)
+    score = 100.0 * score / len(idx2predictions)
+    return score
+
+
 def multirc_em(predictions, labels, examples: List[InputExample]):
     """Compute the exact match (EM) for a sequence of predictions and actual labels"""
     question_ids = [example.meta["question_idx"] for example in examples]
@@ -97,3 +127,6 @@ def multirc_em(predictions, labels, examples: List[InputExample]):
 
 qa_exact_match = functools.partial(qa_evaluate, metric=exact_match_score)
 qa_f1 = functools.partial(qa_evaluate, metric=f1_score)
+
+squad_exact_match = functools.partial(squad_evaluate, metric=exact_match_score)
+squad_f1 = functools.partial(squad_evaluate, metric=f1_score)

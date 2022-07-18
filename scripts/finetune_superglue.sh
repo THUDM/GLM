@@ -1,12 +1,12 @@
-DATA_ROOT=/root/data/superglue
-CHECKPOINT_PATH=/root/data/checkpoints
-SAVE_PATH=/root/data/finetune_checkpoints
+DATA_ROOT=/dataset/fd5061f6/english_data/superglue
+CHECKPOINT_PATH=/dataset/fd5061f6/pretrained_models
+SAVE_PATH=/dataset/fd5061f6/finetune_checkpoints
 
 source $1    # Model
 source $2    # Task
 
 if [ -z $N_GPU ];then
-  N_GPU=2
+  N_GPU=1
 fi
 
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
@@ -23,7 +23,7 @@ python -m torch.distributed.launch $DISTRIBUTED_ARGS finetune_glm.py \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
+       --save ${SAVE_PATH} \
        --seq-length ${MAX_SEQ_LEN} \
        --checkpoint-activations \
        --eval-batch-size 16 \

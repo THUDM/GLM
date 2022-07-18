@@ -16,6 +16,7 @@
 """Race."""
 import torch
 import mpu
+import json
 import functools
 from tasks.eval_utils import accuracy_func_provider
 from finetune_glm import finetune
@@ -23,6 +24,7 @@ from pretrain_glm import get_batch
 from collections import OrderedDict
 from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset, ExtractionDataset
 from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater, BlankLMEvaluater
+from tasks.superglue.evaluate import squad_exact_match, squad_f1
 
 global_tokenizer = None
 
@@ -91,11 +93,29 @@ def metrics_func_provider(args, tokenizer, is_test):
             dataset = 'gigaword'
         else:
             dataset = 'cnn_dm_org'
-        metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
-                                   "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
-                                   "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
+        if args.task.lower() in ['squad', 'squad_v1']:
+            metric_dict = {"EM": squad_exact_match, "F1": squad_f1}
+        else:
+            metric_dict = OrderedDict({"rouge-1": functools.partial(rouge_metric, metric="rouge-1", dataset=dataset),
+                                       "rouge-2": functools.partial(rouge_metric, metric="rouge-2", dataset=dataset),
+                                       "rouge-l": functools.partial(rouge_metric, metric="rouge-l", dataset=dataset)})
 
     def output_func(predictions, examples, output_file):
+        if args.task.lower() in ['squad', 'squad_v1']:
+            with open(output_file, "w", encoding='utf-8') as output:
+                res = {}
+                for prediction, example in zip(predictions, examples):
+                    idx = example.idx
+                    if prediction.lower().replace(' ', '') == 'n/a':
+                        prediction = ''
+                    if idx not in res or res[idx] == '':
+                        res[idx] = prediction
+                json.dump(res, output)
+            with open(output_file + ".refs", "w", encoding='utf-8') as output:
+                for prediction, example in zip(predictions, examples):
+                    res = {'id': example.idx, 'pred': prediction, 'gold': example.meta['answers']}
+                    output.write(json.dumps(res) + '\n')
+            return
         with open(output_file + ".hyps", "w", encoding='utf-8') as output:
             for prediction in predictions:
                 output.write(prediction)
@@ -118,7 +138,7 @@ def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
     if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum',
-                             'extraction', 'cmrc']:
+                             'squad', 'squad_v1', 'extraction', 'cmrc']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:
