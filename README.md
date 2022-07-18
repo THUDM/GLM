@@ -17,16 +17,17 @@ Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM
 You can download the pretrained models used in the paper [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR).
 
 | Name | Params | File                                                                                                               | Config
-|  -----  | ----  |--------------------------------------------------------------------------------------------------------------------| ----
-| GLM-Base | 110M | glm-base-blank.tar.bz2                                                                                             | model_blocklm_base.sh
-| GLM-Large  | 335M | glm-large-blank.tar.bz2                                                                                            | model_blocklm_large.sh
-| GLM-Large-Chinese  | 335M | glm-large-chinese.tar.bz2                                                                                          | model_blocklm_large_chinese.sh
-| GLM-Large (multi-task) | 335M | glm-large-generation.tar.bz2                                                                                       | model_blocklm_large_generation.sh
-| GLM-410M (multi-task) | 410M | glm-1.25-generation.tar.bz2                                                                                        | model_blocklm_1.25_generation.sh
-| GLM-515M (multi-task) | 515M | glm-1.5-generation.tar.bz2                                                                                         | model_blocklm_1.5_generation.sh
-| GLM-RoBERTa | 335M | glm-roberta-large-blank.tar.bz2                                                                                    | model_blocklm_roberta_large.sh
-| GLM-XXLarge | 10B | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-XXLarge-10B-en.tar.bz2) | model_blocklm_10B.sh
-| GLM-XXLarge-Chinese | 10B | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-10B-zh.tar.bz2)                                                                                                     | model_blocklm_10B_chinese.sh
+|  -----  |--------|--------------------------------------------------------------------------------------------------------------------| ----
+| GLM-Base | 110M   | glm-base-blank.tar.bz2                                                                                             | model_blocklm_base.sh
+| GLM-Large  | 335M   | glm-large-blank.tar.bz2                                                                                            | model_blocklm_large.sh
+| GLM-Large-Chinese  | 335M   | glm-large-chinese.tar.bz2                                                                                          | model_blocklm_large_chinese.sh
+| GLM-Large (multi-task) | 335M   | glm-large-generation.tar.bz2                                                                                       | model_blocklm_large_generation.sh
+| GLM-410M (multi-task) | 410M   | glm-1.25-generation.tar.bz2                                                                                        | model_blocklm_1.25_generation.sh
+| GLM-515M (multi-task) | 515M   | glm-1.5-generation.tar.bz2                                                                                         | model_blocklm_1.5_generation.sh
+| GLM-RoBERTa | 335M   | glm-roberta-large-blank.tar.bz2                                                                                    | model_blocklm_roberta_large.sh
+| GLM-2B | 2B     | glm-2b.tar.bz2                                                                                                     | model_blocklm_2B.sh
+| GLM-XXLarge | 10B    | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-XXLarge-10B-en.tar.bz2) | model_blocklm_10B.sh
+| GLM-XXLarge-Chinese | 10B    | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-10B-zh.tar.bz2)         | model_blocklm_10B_chinese.sh
 
 ## Results
 
@@ -156,7 +157,7 @@ bash scripts/evaluate_lm.sh \
      config_tasks/zero_wikitext.sh 
   ```
 
-### Blank Language Model
+### Text Infilling
 - Download the [Yahoo](https://github.com/Varal7/blank_language_model) dataset and check the experiment setup in 
   [scripts/finetune_blank.sh](scripts/finetune_blank.sh). Change `DATA_ROOT, CHECKPOINT_PATH, SAVE_PATH` to your 
   local path. 
