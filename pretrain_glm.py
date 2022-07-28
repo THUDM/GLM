@@ -577,7 +577,12 @@ def main():
 
     if args.load is not None:
         with FileLock(os.path.join(pathlib.Path.home(), "checkpoint_lock"), timeout=-1):
-            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args)
+            args.iteration = load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=args.no_deepspeed_load)
+        if args.no_load_optim and args.fp16 and optimizer is not None:
+            if args.deepspeed:
+                optimizer.refresh_fp32_params()
+            else:
+                optimizer._model_params_to_master_params()
     else:
         args.iteration = 0
     torch.distributed.barrier()
