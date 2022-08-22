@@ -13,6 +13,8 @@ Accepted to ACL 2022 as a long paper.
 
 Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) and [PET](https://github.com/timoschick/pet).
 
+**We release [GLM-130B](https://github.com/THUDM/GLM-130B), an open bilingual (English & Chinese) pre-trained language model based on the GLM framework.**
+
 ## Pretrained Models
 You can download the pretrained models used in the paper [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR).
 
