@@ -204,7 +204,7 @@ def sample_sequence(model, tokenizer, context_tokens, context_length, args, devi
                 trim_decode_tokens = decode_tokens
                 print(trim_decode_tokens, flush=True)
     if args.num_beams > 1:
-        tokens, mems = beam_scorer.finalize(tokens, beam_scores, next_tokens, next_indices, eos_token_id=args.eod_token,
+        tokens, mems, _ = beam_scorer.finalize(tokens, beam_scores, next_tokens, next_indices, eos_token_id=args.eod_token,
                                             mems=mems)
     return torch.cat((context_tokens, tokens), dim=1), mems
 
