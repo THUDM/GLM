@@ -16,7 +16,7 @@ Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM
 **We release [GLM-130B](https://github.com/THUDM/GLM-130B), an open bilingual (English & Chinese) pre-trained language model based on the GLM framework.**
 
 ## Pretrained Models
-You can download the pretrained models used in the paper [here](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR).
+You can download the pretrained models used in the paper from [OneDrive](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR) or [Tsinghua-Cloud](https://cloud.tsinghua.edu.cn/d/13f5b03da9594e5490c4).
 
 | Name | Params | File                                                                                                               | Config
 |  -----  |--------|--------------------------------------------------------------------------------------------------------------------| ----
