@@ -293,7 +293,7 @@ class BeamSearchScorer(BeamScorer):
                 best.append((best_hyp, mems, score))
 
         # prepare for adding eos
-        sent_max_len = max(sent_lengths.max().item(), self.max_length)
+        sent_max_len = sent_lengths.max().item()
         decoded: torch.LongTensor = input_ids.new(batch_size * self.num_beam_hyps_to_keep, sent_max_len)
         scores = final_beam_scores.new(batch_size * self.num_beam_hyps_to_keep)
         # shorter batches are padded if needed
