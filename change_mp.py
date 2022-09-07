@@ -8,6 +8,8 @@ target_mp = int(sys.argv[2])
 
 assert os.path.isdir(checkpoint)
 iteration_file = os.path.join(checkpoint, 'latest_checkpointed_iteration.txt')
+if not os.path.exists(iteration_file):
+    iteration_file = os.path.join(checkpoint, 'latest')
 if os.path.exists(iteration_file):
     with open(iteration_file) as fin:
         iteration = int(fin.read().strip())
@@ -33,6 +35,8 @@ if not os.path.exists(new_checkpoint):
     os.mkdir(new_checkpoint)
 if iteration is not None:
     with open(os.path.join(new_checkpoint, 'latest_checkpointed_iteration.txt'), 'w') as fout:
+        fout.write("{}\n".format(iteration))
+    with open(os.path.join(new_checkpoint, 'latest'), 'w') as fout:
         fout.write("{}\n".format(iteration))
     new_checkpoint = os.path.join(new_checkpoint, str(iteration))
     if not os.path.exists(new_checkpoint):
