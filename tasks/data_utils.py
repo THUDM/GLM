@@ -154,7 +154,8 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     # Piece
     if add_piece or answer_ids is not None:
         sop_id = tokenizer.get_command('sop').Id
-        mask_position = ids.index(mask_id) if not args.sentinel_token else args.max_position_embeddings
+        mask_position = len(ids) - ids[-1::-1].index(
+            mask_id) - 1 if not args.sentinel_token else args.max_position_embeddings
         ids.append(sop_id)
         types.append(end_type)
         paddings.append(1)

@@ -82,7 +82,7 @@ class PVP(ABC):
         return 0
 
     @property
-    def mask(self) -> str:
+    def mask(self) -> int:
         """Return the underlying LM's mask token"""
         return self.tokenizer.get_command('MASK').Id
 

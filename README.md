@@ -120,6 +120,17 @@ bash scripts/ds_finetune_superglue_prompt.sh \
   [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. More details can be found 
   [here](tasks/superglue/README.md).
 
+### Multiple Choice (Zero-shot)
+```shell
+bash scripts/evaluate_multichoice.sh config_tasks/model_blocklm_2B.sh
+```
+Note that `CHECKPOINT_PATH` and `DATA_PATH` need to be changed to your local path.
+
+The format of each line of the data file should be
+```
+{"inputs_pretokenized": "Context and question here", "choices_pretokenized": ["Choice 1", "Choice 2", "Choice 3"], "label": int}
+```
+
 ### Text Summarization
 
 - Download the [Gigaword](https://github.com/harvardnlp/sent-summary), [CNN/Daily Mail](https://github.com/artmatsak/cnn-dailymail) or [XSum](https://github.com/EdinburghNLP/XSum/tree/master/XSum-Dataset) dataset and check the experiment setup in 
