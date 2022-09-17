@@ -23,6 +23,7 @@ from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em, squad_ex
 from tasks.superglue.pvp import PVPS
 from tasks.eval_utils import accuracy_func_provider
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
+from glob import glob
 
 DEFAULT_METRICS = {
     "record": [("EM", qa_exact_match), ("F1", qa_f1)],
@@ -86,6 +87,13 @@ def main(args):
         pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
                                       pattern_id=args.pattern_id, is_multi_token=args.multi_token,
                                       num_prompt_tokens=args.num_prompt_tokens)
+    else:
+        patterns = args.test_data
+        datapaths = []
+        for pattern in patterns:
+            for path in glob(pattern, recursive=True):
+                datapaths.append(path)
+        args.test_data = datapaths
     if args.continuous_prompt:
         model_kwargs["spell_length"] = pvp.spell_length
     if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:

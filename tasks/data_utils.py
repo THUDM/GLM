@@ -103,6 +103,44 @@ def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_s
     return num_tokens
 
 
+def build_uni_input_from_ids(text_a_ids, answer_ids, max_seq_length, tokenizer, args=None, add_cls=True,
+                         add_sep=False, add_eos=True, mask_id=None):
+    if mask_id is None:
+        mask_id = tokenizer.get_command('MASK').Id
+    eos_id = tokenizer.get_command('eos').Id
+    cls_id = tokenizer.get_command('ENC').Id
+    sop_id = tokenizer.get_command('sop').Id
+    ids = []
+    if add_cls:
+        ids = [cls_id]
+    ids.append(mask_id)
+    sep = len(ids)
+    mask_position = sep - 1
+    position_ids = list(range(len(ids)))
+    block_position_ids = [0] * len(ids)
+    ids.append(sop_id)
+    # A
+    ids.extend(text_a_ids)
+    target_ids = [0] * (len(ids) - 1)
+    loss_masks = [0] * (len(ids) - 1)
+    # Piece
+    ids.extend(answer_ids[:-1])
+    target_ids.extend(answer_ids)
+    loss_masks.extend([1] * len(answer_ids))
+    position_ids.extend([mask_position] * (len(ids) - len(position_ids)))
+    block_position_ids.extend(range(1, len(ids) - len(block_position_ids) + 1))
+    # Padding.
+    padding_length = max_seq_length - len(ids)
+    if padding_length > 0:
+        ids.extend([eos_id] * padding_length)
+        position_ids.extend([0] * padding_length)
+        block_position_ids.extend([0] * padding_length)
+        target_ids.extend([0] * padding_length)
+        loss_masks.extend([0] * padding_length)
+    position_ids = [position_ids, block_position_ids]
+    return ids, None, None, position_ids, sep, target_ids, loss_masks
+
+
 def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tokenizer, args=None, add_cls=True,
                          add_sep=False, add_piece=False, add_eos=True, mask_id=None):
     if mask_id is None:
@@ -154,6 +192,7 @@ def build_input_from_ids(text_a_ids, text_b_ids, answer_ids, max_seq_length, tok
     # Piece
     if add_piece or answer_ids is not None:
         sop_id = tokenizer.get_command('sop').Id
+        assert mask_id in ids
         mask_position = len(ids) - ids[-1::-1].index(
             mask_id) - 1 if not args.sentinel_token else args.max_position_embeddings
         ids.append(sop_id)

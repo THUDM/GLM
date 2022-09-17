@@ -32,7 +32,7 @@ import numpy as np
 from tasks.data_utils import InputExample
 from utils import print_rank_0
 from tasks.superglue.pvp import PVPS
-from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add
+from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add, build_uni_input_from_ids
 from collections import defaultdict
 from data_utils.corpora import punctuation_standardization
 
@@ -67,6 +67,7 @@ class MultiChoiceDataset(Dataset):
         self.args = args
         self.tokenizer = tokenizer
         self.seq_length = seq_length
+        self.unidirectional = args.unidirectional
         self.example_list = []
         with open(path, "r", encoding="utf-8") as file:
             for idx, line in enumerate(file):
@@ -74,7 +75,7 @@ class MultiChoiceDataset(Dataset):
                 item["idx"] = str(idx)
                 self.example_list.append(item)
         self.examples = {example["idx"]: example for example in self.example_list}
-        self.dataset_name = "multichoice"
+        self.dataset_name = "multichoice-" + os.path.basename(path).split(".")[0]
 
     def __len__(self):
         return len(self.example_list)
@@ -97,17 +98,22 @@ class MultiChoiceDataset(Dataset):
         inputs = self.tokenizer.EncodeAsIds(item["inputs_pretokenized"])
         choices = [self.tokenizer.EncodeAsIds(choice) for choice in item["choices_pretokenized"]]
         label = item["label"]
-        mask_id = self.tokenizer.get_command("MASK").Id
-        if mask_id not in inputs:
-            inputs.append(mask_id)
+        mask_id = self.tokenizer.get_command("gMASK").Id if self.unidirectional else self.tokenizer.get_command("MASK").Id
+        if not self.unidirectional:
+            if mask_id not in inputs:
+                inputs.append(mask_id)
         max_choice_length = max(map(len, choices))
         if len(inputs) + max_choice_length + 2 > self.seq_length:
             text_length = self.seq_length - max_choice_length - 2
             inputs = inputs[-text_length:]
         ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
         for choice in choices:
-            data = build_input_from_ids(inputs, None, choice, self.seq_length, self.tokenizer, args=self.args,
-                                        add_cls=True, add_sep=False, add_piece=True, mask_id=mask_id)
+            if not self.unidirectional:
+                data = build_input_from_ids(inputs, None, choice, self.seq_length, self.tokenizer, args=self.args,
+                                            add_cls=True, add_sep=False, add_piece=True, mask_id=mask_id)
+            else:
+                data = build_uni_input_from_ids(inputs, choice, self.seq_length, self.tokenizer, args=self.args,
+                                                add_cls=True, add_sep=False, mask_id=mask_id)
             ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
             ids_list.append(ids)
             positions_list.append(position_ids)
