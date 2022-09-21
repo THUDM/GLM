@@ -39,7 +39,6 @@ dev set, single model, single-task finetuning
 |  Model | COPA | WSC | RTE | WiC | CB | MultiRC | BoolQ | ReCoRD |
 |  ----  | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
 | GLM-XXLarge  | 98.0 | 95.2 | 93.1 | 75.7 | 98.7/98.2 | 88.1/63.3 | 88.7 | 94.4/94.0 |
-| [RoBERTa-Large](https://github.com/pytorch/fairseq/tree/master/examples/roberta) | 94.0 | 91.3 | 86.6 | 75.6 | 98.2/- | 85.7/- | 86.9 |89.5/89.0|
 | [DeBERTa-XXLarge-v2](https://github.com/microsoft/DeBERTa/tree/master/experiments/superglue) | 97.0 | - | 93.5 | - | - | 87.8/63.6 | 88.3 | 94.1/93.7 |
 
 ### Seq2Seq
