@@ -6,11 +6,8 @@ script_dir=$(dirname $script_path)
 config_json="$script_dir/config_block_large.json"
 gpt_options=" \
        --block-lm \
-       --task-mask \
-       --bert-prob 0.5 \
-       --gap-sentence-prob 0.3 \
+       --bert-prob 1.0 \
        --avg-block-length 3 \
-       --gpt-min-ratio 0.25 \
        --experiment-name blocklm-large-blank \
        --model-parallel-size ${MP_SIZE} \
        --num-layers 24 \
