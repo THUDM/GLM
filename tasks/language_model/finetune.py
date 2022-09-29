@@ -149,17 +149,13 @@ def evaluate(model, dataloader, eval_metric, args):
             # Forward evaluation.
             output, _, _ = lm_forward_step(batch, model, args, None, [], eval_metric=eval_metric)
             count = batch['text'].size(0)
-            count = torch.cuda.LongTensor([count])
-            # Reduce across processes.
-            torch.distributed.all_reduce(output, group=mpu.get_data_parallel_group())
-            torch.distributed.all_reduce(count, group=mpu.get_data_parallel_group())
 
             total_output += output.item()
-            total_count += count.item()
+            total_count += count
             total_tokens += batch['loss_mask'].sum().item()
-    totals = torch.cuda.FloatTensor([total_output, total_tokens])
+    totals = torch.cuda.FloatTensor([total_output, total_count, total_tokens])
     torch.distributed.all_reduce(totals, group=mpu.get_data_parallel_group())
-    total_output, total_tokens = totals.tolist()
+    total_output, total_count, total_tokens = totals.tolist()
     print(total_tokens)
     return {eval_metric: total_output}, total_count
 
