@@ -225,7 +225,7 @@ The file [config/ds_block_large.sh](config/ds_block_large.sh) defines the hyperp
 ## Citation
 Please cite our paper if you find this code useful for your research:
 ```
-@article{DBLP:journals/corr/abs-2103-10360,
+@article{DBLP:conf/acl/DuQLDQY022,
   author    = {Zhengxiao Du and
                Yujie Qian and
                Xiao Liu and
@@ -233,10 +233,12 @@ Please cite our paper if you find this code useful for your research:
                Jiezhong Qiu and
                Zhilin Yang and
                Jie Tang},
-  title     = {All {NLP} Tasks Are Generation Tasks: {A} General Pretraining Framework},
-  journal   = {CoRR},
-  volume    = {abs/2103.10360},
-  year      = {2021},
-  url       = {https://arxiv.org/abs/2103.10360}
+  title     = {{GLM:} General Language Model Pretraining with Autoregressive Blank Infilling},
+  booktitle = {Proceedings of the 60th Annual Meeting of the Association for Computational
+               Linguistics (Volume 1: Long Papers), {ACL} 2022, Dublin, Ireland,
+               May 22-27, 2022},
+  pages     = {320--335},
+  publisher = {Association for Computational Linguistics},
+  year      = {2022},
 }
 ```
