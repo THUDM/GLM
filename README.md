@@ -72,6 +72,21 @@ test set, zero-shot
 | Turing-NLG | 67.98 | 10.21 |
 
 ## Get Started
+### Hugging Face Hub
+You can access GLM-10B via [Hugging Face Hub](https://huggingface.co/BAAI/glm-10b).
+```python
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+tokenizer = AutoTokenizer.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
+model = AutoModelForSeq2SeqLM.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
+model = model.half().cuda()
+
+inputs = tokenizer("Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.", return_tensors="pt")
+inputs = {key: value.cuda() for key, value in inputs.items()}
+inputs["generation_attention_mask"] = inputs["generation_attention_mask"].half()
+outputs = model.generate(**inputs, max_length=512, eos_token_id=tokenizer.eop_token_id, num_beams=4)
+print(tokenizer.decode(outputs[0].tolist()))
+```
+
 ### Docker Image
 We prepare two docker images based on CUDA 10.2 and CUDA 11.2. You can pull the pre-built images from Docker Hub and run with docker v19.03+
   ```shell
