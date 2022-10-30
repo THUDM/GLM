@@ -3,7 +3,6 @@ TASK_NAME=gigaword
 DATA_PATH="${DATA_ROOT}/gigaword/org_data"
 
 TRAIN_ARGS="--epochs 10 \
-            --batch-size 16 \
             --lr 3e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \

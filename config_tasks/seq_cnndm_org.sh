@@ -3,7 +3,6 @@ TASK_NAME=cnn_dm_original
 DATA_PATH="${DATA_ROOT}/cnn_dm_original"
 
 TRAIN_ARGS="--epochs 10 \
-            --batch-size 8 \
             --lr 1e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \

@@ -22,7 +22,7 @@ from tasks.eval_utils import accuracy_func_provider
 from finetune_glm import finetune
 from pretrain_glm import get_batch
 from collections import OrderedDict
-from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset, ExtractionDataset
+from tasks.seq2seq.dataset import Seq2SeqDataset, BlankLMDataset, ExtractionDataset, CustomizationDataset
 from tasks.seq2seq.evaluate import rouge_metric, DecoderEvaluater, BlankLMEvaluater
 from tasks.superglue.evaluate import squad_exact_match, squad_f1
 
@@ -61,6 +61,9 @@ def train_valid_datasets_provider(args, tokenizer):
     elif args.task.lower() == 'extraction':
         train_dataset = ExtractionDataset(args, split='train', tokenizer=tokenizer)
         valid_dataset = None
+    elif args.task.lower() == 'customization':
+        train_dataset = CustomizationDataset(args, split='train', tokenizer=tokenizer)
+        valid_dataset = None
     else:
         train_dataset = Seq2SeqDataset(args, split='train', tokenizer=tokenizer)
         valid_dataset = None
@@ -77,6 +80,8 @@ def metrics_func_provider(args, tokenizer, is_test):
             return BlankLMDataset(args, split=split, tokenizer=tokenizer)
         elif args.task.lower() == 'extraction':
             return ExtractionDataset(args, split=split, tokenizer=tokenizer)
+        elif args.task.lower() == 'customization':
+            return CustomizationDataset(args, split=split, tokenizer=tokenizer)
         else:
             return Seq2SeqDataset(args, split=split, tokenizer=tokenizer)
 
@@ -138,7 +143,7 @@ def main(args):
     if args.src_seq_length > args.max_position_embeddings:
         args.max_position_embeddings = args.src_seq_length
     if args.task.lower() in ['cnn_dm', 'cnn_dm_original', 'gigaword', 'blank', 'squad_generation', 'xsum',
-                             'squad', 'squad_v1', 'extraction', 'cmrc']:
+                             'squad', 'squad_v1', 'extraction', 'cmrc', 'customization']:
         finetune(args, train_valid_datasets_provider, {}, end_of_epoch_callback_provider=metrics_func_provider,
                  forward_step=seq2seq_forward_step)
     else:

@@ -774,3 +774,96 @@ class BlankLMDataset(torch.utils.data.Dataset):
                 continue
             masked_src += " " + token
         return masked_src, masked_tgt
+
+
+class CustomizationDataset(torch.utils.data.Dataset):
+    def __init__(self, args, split, tokenizer):
+        self.args = args
+        task, data_dir = args.task.lower(), args.data_dir
+        self.max_src_length, self.max_tgt_length = args.src_seq_length, args.tgt_seq_length
+        self.split = split
+        self.tokenizer = tokenizer
+        if split == "train":
+            filename = "train"
+        elif split == "dev":
+            filename = "val"
+        elif split == "test":
+            filename = "test"
+        else:
+            raise NotImplementedError(split)
+        print_rank_0(f"Creating {task}-{split} dataset from {data_dir}")
+        self.dataset_name = split
+        source_texts, target_texts = [], []
+        with open(os.path.join(data_dir, f"{filename}.source"),
+                  encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                source_texts.append(line)
+        with open(os.path.join(data_dir, f"{filename}.target"), encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                target_texts.append(line)
+        self.examples, self.example_list = {}, []
+        for idx, (source_text, target_text) in enumerate(zip(source_texts, target_texts)):
+            if (idx + 1) % 20000 == 0:
+                print_rank_0(f"Complete {idx + 1} examples")
+            guid = "%s-%s" % (split, idx)
+            meta = {"ref": target_text}
+            example = InputExample(guid=guid, text_a=source_text, text_b=target_text, meta=meta)
+            self.examples[guid] = example
+            self.example_list.append(example)
+        print_rank_0(f"Return {len(self.examples)} {split} examples")
+
+    def __len__(self):
+        return len(self.example_list)
+
+    def __getitem__(self, idx):
+        example = self.example_list[idx]
+        cls_id = self.tokenizer.get_command('ENC').Id
+        mask_token = 'sMASK' if self.args.task_mask else 'MASK'
+        mask_id = self.tokenizer.get_command(mask_token).Id
+        eos_id = self.tokenizer.get_command('eos').Id
+        pad_id = self.tokenizer.get_command('pad').Id
+        sop_id = self.tokenizer.get_command('sop').Id
+        eop_id = self.tokenizer.get_command('eop').Id
+        source_text, target_text = example.text_a, example.text_b
+        source_tokens = self.tokenizer.EncodeAsIds(source_text).tokenization
+        if len(source_tokens) + 3 > self.max_src_length:
+            source_tokens = source_tokens[-(self.max_src_length - 3):]
+        source_tokens = [cls_id] + source_tokens + [mask_id, eos_id]
+        if len(source_tokens) < self.max_src_length:
+            source_tokens = source_tokens + [pad_id] * (self.max_src_length - len(source_tokens))
+        sep = len(source_tokens)
+        position_ids = list(range(len(source_tokens)))
+        block_position_ids = [0] * len(source_tokens)
+        mask_pos = source_tokens.index(mask_id)
+        if self.split == 'train':
+            target_tokens = self.tokenizer.EncodeAsIds(" " + target_text).tokenization
+            target_tokens = target_tokens + [eop_id]
+            if len(target_tokens) > self.max_tgt_length:
+                target_tokens = target_tokens[:self.max_tgt_length]
+            loss_mask = [1] * len(target_tokens)
+            if len(target_tokens) < self.max_tgt_length:
+                loss_mask += [0] * (self.max_tgt_length - len(target_tokens))
+                target_tokens += [pad_id] * (self.max_tgt_length - len(target_tokens))
+            tokens = source_tokens + [sop_id] + target_tokens[:-1]
+            loss_mask = [0] * len(source_tokens) + loss_mask
+            target_ids = [0] * len(source_tokens) + target_tokens
+            position_ids += [mask_pos] * len(target_tokens)
+            if self.args.no_block_position:
+                block_position_ids += [1] * len(target_tokens)
+            else:
+                block_position_ids += list(range(1, len(target_tokens) + 1))
+            position_ids = [position_ids, block_position_ids]
+            sample = {'text': np.array(tokens, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
+                      'attention_mask': np.array(sep, dtype=np.int64),
+                      'loss_mask': np.array(loss_mask, dtype=np.int64),
+                      "position_id": np.array(position_ids, dtype=np.int64), "uid": example.guid}
+        else:
+            tokens = source_tokens + [sop_id]
+            position_ids = position_ids + [mask_pos]
+            block_position_ids = block_position_ids + [1]
+            position_ids = [position_ids, block_position_ids]
+            sample = {'text': np.array(tokens, dtype=np.int64), 'attention_mask': np.array(sep, dtype=np.int64),
+                      "position_id": np.array(position_ids, dtype=np.int64), "uid": example.guid}
+        return sample

@@ -3,7 +3,6 @@ TASK_NAME=xsum
 DATA_PATH="${DATA_ROOT}/bbc-summary-data"
 
 TRAIN_ARGS="--epochs 6 \
-            --batch-size 8 \
             --lr 1e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \

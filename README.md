@@ -135,7 +135,7 @@ bash scripts/ds_finetune_superglue_prompt.sh \
   [tasks/superglue/pvp.py](tasks/superglue/pvp.py) for the cloze question. More details can be found 
   [here](tasks/superglue/README.md).
 
-### Text Summarization
+### Seq2Seq
 
 - Download the [Gigaword](https://github.com/harvardnlp/sent-summary), [CNN/Daily Mail](https://github.com/artmatsak/cnn-dailymail) or [XSum](https://github.com/EdinburghNLP/XSum/tree/master/XSum-Dataset) dataset and check the experiment setup in 
   [scripts/ds_finetune_seq2seq.sh](scripts/ds_finetune_seq2seq.sh). Change `DATA_ROOT, CHECKPOINT_PATH, SAVE_PATH` to your 
@@ -153,6 +153,16 @@ bash scripts/ds_finetune_superglue_prompt.sh \
   bash scripts/evaluate_seq2seq.sh \
    ./runs/experiment_name/test.jsonl.hyps ./runs/experiment_name/test.jsonl.refs
   ```
+#### Train with your own data
+Process your seq2seq data into `{split}.source` and `{split}.target`, with each line being the context or the target of a sample, and `split` being `train`, `val`, and `test`. 
+
+Run the following script
+```shell
+bash scripts/ds_finetune_seq2seq.sh \ 
+   config_tasks/model_blocklm_10B.sh \ 
+   config_tasks/seq_customization.sh
+```
+You can specify the hyperparameters in `config_tasks/seq_customization.sh` and `config_tasks/config_blocklm_10B_cnndm.json`
 
 ### Language Modeling
 #### LAMBADA Cloze Accuracy

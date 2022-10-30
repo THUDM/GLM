@@ -3,7 +3,6 @@ TASK_NAME=squad_generation
 DATA_PATH="/dataset/c07bd62b/nqg/raw"
 
 TRAIN_ARGS="--epochs 10 \
-            --batch-size 8 \
             --lr 2e-5 \
             --lr-decay-style linear \
             --warmup 0.06 \
