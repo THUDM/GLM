@@ -81,6 +81,7 @@ model = AutoModelForSeq2SeqLM.from_pretrained("BAAI/glm-10b", trust_remote_code=
 model = model.half().cuda()
 
 inputs = tokenizer("Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.", return_tensors="pt")
+inputs = tokenizer.build_inputs_for_generation(inputs, max_gen_length=512, mask_id=tokenizer.mask_token_id)
 inputs = {key: value.cuda() for key, value in inputs.items()}
 inputs["generation_attention_mask"] = inputs["generation_attention_mask"].half()
 outputs = model.generate(**inputs, max_length=512, eos_token_id=tokenizer.eop_token_id, num_beams=4)
