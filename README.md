@@ -18,58 +18,58 @@ Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM
 ## Pretrained Models
 You can download the pretrained models used in the paper from [OneDrive](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR) or [Tsinghua-Cloud](https://cloud.tsinghua.edu.cn/d/13f5b03da9594e5490c4).
 
-| Name | Params | File                                                                                                               | Config
-|  -----  |--------|--------------------------------------------------------------------------------------------------------------------| ----
-| GLM-Base | 110M   | glm-base-blank.tar.bz2                                                                                             | model_blocklm_base.sh
-| GLM-Large  | 335M   | glm-large-blank.tar.bz2                                                                                            | model_blocklm_large.sh
-| GLM-Large-Chinese  | 335M   | glm-large-chinese.tar.bz2                                                                                          | model_blocklm_large_chinese.sh
-| GLM-Large (multi-task) | 335M   | glm-large-generation.tar.bz2                                                                                       | model_blocklm_large_generation.sh
-| GLM-410M (multi-task) | 410M   | glm-1.25-generation.tar.bz2                                                                                        | model_blocklm_1.25_generation.sh
-| GLM-515M (multi-task) | 515M   | glm-1.5-generation.tar.bz2                                                                                         | model_blocklm_1.5_generation.sh
-| GLM-RoBERTa | 335M   | glm-roberta-large-blank.tar.bz2                                                                                    | model_blocklm_roberta_large.sh
-| GLM-2B | 2B     | glm-2b.tar.bz2                                                                                                     | model_blocklm_2B.sh
-| GLM-XXLarge | 10B    | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-XXLarge-10B-en.tar.bz2) | model_blocklm_10B.sh
-| GLM-XXLarge-Chinese | 10B    | [apply here](https://wudaoai.cn/model/download?resourceId=1420992103650996224&filename=GLM-10B-zh.tar.bz2)         | model_blocklm_10B_chinese.sh
+| Name                   | Params | File                                                               | Config                            |
+|------------------------|--------|--------------------------------------------------------------------|-----------------------------------|
+| GLM-Base               | 110M   | glm-base-blank.tar.bz2                                             | model_blocklm_base.sh             |
+| GLM-Large              | 335M   | glm-large-blank.tar.bz2                                            | model_blocklm_large.sh            |
+| GLM-Large-Chinese      | 335M   | glm-large-chinese.tar.bz2                                          | model_blocklm_large_chinese.sh    |
+| GLM-Large (multi-task) | 335M   | glm-large-generation.tar.bz2                                       | model_blocklm_large_generation.sh |
+| GLM-410M (multi-task)  | 410M   | glm-1.25-generation.tar.bz2                                        | model_blocklm_1.25_generation.sh  |
+| GLM-515M (multi-task)  | 515M   | glm-1.5-generation.tar.bz2                                         | model_blocklm_1.5_generation.sh   |
+| GLM-RoBERTa            | 335M   | glm-roberta-large-blank.tar.bz2                                    | model_blocklm_roberta_large.sh    |
+| GLM-2B                 | 2B     | glm-2b.tar.bz2                                                     | model_blocklm_2B.sh               |
+| GLM-10B                | 10B    | [Download](https://lfs.aminer.cn/misc/cogview/glm-10b-1024.zip)    | model_blocklm_10B.sh              |
+| GLM-10B-Chinese        | 10B    | [Download](https://lfs.aminer.cn/misc/cogview/glm-10b-chinese.zip) | model_blocklm_10B_chinese.sh      |
+Unzip the downloaded file into a local folder and set `CHECKPOINT_PATH` in the corresponding scripts to the folder path.
 
 ## Results
 
 ### [SuperGLUE](https://super.gluebenchmark.com)
 dev set, single model, single-task finetuning
 
-|  Model | COPA | WSC | RTE | WiC | CB | MultiRC | BoolQ | ReCoRD |
-|  ----  | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
-| GLM-XXLarge  | 98.0 | 95.2 | 93.1 | 75.7 | 98.7/98.2 | 88.1/63.3 | 88.7 | 94.4/94.0 |
-| [RoBERTa-Large](https://github.com/pytorch/fairseq/tree/master/examples/roberta) | 94.0 | 91.3 | 86.6 | 75.6 | 98.2/- | 85.7/- | 86.9 |89.5/89.0|
-| [DeBERTa-XXLarge-v2](https://github.com/microsoft/DeBERTa/tree/master/experiments/superglue) | 97.0 | - | 93.5 | - | - | 87.8/63.6 | 88.3 | 94.1/93.7 |
+| Model                                                                                        | COPA | WSC  | RTE  | WiC  | CB        | MultiRC   | BoolQ | ReCoRD    |
+|----------------------------------------------------------------------------------------------|------|------|------|------|-----------|-----------|-------|-----------|
+| GLM-10B                                                                                      | 98.0 | 95.2 | 93.1 | 75.7 | 98.7/98.2 | 88.1/63.3 | 88.7  | 94.4/94.0 |
+| [DeBERTa-XXLarge-v2](https://github.com/microsoft/DeBERTa/tree/master/experiments/superglue) | 97.0 | -    | 93.5 | -    | -         | 87.8/63.6 | 88.3  | 94.1/93.7 |
 
 ### Seq2Seq
 [CNN/Daily Mail](https://github.com/abisee/cnn-dailymail) (test set, no additional data used)
 
-|  Model  | ROUGE-1 | ROUGE-2 | ROUGE-L |
-|  ----  | ---- | ---- | ---- |
-| GLM-XXLarge | **44.7** | 21.4 | **41.4** |
-| T5-11B | 43.5 | **21.6** | 40.7 |
-| PEGASUS-Large | 44.2 | 21.5 | **41.4** |
-| BART-Large | 44.2 | 21.3 | 40.9 |
+| Model         | ROUGE-1  | ROUGE-2  | ROUGE-L  |
+|---------------|----------|----------|----------|
+| GLM-10B       | **44.7** | 21.4     | **41.4** |
+| T5-11B        | 43.5     | **21.6** | 40.7     |
+| PEGASUS-Large | 44.2     | 21.5     | **41.4** |
+| BART-Large    | 44.2     | 21.3     | 40.9     |
 
 [XSum](https://github.com/EdinburghNLP/XSum) (test set, no additional data used)
 
-| Model | ROUGE-1 | ROUGE-2 | ROUGE-L |
-| ---- | ---- | ---- | ---- |
-| GLM-XXLarge | **48.9** | **25.7** | **40.4** |
-| PEGASUS-Large | 47.2 | 24.6 | 39.3 |
-| BART-Large | 45.1 | 22.3 | 37.3 |
+| Model         | ROUGE-1  | ROUGE-2  | ROUGE-L  |
+|---------------|----------|----------|----------|
+| GLM-10B       | **48.9** | **25.7** | **40.4** |
+| PEGASUS-Large | 47.2     | 24.6     | 39.3     |
+| BART-Large    | 45.1     | 22.3     | 37.3     |
 
 ### Language Modeling
 test set, zero-shot
 
-| Model | LAMBADA (accuracy) | Wikitext103 (perplexity) |
-| ---- | ---- | ---- |
-| GLM-XXLarge (bi) | 72.35 | 11.33 |
-| GLM-XXLarge (uni) | 67.18 | 12.22 |
-| GPT-2 | 52.66 | 17.48 |
-| Megatron-LM (8.3B) | 66.51 | 10.81 |
-| Turing-NLG | 67.98 | 10.21 |
+| Model              | LAMBADA (accuracy) | Wikitext103 (perplexity) |
+|--------------------|--------------------|--------------------------|
+| GLM-10B (bi)       | 72.35              | 11.33                    |
+| GLM-10B (uni)      | 67.18              | 12.22                    |
+| GPT-2              | 52.66              | 17.48                    |
+| Megatron-LM (8.3B) | 66.51              | 10.81                    |
+| Turing-NLG         | 67.98              | 10.21                    |
 
 ## Get Started
 ### Hugging Face Hub
