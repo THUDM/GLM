@@ -156,7 +156,6 @@ def evaluate(model, dataloader, eval_metric, args):
     totals = torch.cuda.FloatTensor([total_output, total_count, total_tokens])
     torch.distributed.all_reduce(totals, group=mpu.get_data_parallel_group())
     total_output, total_count, total_tokens = totals.tolist()
-    print(total_tokens)
     return {eval_metric: total_output}, total_count
 
 
