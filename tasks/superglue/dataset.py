@@ -75,6 +75,7 @@ class MultiChoiceDataset(Dataset):
                 item["idx"] = str(idx)
                 self.example_list.append(item)
         self.examples = {example["idx"]: example for example in self.example_list}
+        print_rank_0(f"Creating {len(self.example_list)} examples")
         self.dataset_name = "multichoice-" + os.path.basename(path).split(".")[0]
 
     def __len__(self):
