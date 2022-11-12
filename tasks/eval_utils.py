@@ -121,14 +121,7 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
     """Calculate correct over total answers and return prediction if the
     `output_predictions` is true."""
     model.eval()
-    port = get_spare_port(args)
-    print_rank_0(f"Using port {port}")
-    store = torch.distributed.TCPStore(args.master_ip, port,
-                                       torch.distributed.get_world_size(),
-                                       torch.distributed.get_rank() == 0, datetime.timedelta(seconds=30))
-    # file_path = os.path.join("/cache", args.experiment_name + "_store")
-    # print_rank_0(f"Using file store at {file_path}")
-    # store = torch.distributed.FileStore(file_path, torch.distributed.get_world_size())
+    results = {}
     with torch.no_grad():
         # For all the batches in the dataset.
         for _, batch in enumerate(dataloader):
@@ -197,12 +190,17 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
                 predicted = [1 if pred == 0 else 0 for pred in predicted]
             if mpu.get_model_parallel_rank() == 0:
                 for uid, prediction, label in zip(uid_list, predicted, labels):
-                    store.set(uid, str((prediction, label)))
+                    results[uid] = (prediction, label)
     model.train()
     torch.distributed.barrier()
+    results_gathered = [None for _ in range(mpu.get_data_parallel_world_size())]
+    torch.distributed.all_gather_object(results_gathered, results, group=mpu.get_data_parallel_group())
+    results = {}
+    for result in results_gathered:
+        results.update(result)
     predictions, labels, examples = [], [], []
     for uid, example in example_dict.items():
-        prediction, label = eval(store.get(uid))
+        prediction, label = results[uid]
         predictions.append(prediction)
         labels.append(label)
         examples.append(example)
