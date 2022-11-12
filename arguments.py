@@ -41,7 +41,7 @@ def add_model_config_args(parser):
     group.add_argument('--num-attention-heads', type=int, default=16,
                        help='num of transformer attention heads')
     group.add_argument('--hidden-size', type=int, default=1024,
-                       help='tansformer hidden size')
+                       help='transformer hidden size')
     group.add_argument('--intermediate-size', type=int, default=None,
                        help='transformer embedding dimension for FFN'
                             'set to 4*`--hidden-size` if it is None')
@@ -66,7 +66,7 @@ def add_model_config_args(parser):
                             'models larger than BERT-Large.')
     group.add_argument('--make-vocab-size-divisible-by', type=int, default=128,
                        help='Pad the vocab size to be divisible by this value.'
-                            'This is added for computational efficieny reasons.')
+                            'This is added for computational efficiency reasons.')
     group.add_argument('--cpu-optimizer', action='store_true',
                        help='Run optimizer on CPU')
     group.add_argument('--cpu_torch_adam', action='store_true',
@@ -125,7 +125,7 @@ def add_training_args(parser):
     group.add_argument('--deepspeed-activation-checkpointing', action='store_true',
                        help='uses activation checkpointing from deepspeed')
     group.add_argument('--epochs', type=int, default=None,
-                       help='Number of finetunning epochs. Zero results in evaluation only.')
+                       help='Number of finetuning epochs. Zero results in evaluation only.')
     group.add_argument('--clip-grad', type=float, default=1.0,
                        help='gradient clipping')
     group.add_argument('--train-iters', type=int, default=0,
@@ -137,9 +137,9 @@ def add_training_args(parser):
     group.add_argument('--seed', type=int, default=1234, help='random seed')
     # Batch producer arguments
     group.add_argument('--reset-position-ids', action='store_true',
-                       help='Reset posistion ids after end-of-document token.')
+                       help='Reset position ids after end-of-document token.')
     group.add_argument('--reset-attention-mask', action='store_true',
-                       help='Reset self attention maske after '
+                       help='Reset self attention masks after '
                             'end-of-document token.')
 
     # Learning rate.
@@ -227,7 +227,7 @@ def add_evaluation_args(parser):
                        help='Data Loader batch size for evaluation datasets.'
                             'Defaults to `--batch-size`')
     group.add_argument('--eval-iters', type=int, default=100,
-                       help='number of iterations to run for evaluation'
+                       help='number of iterations to run for evaluation/'
                             'validation/test for')
     group.add_argument('--eval-interval', type=int, default=1000,
                        help='interval between running evaluation on validation set')
@@ -338,8 +338,8 @@ def add_data_args(parser):
     group.add_argument('--mem-length', type=int, default=0,
                        help="The memory length to preserve")
     group.add_argument('--max-preds-per-seq', type=int, default=None,
-                       help='Maximum number of predictions to use per sequence.'
-                            'Defaults to math.ceil(`--seq-length`*.15/10)*10.'
+                       help='Maximum number of predictions to use per sequence. '
+                            'Defaults to math.ceil(`--seq-length`*.15/10)*10. '
                             'MUST BE SPECIFIED IF `--use-tfrecords` is True.')
     group.add_argument('--non-sentence-start', type=float, default=0.0)
     group.add_argument('--sample-one-document', action='store_true', help='only sample one document in one sample')
@@ -347,7 +347,7 @@ def add_data_args(parser):
     group.add_argument('--save-splits', type=str, default=None, help="The path to save split indices to")
     group.add_argument('--save-test-data', type=str, default=None, help="The path to save the test data")
     group.add_argument('--multi-task-data', nargs='*', default=None,
-                       help="Downsteam task names for multi-task pre-training")
+                       help="Downstream task names for multi-task pre-training")
     group.add_argument('--multi-task-ratio', type=float, default=0.0, help="Ratio for multi-task pre-training")
     group.add_argument('--multi-seq-length', type=int, default=None)
     group.add_argument('--multi-batch-size', type=int, default=None)
