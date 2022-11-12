@@ -208,6 +208,19 @@ bash scripts/ds_finetune_seq2seq.sh \
 You can specify the hyperparameters in `config_tasks/seq_customization.sh`
 and `config_tasks/config_blocklm_10B_cnndm.json`
 
+
+### Multiple Choice (Zero-shot)
+```shell
+bash scripts/evaluate_multichoice.sh config_tasks/model_blocklm_10B.sh
+```
+Note that `CHECKPOINT_PATH` and `DATA_PATH` need to be changed to your local path.
+
+The format of each line of the data file should be
+```
+{"inputs_pretokenized": "Context and question here", "choices_pretokenized": ["Choice 1", "Choice 2", "Choice 3"], "label": int}
+```
+
+
 ### Language Modeling
 
 #### LAMBADA Cloze Accuracy
