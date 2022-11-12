@@ -109,7 +109,7 @@ def add_training_args(parser):
 
     group = parser.add_argument_group('train', 'training configurations')
 
-    group.add_argument('--experiment-name', type=str, default="gpt-345M",
+    group.add_argument('--experiment-name', type=str, default="glm",
                        help="The experiment name for summary and checkpoint")
     group.add_argument('--batch-size', type=int, default=4,
                        help='Data Loader batch size')

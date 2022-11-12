@@ -32,7 +32,7 @@ import numpy as np
 from tasks.data_utils import InputExample
 from utils import print_rank_0
 from tasks.superglue.pvp import PVPS
-from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add
+from tasks.data_utils import build_input_from_ids, build_sample, num_special_tokens_to_add, build_uni_input_from_ids
 from collections import defaultdict
 from data_utils.corpora import punctuation_standardization
 
@@ -46,11 +46,85 @@ SPLIT_TYPES = [TRAIN_SET, DEV_SET, TEST_SET, TRUE_DEV_SET, UNLABELED_SET]
 
 
 def get_output_func(task_name, args):
-    return PROCESSORS[task_name](args).output_prediction
+    def default_output_func(predictions, examples, output_file):
+        with open(output_file, "w") as output:
+            for prediction, example in zip(predictions, examples):
+                data = {"idx": example["idx"], "label": prediction}
+                output.write(json.dumps(data) + "\n")
+    if task_name in PROCESSORS:
+        return PROCESSORS[task_name](args).output_prediction
+    else:
+        return default_output_func
 
 
 def read_tsv(path, **kwargs):
     return pd.read_csv(path, sep='\t', quoting=csv.QUOTE_NONE, dtype=str, na_filter=False, **kwargs)
+
+
+class MultiChoiceDataset(Dataset):
+    def __init__(self, args, path, tokenizer, seq_length):
+        args.variable_num_choices = True
+        self.args = args
+        self.tokenizer = tokenizer
+        self.seq_length = seq_length
+        self.unidirectional = args.unidirectional
+        self.example_list = []
+        with open(path, "r", encoding="utf-8") as file:
+            for idx, line in enumerate(file):
+                item = json.loads(line)
+                item["idx"] = str(idx)
+                self.example_list.append(item)
+        self.examples = {example["idx"]: example for example in self.example_list}
+        print_rank_0(f"Creating {len(self.example_list)} examples")
+        self.dataset_name = "multichoice-" + os.path.basename(path).split(".")[0]
+
+    def __len__(self):
+        return len(self.example_list)
+
+    def get_tokenized_input(self, item, key):
+        if key in item:
+            return item[key]
+        pretokenized_key = key + "_pretokenized"
+        assert pretokenized_key in item
+        if isinstance(item[pretokenized_key], list):
+            result = []
+            for raw in item[pretokenized_key]:
+                result.append(self.tokenizer.EncodeAsIds(raw))
+            return result
+        else:
+            return self.tokenizer.EncodeAsIds(item[pretokenized_key])
+
+    def __getitem__(self, idx):
+        item = self.example_list[idx]
+        inputs = self.tokenizer.EncodeAsIds(item["inputs_pretokenized"])
+        choices = [self.tokenizer.EncodeAsIds(choice) for choice in item["choices_pretokenized"]]
+        label = item["label"]
+        mask_id = self.tokenizer.get_command("gMASK").Id if self.unidirectional else self.tokenizer.get_command("MASK").Id
+        if not self.unidirectional:
+            if mask_id not in inputs:
+                inputs.append(mask_id)
+        max_choice_length = max(map(len, choices))
+        if len(inputs) + max_choice_length + 2 > self.seq_length:
+            text_length = self.seq_length - max_choice_length - 2
+            inputs = inputs[-text_length:]
+        ids_list, positions_list, sep_list, mask_list, target_list = [], [], [], [], []
+        for choice in choices:
+            if not self.unidirectional:
+                data = build_input_from_ids(inputs, None, choice, self.seq_length, self.tokenizer, args=self.args,
+                                            add_cls=True, add_sep=False, add_piece=True, mask_id=mask_id)
+            else:
+                data = build_uni_input_from_ids(inputs, choice, self.seq_length, self.tokenizer, args=self.args,
+                                                add_cls=True, add_sep=False, mask_id=mask_id)
+            ids, types, paddings, position_ids, sep, target_ids, loss_masks = data
+            ids_list.append(ids)
+            positions_list.append(position_ids)
+            sep_list.append(sep)
+            target_list.append(target_ids)
+            mask_list.append(loss_masks)
+        sample = build_sample(ids_list, positions=positions_list, masks=sep_list, label=label,
+                              logit_mask=mask_list, target=target_list,
+                              unique_id=item["idx"])
+        return sample
 
 
 class SuperGlueDataset(Dataset):

@@ -17,12 +17,13 @@
 
 from collections import OrderedDict
 from finetune_glm import finetune
-from tasks.superglue.dataset import SuperGlueDataset, PROCESSORS, get_output_func
+from tasks.superglue.dataset import SuperGlueDataset, MultiChoiceDataset, PROCESSORS, get_output_func
 from tasks.superglue.dataset import CLASSIFICATION_DATASETS, MULTI_CHOICE_DATASETS
 from tasks.superglue.evaluate import qa_exact_match, qa_f1, multirc_em, squad_exact_match, squad_f1
 from tasks.superglue.pvp import PVPS
 from tasks.eval_utils import accuracy_func_provider
 from tasks.eval_utils import accuracy_metric, f1_macro_metric, f1_metric
+from glob import glob
 
 DEFAULT_METRICS = {
     "record": [("EM", qa_exact_match), ("F1", qa_f1)],
@@ -44,6 +45,7 @@ DEFAULT_METRICS = {
     "tnews": [("accuracy", accuracy_metric)],
     "cluewsc": [("accuracy", accuracy_metric)],
     "cmrc": [("accuracy", accuracy_metric)],
+    "multichoice": [("accuracy", accuracy_metric)]
 }
 
 
@@ -63,7 +65,10 @@ def metrics_func_provider(args, tokenizer, is_test):
     """Privde metrics callback function."""
 
     def single_dataset_provider(split):
-        return SuperGlueDataset(args, args.task.lower(), args.data_dir, args.seq_length, split, tokenizer)
+        if args.task == "multichoice":
+            return MultiChoiceDataset(args, split, tokenizer, args.seq_length)
+        else:
+            return SuperGlueDataset(args, args.task.lower(), args.data_dir, args.seq_length, split, tokenizer)
 
     output_func = get_output_func(args.task.lower(), args)
     eval_func = None
@@ -77,10 +82,18 @@ def metrics_func_provider(args, tokenizer, is_test):
 
 def main(args):
     model_kwargs = {}
-    processor = PROCESSORS[args.task.lower()](args)
-    pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
-                                  pattern_id=args.pattern_id, is_multi_token=args.multi_token,
-                                  num_prompt_tokens=args.num_prompt_tokens)
+    if args.task.lower() != "multichoice":
+        processor = PROCESSORS[args.task.lower()](args)
+        pvp = PVPS[args.task.lower()](args, None, processor.get_labels(), args.seq_length,
+                                      pattern_id=args.pattern_id, is_multi_token=args.multi_token,
+                                      num_prompt_tokens=args.num_prompt_tokens)
+    else:
+        patterns = args.test_data
+        datapaths = []
+        for pattern in patterns:
+            for path in glob(pattern, recursive=True):
+                datapaths.append(path)
+        args.test_data = datapaths
     if args.continuous_prompt:
         model_kwargs["spell_length"] = pvp.spell_length
     if args.task.lower() == 'wsc' and args.cloze_eval and not args.wsc_negative:
@@ -88,7 +101,9 @@ def main(args):
         finetune(args, train_valid_datasets_provider, model_kwargs,
                  end_of_epoch_callback_provider=metrics_func_provider, forward_step=lm_forward_step)
     else:
-        if args.cloze_eval:
+        if args.task.lower() == "multichoice":
+            multi_token = True
+        elif args.cloze_eval:
             multi_token = pvp.is_multi_token
         else:
             multi_token = args.task.lower() in MULTI_CHOICE_DATASETS
