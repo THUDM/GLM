@@ -24,7 +24,7 @@ run_cmd="${DISTRIBUTED_ARGS} finetune_glm.py \
        --experiment-name ${EXPERIMENT_NAME} \
        --task ${TASK_NAME} \
        --data-dir ${DATA_PATH} \
-       --save ${CHECKPOINT_PATH} \
+       --save ${SAVE_PATH} \
        --checkpoint-activations \
        --num-workers 1 \
        --no-load-lr-scheduler \
