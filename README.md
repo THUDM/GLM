@@ -23,18 +23,18 @@ You can download the pretrained models used in the paper
 from [OneDrive](https://mailstsinghuaeducn-my.sharepoint.com/:f:/g/personal/duzx16_mails_tsinghua_edu_cn/Eg8MZe62MlVFs_mK2tHaH-sBC-UC01jpGPZop08pID7sOw?e=MsevNR)
 or [Tsinghua-Cloud](https://cloud.tsinghua.edu.cn/d/13f5b03da9594e5490c4).
 
-| Name              | Params | Language | Objective      | File                                                               | Config                            |
-|-------------------|--------|----------|----------------|--------------------------------------------------------------------|-----------------------------------|
-| GLM-Base          | 110M   | English  | Token          | glm-base-blank.tar.bz2                                             | model_blocklm_base.sh             |
-| GLM-Large         | 335M   | English  | Token          | glm-large-blank.tar.bz2                                            | model_blocklm_large.sh            |
-| GLM-Large-Chinese | 335M   | Chinese  | Token+Sent+Doc | glm-large-chinese.tar.bz2                                          | model_blocklm_large_chinese.sh    |
-| GLM-Doc           | 335M   | English  | Token+Doc      | glm-large-generation.tar.bz2                                       | model_blocklm_large_generation.sh |
-| GLM-410M          | 410M   | English  | Token+Doc      | glm-1.25-generation.tar.bz2                                        | model_blocklm_1.25_generation.sh  |
-| GLM-515M          | 515M   | English  | Token+Doc      | glm-1.5-generation.tar.bz2                                         | model_blocklm_1.5_generation.sh   |
-| GLM-RoBERTa       | 335M   | English  | Token          | glm-roberta-large-blank.tar.bz2                                    | model_blocklm_roberta_large.sh    |
-| GLM-2B            | 2B     | English  | Token+Sent+Doc | glm-2b.tar.bz2                                                     | model_blocklm_2B.sh               |
-| GLM-10B           | 10B    | English  | Token+Sent+Doc | [Download](https://lfs.aminer.cn/misc/cogview/glm-10b-1024.zip)    | model_blocklm_10B.sh              |
-| GLM-10B-Chinese   | 10B    | Chinese  | Token+Sent+Doc | [Download](https://lfs.aminer.cn/misc/cogview/glm-10b-chinese.zip) | model_blocklm_10B_chinese.sh      |
+| Name              | Params | Language | Corpus                                   | Objective       | File                                                               | Config                            |
+|-------------------|--------|----------|------------------------------------------|-----------------|--------------------------------------------------------------------|-----------------------------------|
+| GLM-Base          | 110M   | English  | Wiki+Book                                | Token           | glm-base-blank.tar.bz2                                             | model_blocklm_base.sh             |
+| GLM-Large         | 335M   | English  | Wiki+Book                                | Token           | glm-large-blank.tar.bz2                                            | model_blocklm_large.sh            |
+| GLM-Large-Chinese | 335M   | Chinese  | Wiki+Book                                | Token+Sent+Doc  | glm-large-chinese.tar.bz2                                          | model_blocklm_large_chinese.sh    |
+| GLM-Doc           | 335M   | English  | Wiki+Book                                | Token+Doc       | glm-large-generation.tar.bz2                                       | model_blocklm_large_generation.sh |
+| GLM-410M          | 410M   | English  | Wiki+Book                                | Token+Doc       | glm-1.25-generation.tar.bz2                                        | model_blocklm_1.25_generation.sh  |
+| GLM-515M          | 515M   | English  | Wiki+Book                                | Token+Doc       | glm-1.5-generation.tar.bz2                                         | model_blocklm_1.5_generation.sh   |
+| GLM-RoBERTa       | 335M   | English  | RoBERTa                                  | Token           | glm-roberta-large-blank.tar.bz2                                    | model_blocklm_roberta_large.sh    |
+| GLM-2B            | 2B     | English  | [Pile](https://arxiv.org/abs/2101.00027) | Token+Sent+Doc  | glm-2b.tar.bz2                                                     | model_blocklm_2B.sh               |
+| GLM-10B           | 10B    | English  | [Pile](https://arxiv.org/abs/2101.00027) | Token+Sent+Doc  | [Download](https://lfs.aminer.cn/misc/cogview/glm-10b-1024.zip)    | model_blocklm_10B.sh              |
+| GLM-10B-Chinese   | 10B    | Chinese  | [WuDaoCorpora](https://www.sciencedirect.com/science/article/pii/S2666651021000152) |  Token+Sent+Doc | [Download](https://lfs.aminer.cn/misc/cogview/glm-10b-chinese.zip) | model_blocklm_10B_chinese.sh      |
 
 Unzip the downloaded file into a local folder and set `CHECKPOINT_PATH` in the corresponding scripts to the folder path.
 
