@@ -79,7 +79,7 @@ test set, zero-shot
 
 ### Hugging Face Hub
 
-You can access GLM-10B via [Hugging Face Hub](https://huggingface.co/BAAI/glm-10b).
+You can access GLM-10B via [Hugging Face Hub](https://huggingface.co/BAAI/glm-10b). Please install `transformers>=4.23.1`.
 
 ```python
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
