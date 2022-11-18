@@ -5,7 +5,8 @@ various natural language understanding and generation tasks.
 
 Please refer to our paper for a detailed description of GLM:
 
-[GLM: General Language Model Pretraining with Autoregressive Blank Infilling](https://arxiv.org/abs/2103.10360) (ACL 2022)
+[GLM: General Language Model Pretraining with Autoregressive Blank Infilling](https://arxiv.org/abs/2103.10360) (ACL
+2022)
 
 Zhengxiao Du*, Yujie Qian*, Xiao Liu, Ming Ding, Jiezhong Qiu, Zhilin Yang, Jie Tang (*: equal contribution)
 
@@ -79,7 +80,9 @@ test set, zero-shot
 
 ### Hugging Face Hub
 
-You can access GLM-10B via [Hugging Face Hub](https://huggingface.co/BAAI/glm-10b). Please install `transformers>=4.23.1`.
+You can access [GLM-10B](https://huggingface.co/BAAI/glm-10b)
+and [GLM-10B-Chinese](https://huggingface.co/BAAI/glm-10b-chinese) via HuggingFace Hub. Please
+install `transformers>=4.23.1`.
 
 ```python
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
@@ -91,10 +94,9 @@ model = model.half().cuda()
 inputs = tokenizer(
     "Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.",
     return_tensors="pt")
-inputs = tokenizer.build_inputs_for_generation(inputs, max_gen_length=512, mask_id=tokenizer.mask_token_id)
+inputs = tokenizer.build_inputs_for_generation(inputs, max_gen_length=512)
 inputs = {key: value.cuda() for key, value in inputs.items()}
-inputs["generation_attention_mask"] = inputs["generation_attention_mask"].half()
-outputs = model.generate(**inputs, max_length=512, eos_token_id=tokenizer.eop_token_id, num_beams=4)
+outputs = model.generate(**inputs, max_length=512, eos_token_id=tokenizer.eop_token_id)
 print(tokenizer.decode(outputs[0].tolist()))
 ```
 
@@ -127,6 +129,7 @@ dependencies by `pip install -r requirements.txt`
   git clone https://github.com/THUDM/GLM
   cd GLM
   ```
+
 ### Model Parallelism
 
 If your encounter the `CUDA out of memory` error, which means you GPU memory is limited, you can try the model
@@ -153,12 +156,14 @@ We provide scripts for finetuning GLM on some downstream tasks.
 bash scripts/generate_block.sh \
      config_tasks/model_blocklm_10B_chinese.sh
 ```
-Some models (GLM-2B, GLM-10B, and GLM-10B-Chinese) use three different mask tokens: `[MASK]` for short blank filling, `[sMASK]` for sentence filling, and `[gMASK]` for left-to-right generation.
+
+Some models (GLM-2B, GLM-10B, and GLM-10B-Chinese) use three different mask tokens: `[MASK]` for short blank
+filling, `[sMASK]` for sentence filling, and `[gMASK]` for left-to-right generation.
 
 <details>
 <summary><b>Examples</b></summary>
 
-#### Entity Prediction:
+#### Usage of `[MASK]` (Entity Prediction):
 
 ##### Example1
 
@@ -173,7 +178,7 @@ Context: 凯旋门位于意大利米兰市古城堡旁。1807年为纪念[MASK]�
 
 GLM:拿破仑军队攻克米兰城
 
-#### Sentence Prediction
+#### Usage of `[sMASK]` (Sentence Prediction)
 
 ##### Example3
 
@@ -198,7 +203,7 @@ Internet）是新一代信息通信技术与工业经济深度融合的新型基
 
 GLM: 工业互联网是制造业技术、管理、模式的重大变革,是推动互联网、大数据、人工智能和实体经济深度融合的重要载体,是建设制造强国和网络强国的重要基础。
 
-#### Long Text Generation
+#### Usage of `[gMASK]` (Long Text Generation)
 
 ##### Example5 (Chinese)
 
@@ -283,18 +288,19 @@ bash scripts/ds_finetune_seq2seq.sh \
 You can specify the hyperparameters in `config_tasks/seq_customization.sh`
 and `config_tasks/config_blocklm_10B_cnndm.json`
 
-
 ### Multiple Choice (Zero-shot)
+
 ```shell
 bash scripts/evaluate_multichoice.sh config_tasks/model_blocklm_10B.sh
 ```
+
 Note that `CHECKPOINT_PATH` and `DATA_PATH` need to be changed to your local path.
 
 The format of each line of the data file should be
+
 ```
 {"inputs_pretokenized": "Context and question here", "choices_pretokenized": ["Choice 1", "Choice 2", "Choice 3"], "label": int}
 ```
-
 
 ### Language Modeling
 
@@ -357,6 +363,7 @@ in [data_utils/corpora.py](data_utils/corpora.py). The hyperparameters of the op
 json file under `config`. The semantics of the json file can be found [here](https://www.deepspeed.ai/docs/config-json).
 
 ## Citation
+
 Part of the code is based on [Megatron-LM](https://github.com/NVIDIA/Megatron-LM)
 and [PET](https://github.com/timoschick/pet).
 
