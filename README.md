@@ -216,6 +216,27 @@ GLM:
 青岛,青岛的冬天是青岛最舒服的时候,青岛有很多海滨浴场,冬天去海边泡一泡温泉,然后晒晒太阳是一件十分惬意的事情。青岛也有沙滩,冬天在沙滩上晒晒太阳,看看海,再玩玩沙滩游戏,感觉十分快乐的事。
 </details>
 
+You can also add multiple `[MASK]` and `[sMASK]` in a single example. The model will fill the blanks one by one from left to right. The answer to each blank always begins with a special `<|startofpiece|>`.
+
+<details>
+<summary><b>Examples</b></summary>
+
+##### Example1
+
+Context: There have been various types of pretraining architectures including autoencoding models (e.g., BERT), autoregressive models (e.g., GPT), and [MASK] (e.g., T5). [sMASK] We propose a General Language Model ( GLM) based on autoregressive blank infilling to address this challenge. GLM improves blank filling pretraining by adding 2D positional encodings and allowing an arbitrary order to predict spans, which results in performance gains over [MASK] on NLU tasks. Meanwhile, GLM can be pretrained for different types of tasks by varying the number and lengths of blanks. On a wide range of tasks across NLU, conditional and [MASK], GLM outperforms BERT, T5, and GPT given the same model sizes and data, and achieves the best performance from a single pretrained model with 1.25× parameters of BERT Large , demonstrating its generalizability to different downstream tasks.
+
+GLM: <|startofpiece|> blank filling models<|startofpiece|> However, most of them cannot easily transfer to other downstream tasks due to the different characteristics of these tasks.<|startofpiece|> other pretrained models<|startofpiece|> unconditional reading, and semantic role labeling tasks
+
+##### Example2 (Chinese)
+
+Context: 工业互联网（Industrial Internet）是新一代[MASK]与[MASK]深度融合的新型基础设施、应用模式和工业生态，通过对人、机、物、系统等的全面连接，构建起覆盖全产业链、全价值链的全新制造和服务体系，为工业乃至产业数字化、网络化、智能化发展提供了实现途径，是第四次工业革命的重要基石。[sMASK] 它以网络为基础、平台为中枢、数据为要素、安全为保障，既是工业数字化、网络化、智能化转型的基础设施，也是互联网、大数据、人工智能与实体经济深度融合的应用模式，同时也是一种新业态、新产业，将重塑企业形态、供应链和产业链。当前，工业互联网融合应用向国民经济重点行业广泛拓展，形成[MASK]、智能化制造、[MASK]、个性化定制、服务化延伸、数字化管理六大新模式，赋能、赋智、赋值作用不断显现，有力的促进了实体经济提质、增效、降本、绿色、安全发展。
+
+GLM:
+<|startofpiece|>信息技术(ICT)<|startofpiece|>工业经济(II2O)<|startofpiece|>我国工业互联网是面向工业全领域、全流程、全体系的互联网,具有多产业、多领域融合的特点。<|startofpiece|>网络化协同<|startofpiece|>平台企业
+
+</details>
+
+
 ### SuperGLUE
 
 - Download the [SuperGlue](https://super.gluebenchmark.com/tasks) data and check the experiment setup in
