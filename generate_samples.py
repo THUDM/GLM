@@ -305,7 +305,7 @@ def generate_samples(model, tokenizer, args, device):
                 os.system('clear')
                 print("\nTaken time {:.2f}\n".format(time.time() - start_time), flush=True)
                 print("\nContext:", raw_text, flush=True)
-                decode_tokens = tokenizer.DecodeIds(output_tokens_list.tolist())
+                decode_tokens = tokenizer.DecodeIds(output_tokens_list[context_length:].tolist())
                 trim_decode_tokens = decode_tokens
                 print("\nGLM:", trim_decode_tokens, flush=True)
                 output.write(trim_decode_tokens + "\n")
