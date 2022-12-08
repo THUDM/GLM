@@ -83,20 +83,46 @@ test set, zero-shot
 You can access [GLM-10B](https://huggingface.co/BAAI/glm-10b), [GLM-10B-Chinese](https://huggingface.co/BAAI/glm-10b-chinese), [GLM-RoBERTa-Large](https://huggingface.co/BAAI/glm-roberta-large), and [GLM-Large-Chinese](https://huggingface.co/BAAI/glm-large-chinese) via HuggingFace Hub. Please
 install `transformers>=4.23.1`.
 
+#### Generation
 ```python
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
 tokenizer = AutoTokenizer.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
 model = AutoModelForSeq2SeqLM.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
 model = model.half().cuda()
+model.eval()
 
-inputs = tokenizer(
-    "Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.",
-    return_tensors="pt")
+# Inference
+inputs = tokenizer("Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.", return_tensors="pt")
 inputs = tokenizer.build_inputs_for_generation(inputs, max_gen_length=512)
-inputs = {key: value.cuda() for key, value in inputs.items()}
+inputs = inputs.to('cuda')
 outputs = model.generate(**inputs, max_length=512, eos_token_id=tokenizer.eop_token_id)
 print(tokenizer.decode(outputs[0].tolist()))
+
+# Training
+inputs = tokenizer(
+    ["Tsinghua University is located in [MASK].", "One minus one equals zero, is it correct? Answer: [MASK]"],
+    return_tensors="pt", padding=True)
+inputs = tokenizer.build_inputs_for_generation(inputs, targets=["Beijing", "No"], max_gen_length=8)
+inputs = inputs.to('cuda')
+outputs = model(**inputs)
+loss = outputs.loss
+logits = outputs.logits
+```
+#### Classification
+```python
+from transformers import AutoTokenizer, AutoModelForMultipleChoice
+tokenizer = AutoTokenizer.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
+model = AutoModelForMultipleChoice.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
+model = model.half().cuda()
+model.eval()
+
+inputs = tokenizer(["Tsinghua University is located in [MASK].",
+                    "One minus one equals zero, is it correct? Answer: [MASK]"], return_tensors="pt", padding=True)
+choices = [["Beijing", "Shanghai"], ["Yes", "No"]]
+inputs = tokenizer.build_inputs_for_multiple_choice(inputs, choices)
+inputs = inputs.to('cuda')
+outputs = model(**inputs)
+logits = outputs.logits
 ```
 
 ### Docker Image
