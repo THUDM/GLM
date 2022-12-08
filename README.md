@@ -80,8 +80,8 @@ test set, zero-shot
 
 ### Hugging Face Hub
 
-You can access [GLM-10B](https://huggingface.co/BAAI/glm-10b), [GLM-10B-Chinese](https://huggingface.co/BAAI/glm-10b-chinese), [GLM-RoBERTa-Large](https://huggingface.co/BAAI/glm-roberta-large), and [GLM-Large-Chinese](https://huggingface.co/BAAI/glm-large-chinese) via HuggingFace Hub. Please
-install `transformers>=4.23.1`.
+You can access GLM models via HuggingFace Hub. Please
+install `transformers>=4.23.1` and find all the available models [here](https://huggingface.co/models?filter=glm).
 
 #### Generation
 ```python
