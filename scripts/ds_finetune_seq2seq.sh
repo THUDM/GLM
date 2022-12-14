@@ -1,6 +1,6 @@
 DATA_ROOT=/root/data
 CHECKPOINT_PATH="/dataset/c07bd62b/finetune_checkpoints"
-SAVE_PATH=/root/data/finetune_checkpoints
+SAVE_PATH=/home/fengwen/datasets/datafinetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
 source $1    # Model

@@ -1,5 +1,5 @@
 #!/bin/bash
-CHECKPOINT_PATH=/root/data/checkpoints
+CHECKPOINT_PATH=/home/fengwen/datasets/datacheckpoints
 
 source $1
 

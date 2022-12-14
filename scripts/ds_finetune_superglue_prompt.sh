@@ -1,6 +1,6 @@
-DATA_ROOT=/root/data/superglue
-CHECKPOINT_PATH=/root/data/checkpoints
-SAVE_PATH=/root/data/finetune_checkpoints
+DATA_ROOT=/home/fengwen/datasets/datasuperglue
+CHECKPOINT_PATH=/home/fengwen/datasets/datacheckpoints
+SAVE_PATH=/home/fengwen/datasets/datafinetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
 source $1    # Model

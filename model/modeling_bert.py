@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 PRETRAINED_MODEL_ARCHIVE_MAP = {
-    'bert-base-uncased': "/root/data/bert-base-uncased.tar.gz",
+    'bert-base-uncased': "/home/fengwen/datasets/databert-base-uncased.tar.gz",
     'bert-large-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased.tar.gz",
     'bert-base-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-cased.tar.gz",
     'bert-large-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-cased.tar.gz",

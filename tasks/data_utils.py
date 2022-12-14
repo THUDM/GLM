@@ -105,6 +105,7 @@ def num_special_tokens_to_add(text_a_ids, text_b_ids, answer_ids, add_cls, add_s
 
 def build_uni_input_from_ids(text_a_ids, answer_ids, max_seq_length, tokenizer, args=None, add_cls=True,
                          add_sep=False, add_eos=True, mask_id=None):
+    print('build_uni_input_from_ids=====================================================================')
     if mask_id is None:
         mask_id = tokenizer.get_command('MASK').Id
     eos_id = tokenizer.get_command('eos').Id

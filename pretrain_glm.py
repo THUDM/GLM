@@ -267,6 +267,8 @@ def forward_step(data_iterator, model, args, timers, mems):
     if loss_mask.sum().item() > 0:
         loss = loss / loss_mask.sum()
 
+    with open("/home/fengwen/GLM/runs/glm_torch_fp32_loss.txt",'a') as f:
+        f.write(str(loss.item())+'\n')
     return loss, mems, mode
 
 
@@ -320,7 +322,8 @@ def train(model, optimizer, lr_scheduler,
     """Train the model."""
 
     # Turn on training mode which enables dropout.
-    model.train()
+    # model.train()
+    model.eval()
 
     # Tracking loss.
     total_lm_loss = 0.0
@@ -371,11 +374,13 @@ def train(model, optimizer, lr_scheduler,
                             'batch generator', 'data loader'],
                            normalizer=args.log_interval)
         # Checkpointing
-        if args.save and args.save_interval and args.iteration % args.save_interval == 0:
+        # if args.save and args.save_interval and args.iteration % args.save_interval == 0:
+        if False:
             save_checkpoint(args.iteration, model, optimizer, lr_scheduler, args)
 
         # Evaluation
-        if args.eval_interval and args.iteration % args.eval_interval == 0 and args.do_valid:
+        # if args.eval_interval and args.iteration % args.eval_interval == 0 and args.do_valid:
+        if False:
             prefix = 'iteration {}'.format(args.iteration)
             evaluate_and_print_results(
                 prefix, val_data_iterator, model, args, timers, verbose=False, step=args.iteration,

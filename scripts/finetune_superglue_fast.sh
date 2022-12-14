@@ -1,8 +1,8 @@
-DATA_ROOT=/root/data/superglue
+DATA_ROOT=/home/fengwen/datasets/datasuperglue
 source config_tasks/model_blocklm.sh
 source $1
 
-CHECKPOINT_PATH="/root/data/finetune_checkpoints"
+CHECKPOINT_PATH="/home/fengwen/datasets/datafinetune_checkpoints"
 
 MASTER_PORT=$(shuf -n 1 -i 10000-65535)
 DISTRIBUTED_ARGS="--nproc_per_node 4 --nnodes 1 --node_rank 0 --master_addr localhost --master_port $MASTER_PORT"

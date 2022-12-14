@@ -1,6 +1,6 @@
 EXPERIMENT_NAME=${MODEL_TYPE}-cnndm
 TASK_NAME=cnn_dm
-DATA_PATH="/root/data/cnn_dm"
+DATA_PATH="/home/fengwen/datasets/datacnn_dm"
 
 TRAIN_ARGS="--epochs 15 \
             --lr 3e-5 \

@@ -206,7 +206,7 @@ class PromptReader(DataReader):
 
 
 class KeyReader(DataReader):
-    PATH = '/root/data/wikipedia/wiki-key.txt'
+    PATH = '/home/fengwen/datasets/datawikipedia/wiki-key.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
@@ -286,7 +286,7 @@ class zhihu(PromptReader):
 
 
 class zhidao(PromptReader):
-    PATH = "/root/data/zhidao/zhidao"
+    PATH = "/home/fengwen/datasets/datazhidao/zhidao"
     reserve_punct = True
     assert_str = "make sure to set PATH for zhidao data_utils/corpora.py"
     qtitle_prefix = "问题："
@@ -339,7 +339,7 @@ class wikipedia(PromptReader):
     command line usage: `--train-data wikipedia`
     """
     # PATH = '/dataset/data/wiki.txt'
-    PATH = '/root/data/bert_data/wiki.txt'
+    PATH = '/home/fengwen/datasets/databert_data/wiki.txt'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
@@ -349,7 +349,7 @@ class wikipedia(PromptReader):
 
 
 class TestDataset(PromptReader):
-    PATH = '/root/data/test.json'
+    PATH = '/home/fengwen/datasets/datatest.json'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
     def process_line(self, data, tokenizer, tokenize):
@@ -481,11 +481,13 @@ class Stories(PromptReader):
 
 
 class BertBaseData(BertData):
-    PATH = '/root/data/formatted_one_article_per_line'
+    PATH = '/home/fengwen/datasets/dataformatted_one_article_per_line'
 
 
 class BertLargeData(BertData):
-    PATH = '/dataset/c07bd62b/cognitive/zhengxiao/formatted_one_article_per_line_large'
+    # PATH = '/dataset/c07bd62b/cognitive/zhengxiao/formatted_one_article_per_line_large'
+    PATH = '/home/fengwen/datasets/other/dataset/glm_train.txt'
+    print(f"load {PATH=}")
 
 
 class WuDaoCorpus(PromptReader):

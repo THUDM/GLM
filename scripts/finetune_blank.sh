@@ -1,6 +1,6 @@
 DATA_ROOT=/root/data
-CHECKPOINT_PATH=/root/data/checkpoints
-SAVE_PATH=/root/data/finetune_checkpoints
+CHECKPOINT_PATH=/home/fengwen/datasets/datacheckpoints
+SAVE_PATH=/home/fengwen/datasets/datafinetune_checkpoints
 DATESTR=$(date +"%m-%d-%H-%M")
 
 MASK_RATIO=0.1

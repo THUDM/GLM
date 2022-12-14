@@ -30,17 +30,17 @@ CONFIG = [
 TASK_CONFIG = {
     "rte": (
         "--task rte "
-        "--data-dir /root/data/superglue/RTE "
+        "--data-dir /home/fengwen/datasets/datasuperglue/RTE "
         "--seq-length 256 "
         ),
     "cb": (
         "--task cb "
-        "--data-dir /root/data/superglue/CB "
+        "--data-dir /home/fengwen/datasets/datasuperglue/CB "
         "--seq-length 256 "
         ),
     "multirc": (
         "--task multirc "
-        "--data-dir /root/data/superglue/MultiRC "
+        "--data-dir /home/fengwen/datasets/datasuperglue/MultiRC "
         "--seq-length 430 "
         ),
 }
@@ -55,7 +55,7 @@ MODEL_CONFIG = {
         "--max-position-embeddings 512 "
         "--tokenizer-model-type roberta "
         "--tokenizer-type GPT2BPETokenizer "
-        "--load-pretrained /root/data/checkpoints/blocklm-roberta-large/250000 "
+        "--load-pretrained /home/fengwen/datasets/datacheckpoints/blocklm-roberta-large/250000 "
         ),
     "blocklm-base-na": (
         "--block-lm "
@@ -66,11 +66,11 @@ MODEL_CONFIG = {
         "--max-position-embeddings 512 "
         "--tokenizer-model-type bert-base-uncased "
         "--tokenizer-type BertWordPieceTokenizer "
-        "--load-pretrained /root/data/checkpoints/blocklm-base-len6-na03-12-21-21"
+        "--load-pretrained /home/fengwen/datasets/datacheckpoints/blocklm-base-len6-na03-12-21-21"
         ),
 }
 
-CHECKPOINT_PATH = "/root/data/finetune_checkpoints"
+CHECKPOINT_PATH = "/home/fengwen/datasets/datafinetune_checkpoints"
 RESULT_PATH = "runs/{EXPERIMENT_NAME}/results.json"
 LOG_PATH = "logs/"
 
