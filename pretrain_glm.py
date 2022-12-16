@@ -217,6 +217,7 @@ def forward_step(data_iterator, model, args, timers, mems):
     else:
         data = next(data_iterator[0]) if data_iterator[0] else None
     # print_rank_0("data iterator")
+
     timers('data loader').stop()
     tokens, labels, loss_mask, attention_mask, position_ids = get_batch(data, args)
     timers('batch generator').stop()
