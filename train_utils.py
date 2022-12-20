@@ -247,19 +247,40 @@ def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_label
                       spell_length=spell_length)
     
 
-    model.load_state_dict(torch.load("/home/fengwen/datasets/mo.pt"), strict=True)
+    # model.load_state_dict(torch.load("/home/fengwen/datasets/mo.pt"), strict=True)
 
+
+    # param_groups = get_optimizer_param_groups(model)
+    
+    # optimizer = torch.optim.SGD(
+    #         model.parameters(),
+    #         lr=args.lr,
+    #         momentum=0.9,
+    #         weight_decay=0.0,
+    #     )
+    # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100000) 
+    
+
+    # return model, optimizer, lr_scheduler
 
     param_groups = get_optimizer_param_groups(model)
-    
-    optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=args.lr,
-            momentum=0.9,
-            weight_decay=0.0,
-        )
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100000) 
-    
+
+    if args.train_data is not None or args.data_dir is not None and (args.epochs > 0 or args.train_iters > 0):
+        if args.deepspeed:
+            print_rank_0("DeepSpeed is enabled.")
+
+            model, optimizer, _, _ = deepspeed.initialize(
+                model=model,
+                model_parameters=param_groups,
+                args=args,
+                mpu=mpu,
+                dist_init_required=False
+            )
+        else:
+            optimizer = get_optimizer(param_groups, args)
+        lr_scheduler = get_learning_rate_scheduler(optimizer, args)
+    else:
+        optimizer, lr_scheduler = None, None
 
     return model, optimizer, lr_scheduler
 
@@ -321,6 +342,8 @@ def see_memory_usage(message, force=False):
 def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forward_step_func, mems=None,
                single_step=False):
     """Single training step."""
+    # lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
+    # return lm_loss,0,mems
     lm_loss_total, count = 0.0, 0
     mems = [] if mems is None else mems
     if not args.deepspeed:
@@ -328,9 +351,9 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
     while True:
         skipped_iter, complete = 0, False
         # Forward model for one step.
-        timers('forward').start()
+        # timers('forward').start()
         lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
-        timers('forward').stop()
+        # timers('forward').stop()
         # print_rank_0("Forward step")
         if not args.deepspeed:
             lm_loss /= args.gradient_accumulation_steps
@@ -344,12 +367,12 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
             count += 1
 
             # Calculate gradients, reduce across processes, and clip.
-            timers('backward').start()
+            # timers('backward').start()
             backward_step(optimizer, model, lm_loss, args, timers)
-            timers('backward').stop()
+            # timers('backward').stop()
             # print_rank_0("Backward step")
             # Update parameters.
-            timers('optimizer').start()
+            # timers('optimizer').start()
             if args.deepspeed:
                 if model.is_gradient_accumulation_boundary():
                     model.step()
@@ -370,7 +393,7 @@ def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forw
                     else:
                         skipped_iter = 1
             # print_rank_0("Optimizer step")
-            timers('optimizer').stop()
+            # timers('optimizer').stop()
             if complete:
                 break
         else:

@@ -303,6 +303,8 @@ def add_data_args(parser):
                        help='Use loose json (one json-formatted string per '
                             'newline), instead of tight json (data file is one '
                             'json string)')
+    group.add_argument('--print-iter', type=int, default=10,
+                       help='print thoughout')
     group.add_argument('--presplit-sentences', action='store_true',
                        help='Dataset content consists of documents where '
                             'each document consists of newline separated sentences')

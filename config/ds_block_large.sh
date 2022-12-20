@@ -19,7 +19,7 @@ gpt_options=" \
       --seq-length 256 \
       --max-position-embeddings 256 \
       --save /root/data/checkpoints \
-      --train-iters 1000 \
+      --train-iters 250 \
       --resume-dataloader \
       --train-data bert-large \
       --tokenizer-type BertWordPieceTokenizer \
@@ -30,6 +30,7 @@ gpt_options=" \
       --lr-decay-iters 160000 \
       --lr-decay-ratio 0.05 \
       --warmup .05 \
+      # --fp16 \
 "
 # gpt_options="${gpt_options}
 #                --deepspeed \
