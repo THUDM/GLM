@@ -19,7 +19,7 @@ gpt_options=" \
       --seq-length 256 \
       --max-position-embeddings 256 \
       --save /root/data/checkpoints \
-      --train-iters 250 \
+      --train-iters 1000 \
       --resume-dataloader \
       --train-data bert-large \
       --tokenizer-type BertWordPieceTokenizer \

@@ -342,8 +342,7 @@ def see_memory_usage(message, force=False):
 def train_step(data_iterator, model, optimizer, lr_scheduler, args, timers, forward_step_func, mems=None,
                single_step=False):
     """Single training step."""
-    # lm_loss, mems, _ = forward_step_func(data_iterator, model, args, timers, mems)
-    # return lm_loss,0,mems
+
     lm_loss_total, count = 0.0, 0
     mems = [] if mems is None else mems
     if not args.deepspeed:
