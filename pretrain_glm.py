@@ -327,6 +327,14 @@ def train_test_speed(train_data_iterator, model, args, optimizer, lr_scheduler,t
     LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
     RANK = int(os.getenv("RANK", -1))
     WORLD_SIZE = int(os.getenv("WORLD_SIZE", 1))
+    # warmup 10
+    for _ in range(10):
+        loss, skipped_iter, mems = train_step(train_data_iterator,
+                                                        model,
+                                                        optimizer,
+                                                        lr_scheduler,
+                                                        args, timers, mems=mems, forward_step_func=forward_step)
+   
     tb = time.time()
     t0 = time.time()
     skipped_iters = 0
@@ -334,7 +342,6 @@ def train_test_speed(train_data_iterator, model, args, optimizer, lr_scheduler,t
     timers('interval time').start()
     report_memory_flag = True
     mems = []
-
     for _ in range(args.train_iters):
         loss, skipped_iter, mems = train_step(train_data_iterator,
                                                         model,
@@ -683,6 +690,7 @@ def main():
         multi_val_iterator = iter(multi_val_data)
     else:
         multi_val_iterator = None
+    
 
     # TODO: figure out how to properly set this especially when resuming training
     iteration = 0
