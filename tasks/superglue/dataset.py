@@ -98,7 +98,7 @@ class MultiChoiceDataset(Dataset):
         item = self.example_list[idx]
         inputs = self.tokenizer.EncodeAsIds(item["inputs_pretokenized"])
         choices = [self.tokenizer.EncodeAsIds(choice) for choice in item["choices_pretokenized"]]
-        label = item["label"]
+        label = item.get("label", 0)
         mask_id = self.tokenizer.get_command("gMASK").Id if self.unidirectional else self.tokenizer.get_command("MASK").Id
         if not self.unidirectional:
             if mask_id not in inputs:
