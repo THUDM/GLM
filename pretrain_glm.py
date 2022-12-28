@@ -333,7 +333,7 @@ def train_test_speed(train_data_iterator, model, args, optimizer, lr_scheduler,t
                                                         model,
                                                         optimizer,
                                                         lr_scheduler,
-                                                        args, timers, mems=mems, forward_step_func=forward_step)
+                                                        args, timers, mems=[], forward_step_func=forward_step)
    
     tb = time.time()
     t0 = time.time()
@@ -368,7 +368,6 @@ def train_test_speed(train_data_iterator, model, args, optimizer, lr_scheduler,t
     if RANK == 0:
         print(f"avg_though_out: {avg_though_out}, total time: {te - tb}s")
 
-    exit(0)
 def train(model, optimizer, lr_scheduler,
           train_data_iterator, val_data_iterator, timers, args, summary_writer=None):
     """Train the model."""

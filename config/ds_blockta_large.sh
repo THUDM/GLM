@@ -32,7 +32,6 @@ gpt_options=" \
        --warmup .06 \
        --checkpoint-activations \
        --deepspeed-activation-checkpointing \
-       --fp16 \
 "
 gpt_options="${gpt_options}
                --deepspeed \
