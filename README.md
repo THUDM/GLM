@@ -102,7 +102,7 @@ print(tokenizer.decode(outputs[0].tolist()))
 inputs = tokenizer(
     ["Tsinghua University is located in [MASK].", "One minus one equals zero, is it correct? Answer: [MASK]"],
     return_tensors="pt", padding=True)
-inputs = tokenizer.build_inputs_for_generation(inputs, targets=["Beijing", "No"], max_gen_length=8)
+inputs = tokenizer.build_inputs_for_generation(inputs, targets=["Beijing", "No"], max_gen_length=8, padding=False)
 inputs = inputs.to('cuda')
 outputs = model(**inputs)
 loss = outputs.loss
