@@ -247,21 +247,18 @@ def setup_model_and_optimizer(args, model_type=None, multi_token=True, num_label
                       spell_length=spell_length)
     
 
-    model.load_state_dict(torch.load("/home/fengwen/datasets/mo.pt"), strict=True)
-
-
-    param_groups = get_optimizer_param_groups(model)
-    
-    optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=args.lr,
-            momentum=0.9,
-            weight_decay=0.0,
-        )
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100000) 
+    # model.load_state_dict(torch.load("/home/fengwen/datasets/mo.pt"), strict=True)
+    # param_groups = get_optimizer_param_groups(model)
+    # optimizer = torch.optim.SGD(
+    #         model.parameters(),
+    #         lr=args.lr,
+    #         momentum=0.9,
+    #         weight_decay=0.0,
+    #     )
+    # lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100000) 
     
 
-    return model, optimizer, lr_scheduler
+    # return model, optimizer, lr_scheduler
 
     param_groups = get_optimizer_param_groups(model)
 

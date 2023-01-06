@@ -367,7 +367,7 @@ def train_test_speed(train_data_iterator, model, args, optimizer, lr_scheduler,t
     avg_though_out = total_batch_size / (te - tb)
     if RANK == 0:
         print(f"avg_though_out: {avg_though_out}, total time: {te - tb}s")
-
+    exit(0)
 def train(model, optimizer, lr_scheduler,
           train_data_iterator, val_data_iterator, timers, args, summary_writer=None):
     """Train the model."""
