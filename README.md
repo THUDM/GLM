@@ -124,7 +124,7 @@ inputs = inputs.to('cuda')
 outputs = model(**inputs)
 logits = outputs.logits
 ```
-
+You can also convert the finetuned checkpoints with `scripts/convert_glm_checkpoint_to_transformers.py`. 
 ### Docker Image
 
 We prepare two docker images based on CUDA 10.2 and CUDA 11.2. You can pull the pre-built images from Docker Hub and run

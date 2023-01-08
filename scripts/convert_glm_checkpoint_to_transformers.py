@@ -1,3 +1,14 @@
+"""
+You can use `scripts/convert_glm_checkpoint_to_transformers.py` to convert the checkpoint
+```shell
+python scripts/convert_glm_checkpoint_to_transformers.py CHECKPOINT_PATH MODEL_NAME
+```
+where `CHECKPOINT_PATH` is the path to the `mp_rank_00_model_states.pt` file,
+MODEL_NAME is the repo name on huggingface hub
+(should be in `["glm-large", "glm-roberta-large", "glm-large-chinese", "glm-515m", "glm-2b", "glm-10b",
+"glm-10b-chinese"]`).
+The `pytorch_model.bin` will be saved under the same directory as `mp_rank_00_model_states.pt`.
+"""
 import os
 import sys
 import torch
