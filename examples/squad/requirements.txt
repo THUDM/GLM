@@ -1,0 +1,18 @@
+python version is 3.9.15
+curl -O https://repo.anaconda.com/archive/Anaconda3-2022.10-Linux-x86_64.sh
+source ~/.bashrc
+conda create -n py38 python=3.9.15
+
+
+conda install pytorch cudatoolkit -c conda-forge
+pip install transformers==4.24.0 scipy==1.5.0 datasets==2.7.0 promptsource==0.2.3 sentencepiece scikit-learn tqdm jupyterlab
+
+pip install sklearn
+pip install scipy==1.6.1
+
+pip install jupyter ipykernel -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+## other remarks:
+1. sometimes may need compatible numpy==1.21.6
+
+

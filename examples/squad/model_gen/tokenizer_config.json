@@ -1,0 +1,18 @@
+{
+  "name_or_path": "BAAI/glm-roberta-large",
+  "eos_token": "</s>",
+  "pad_token": "</s>",
+  "cls_token": "<s>",
+  "mask_token": "[MASK]",
+  "unk_token": "<unk>",
+  "additional_special_tokens": ["<|startofpiece|>", "<|endofpiece|>"],
+  "add_prefix_space": false,
+  "tokenizer_class": "GLMRobertaTokenizer",
+  "use_fast": false,
+  "auto_map": {
+    "AutoTokenizer": [
+      "tokenization_glm.GLMRobertaTokenizer",
+      null
+      ]
+  }
+}
