@@ -1,0 +1,6 @@
+# actually using amlt-sing rocm5.1.3, with torch1.11.0 installed already
+
+# -f https://download.pytorch.org/whl/rocm4.5.2
+# torch==1.11.0+rocm4.5.2
+# torchvision==0.12.0+rocm4.5.2
+# torchaudio==0.11.0
