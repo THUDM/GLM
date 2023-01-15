@@ -28,7 +28,7 @@ Using the above commands allows us to use the model version from best performing
 
 ## Reference
 
-```latex
+```bibtex
 @inproceedings{saravia-etal-2018-carer,
     title = "{CARER}: Contextualized Affect Representations for Emotion Recognition",
     author = "Saravia, Elvis  and

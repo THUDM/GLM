@@ -28,7 +28,7 @@ Using the above commands allows us to use the model version from best performing
 
 ## Reference
 
-```latex
+```bibtex
 @InProceedings{Pang+Lee:05a,
   author =       {Bo Pang and Lillian Lee},
   title =        {Seeing stars: Exploiting class relationships for sentiment
