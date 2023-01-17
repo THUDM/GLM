@@ -162,6 +162,9 @@ class CommandToken(object):
     def __str__(self):
         return str(COMMAND_TUPLE(self.name, self.token, self.Id))
 
+    def __repr__(self):
+        return str(COMMAND_TUPLE(self.name, self.token, self.Id))
+
 
 DEFAULT_COMMAND_TOKENS = [
     ('pad', 0),
