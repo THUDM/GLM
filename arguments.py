@@ -391,6 +391,7 @@ def add_finetune_config_args(parser):
     group.add_argument('--tune-prefix-layers', type=int, default=None)
     group.add_argument('--prefix-prompt', type=int, default=0)
     group.add_argument('--prompt-init', action='store_true', default=False)
+    group.add_argument('--mask-pad-token', action='store_true')
     return parser
 
 
