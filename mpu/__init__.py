@@ -47,7 +47,5 @@ from .random import partition_activations_in_checkpoint
 from .random import get_cuda_rng_tracker
 from .random import model_parallel_cuda_manual_seed
 
-from .transformer import BertParallelSelfAttention
-from .transformer import BertParallelTransformerLayer
 from .transformer import GPT2ParallelTransformer
 from .transformer import LayerNorm

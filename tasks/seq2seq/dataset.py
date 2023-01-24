@@ -778,11 +778,13 @@ class BlankLMDataset(torch.utils.data.Dataset):
 
 class CustomizationDataset(torch.utils.data.Dataset):
     def __init__(self, args, split, tokenizer):
-        self.args = args
         task, data_dir = args.task.lower(), args.data_dir
         self.max_src_length, self.max_tgt_length = args.src_seq_length, args.tgt_seq_length
         self.split = split
         self.tokenizer = tokenizer
+        self.mask_pad_token = args.mask_pad_token
+        self.no_block_position = args.no_block_position
+        self.task_mask = args.task_mask
         if split == "train":
             filename = "train"
         elif split == "dev":
@@ -820,7 +822,7 @@ class CustomizationDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         example = self.example_list[idx]
         cls_id = self.tokenizer.get_command('ENC').Id
-        mask_token = 'sMASK' if self.args.task_mask else 'MASK'
+        mask_token = 'sMASK' if self.task_mask else 'MASK'
         mask_id = self.tokenizer.get_command(mask_token).Id
         eos_id = self.tokenizer.get_command('eos').Id
         pad_id = self.tokenizer.get_command('pad').Id
@@ -831,6 +833,7 @@ class CustomizationDataset(torch.utils.data.Dataset):
         if len(source_tokens) + 3 > self.max_src_length:
             source_tokens = source_tokens[-(self.max_src_length - 3):]
         source_tokens = [cls_id] + source_tokens + [mask_id, eos_id]
+        context_length = len(source_tokens)
         if len(source_tokens) < self.max_src_length:
             source_tokens = source_tokens + [pad_id] * (self.max_src_length - len(source_tokens))
         sep = len(source_tokens)
@@ -846,17 +849,25 @@ class CustomizationDataset(torch.utils.data.Dataset):
             if len(target_tokens) < self.max_tgt_length:
                 loss_mask += [0] * (self.max_tgt_length - len(target_tokens))
                 target_tokens += [pad_id] * (self.max_tgt_length - len(target_tokens))
+            if self.mask_pad_token:
+                attention_mask = np.zeros((self.max_src_length + self.max_tgt_length,
+                                           self.max_src_length + self.max_tgt_length), dtype=np.int64)
+                attention_mask[:, :context_length] = 1
+                attention_mask[self.max_src_length:, self.max_src_length:] = np.tril(
+                    np.ones((self.max_tgt_length, self.max_tgt_length), dtype=np.int64))
+            else:
+                attention_mask = np.array(sep, dtype=np.int64)
             tokens = source_tokens + [sop_id] + target_tokens[:-1]
             loss_mask = [0] * len(source_tokens) + loss_mask
             target_ids = [0] * len(source_tokens) + target_tokens
             position_ids += [mask_pos] * len(target_tokens)
-            if self.args.no_block_position:
+            if self.no_block_position:
                 block_position_ids += [1] * len(target_tokens)
             else:
                 block_position_ids += list(range(1, len(target_tokens) + 1))
             position_ids = [position_ids, block_position_ids]
             sample = {'text': np.array(tokens, dtype=np.int64), 'target': np.array(target_ids, dtype=np.int64),
-                      'attention_mask': np.array(sep, dtype=np.int64),
+                      'attention_mask': attention_mask,
                       'loss_mask': np.array(loss_mask, dtype=np.int64),
                       "position_id": np.array(position_ids, dtype=np.int64), "uid": example.guid}
         else:
@@ -864,6 +875,13 @@ class CustomizationDataset(torch.utils.data.Dataset):
             position_ids = position_ids + [mask_pos]
             block_position_ids = block_position_ids + [1]
             position_ids = [position_ids, block_position_ids]
-            sample = {'text': np.array(tokens, dtype=np.int64), 'attention_mask': np.array(sep, dtype=np.int64),
+            if self.mask_pad_token:
+                attention_mask = np.zeros((self.max_src_length + 1, self.max_src_length + 1), dtype=np.int64)
+                attention_mask[:, :context_length] = 1
+                attention_mask[-1, -1] = 1
+                attention_mask = attention_mask[None, :, :]
+            else:
+                attention_mask = np.array(sep, dtype=np.int64)
+            sample = {'text': np.array(tokens, dtype=np.int64), 'attention_mask': attention_mask,
                       "position_id": np.array(position_ids, dtype=np.int64), "uid": example.guid}
         return sample

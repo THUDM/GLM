@@ -256,6 +256,7 @@ class DecoderEvaluater:
             'sMASK').Id if args.task_mask and args.task != 'cmrc' else tokenizer.get_command('MASK').Id
         self.pad_token = tokenizer.get_command('pad').Id
         self.processors = LogitsProcessorList()
+        self.mask_pad_token = args.mask_pad_token
         if args.min_tgt_length > 0:
             processor = MinLengthLogitsProcessor(args.min_tgt_length, self.end_token)
             self.processors.append(processor)
@@ -287,6 +288,7 @@ class DecoderEvaluater:
                 beam_scores = beam_scores.view((batch_size * args.num_beams,))
                 # Run the model forward.
                 counter = 0
+                context_length = tokens.size(1)
                 while counter < args.tgt_seq_length:
                     if counter == 0:
                         next_token_logits, *mems = model(tokens, position_ids, attention_mask, return_memory=True)
@@ -302,12 +304,20 @@ class DecoderEvaluater:
                             position_ids[i, :, 0] = mask_pos
                         position_ids = position_ids.reshape(batch_size * args.num_beams, 2, 1)
                         tokens = tokens.new_zeros(batch_size * args.num_beams, 0)
-                        attention_mask = tokens.new_zeros([batch_size * args.num_beams])
                     else:
                         if not args.no_block_position:
                             position_ids[:, 1] = counter + 1
                         last_token = tokens[:, -1:]
-                        next_token_logits, *mems = model(last_token, position_ids, attention_mask, *mems,
+                        if self.mask_pad_token:
+                            cur_attention_mask = attention_mask[:, :, -1:, :].unsqueeze(1).expand(-1, args.num_beams, -1,
+                                                                                                  -1, -1).reshape(
+                                batch_size * args.num_beams, 1, 1, context_length)
+                            cur_attention_mask = torch.cat(
+                                (cur_attention_mask, attention_mask.new_ones((batch_size * args.num_beams, 1, 1, counter))),
+                                dim=-1)
+                        else:
+                            cur_attention_mask = tokens.new_zeros([batch_size * args.num_beams])
+                        next_token_logits, *mems = model(last_token, position_ids, cur_attention_mask, *mems,
                                                          return_memory=True)
                         next_token_logits = next_token_logits[:, -1]
                     next_token_scores = F.log_softmax(next_token_logits, dim=-1)
