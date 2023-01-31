@@ -1,5 +1,5 @@
 #!/bin/bash
-CHECKPOINT_PATH=/root/data/checkpoints
+CHECKPOINT_PATH=/zhangpai21/checkpoints
 
 source $1
 
@@ -27,5 +27,5 @@ python -m torch.distributed.launch --nproc_per_node=$MPSIZE --master_port $MASTE
        --out-seq-length $MAXSEQLEN \
        --seq-length 512 \
        --temperature $TEMP \
-       --top_k $TOPK \
-       --top_p $TOPP
+       --top-k $TOPK \
+       --top-p $TOPP

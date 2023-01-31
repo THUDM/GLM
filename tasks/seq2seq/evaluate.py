@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import mpu
 from utils import print_rank_0
 from generation_utils import BeamSearchScorer, LogitsProcessorList, MinLengthLogitsProcessor, \
-    NoRepeatNGramLogitsProcessor
+    NoRepeatNGramLogitsProcessor, top_k_logits
 from rouge_score import rouge_scorer
 
 
@@ -320,6 +320,7 @@ class DecoderEvaluater:
                         next_token_logits, *mems = model(last_token, position_ids, cur_attention_mask, *mems,
                                                          return_memory=True)
                         next_token_logits = next_token_logits[:, -1]
+                    next_token_logits = top_k_logits(next_token_logits, top_k=args.top_k, top_p=args.top_p)
                     next_token_scores = F.log_softmax(next_token_logits, dim=-1)
                     next_token_scores = self.processors(tokens, next_token_scores)
                     next_token_scores = next_token_scores + beam_scores[:, None].expand_as(next_token_scores)
