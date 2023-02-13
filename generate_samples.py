@@ -52,7 +52,7 @@ def setup_model(args):
         args.no_load_optim = True
         args.load = args.load_pretrained
         _ = load_checkpoint(
-            model, None, None, args)
+            model, None, None, args, no_load_rng=True)
     # if args.deepspeed:
     #     model = model.module
 

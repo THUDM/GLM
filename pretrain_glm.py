@@ -507,7 +507,11 @@ def set_random_seed(seed):
         random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
+        torch.random.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
         mpu.model_parallel_cuda_manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
 
 
 def get_train_val_test_data(args, tokenizer):

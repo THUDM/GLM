@@ -324,7 +324,7 @@ def get_checkpoint_iteration(load_path):
     return load_path, metastring, release, True
 
 
-def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no_load_optim=False):
+def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no_load_optim=False, no_load_rng=False):
     """Load a model checkpoint."""
 
     load_dir, tag, release, success = get_checkpoint_iteration(args.load)
@@ -392,7 +392,7 @@ def load_checkpoint(model, optimizer, lr_scheduler, args, no_deepspeed=False, no
                 iteration = 0
 
     # rng states.
-    if not release and not args.finetune and not args.no_load_rng:
+    if not release and not args.finetune and not args.no_load_rng and not no_load_rng:
         try:
             random.setstate(sd['random_rng_state'])
             np.random.set_state(sd['np_rng_state'])
