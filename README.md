@@ -86,8 +86,8 @@ install `transformers>=4.23.1` and find all the available models [here](https://
 #### Generation
 ```python
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-tokenizer = AutoTokenizer.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
-model = AutoModelForSeq2SeqLM.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("THUDM/glm-10b", trust_remote_code=True)
+model = AutoModelForSeq2SeqLM.from_pretrained("THUDM/glm-10b", trust_remote_code=True)
 model = model.half().cuda()
 model.eval()
 
@@ -111,8 +111,8 @@ logits = outputs.logits
 #### Classification
 ```python
 from transformers import AutoTokenizer, AutoModelForMultipleChoice
-tokenizer = AutoTokenizer.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
-model = AutoModelForMultipleChoice.from_pretrained("BAAI/glm-10b", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("THUDM/glm-10b", trust_remote_code=True)
+model = AutoModelForMultipleChoice.from_pretrained("THUDM/glm-10b", trust_remote_code=True)
 model = model.half().cuda()
 model.eval()
 
@@ -192,8 +192,7 @@ filling, `[sMASK]` for sentence filling, and `[gMASK]` for left-to-right generat
 
 ##### Example1
 
-Context: Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or
-SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.
+Context: Ng is an adjunct professor at [MASK] (formerly associate professor and Director of its Stanford AI Lab or SAIL ). Also a pioneer in online education, Ng co-founded Coursera and deeplearning.ai.
 
 GLM: the stanford university
 
@@ -214,7 +213,7 @@ GLM) based on autoregressive blank infilling to address this challenge. GLM impr
 and T5 on NLU tasks. Meanwhile, GLM can be pretrained for different types of tasks by varying the number and lengths of
 blanks. On a wide range of tasks across NLU, conditional and unconditional generation, GLM outperforms BERT, T5, and GPT
 given the same model sizes and data, and achieves the best performance from a single pretrained model with 1.25×
-parameters of BERT Large , demonstrating its generalizability to different downstream tasks.
+parameters of BERT Large, demonstrating its generalizability to different downstream tasks.
 
 GLM: However, there is a growing need to develop a single pretraining model that is not only good at natural language
 understanding (NLU) or dialog generation/generation (dialog), but is also able to predict other tasks such as sentiment
