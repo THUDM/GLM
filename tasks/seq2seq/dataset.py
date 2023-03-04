@@ -855,6 +855,7 @@ class CustomizationDataset(torch.utils.data.Dataset):
                 attention_mask[:, :context_length] = 1
                 attention_mask[self.max_src_length:, self.max_src_length:] = np.tril(
                     np.ones((self.max_tgt_length, self.max_tgt_length), dtype=np.int64))
+                attention_mask = attention_mask[None, :, :]
             else:
                 attention_mask = np.array(sep, dtype=np.int64)
             tokens = source_tokens + [sop_id] + target_tokens[:-1]
