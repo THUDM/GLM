@@ -1,13 +1,12 @@
 botocore
 boto3
-deepspeed <= 0.5.9
+deepspeed
 filelock
 scipy
 nltk
 regex
 tqdm
 matplotlib
-mpi4py
 pandas
 requests
 sentencepiece
