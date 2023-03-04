@@ -188,9 +188,8 @@ def multichoice_evaluate(model, dataloader, example_dict, args):
             labels = labels_.tolist()
             if args.task.lower() == 'wsc':
                 predicted = [1 if pred == 0 else 0 for pred in predicted]
-            if mpu.get_model_parallel_rank() == 0:
-                for uid, prediction, label in zip(uid_list, predicted, labels):
-                    results[uid] = (prediction, label)
+            for uid, prediction, label in zip(uid_list, predicted, labels):
+                results[uid] = (prediction, label)
     model.train()
     torch.distributed.barrier()
     results_gathered = [None for _ in range(mpu.get_data_parallel_world_size())]
