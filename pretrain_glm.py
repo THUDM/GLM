@@ -486,7 +486,6 @@ def initialize_distributed(args):
     args.master_ip = os.getenv('MASTER_ADDR', 'localhost')
     args.master_port = os.getenv('MASTER_PORT', '6000')
     init_method += args.master_ip + ':' + args.master_port
-    print(init_method)
     if hasattr(deepspeed, "init_distributed"):
         deepspeed.init_distributed(dist_backend=args.distributed_backend)
     else:
