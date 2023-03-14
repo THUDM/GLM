@@ -5,13 +5,13 @@ various natural language understanding and generation tasks.
 
 Please refer to our paper for a detailed description of GLM:
 
-[GLM: General Language Model Pretraining with Autoregressive Blank Infilling](https://arxiv.org/abs/2103.10360) (ACL
-2022)
+[GLM: General Language Model Pretraining with Autoregressive Blank Infilling](https://arxiv.org/abs/2103.10360) (ACL 2022)
 
 Zhengxiao Du*, Yujie Qian*, Xiao Liu, Ming Ding, Jiezhong Qiu, Zhilin Yang, Jie Tang (*: equal contribution)
 
-**We release [GLM-130B](https://github.com/THUDM/GLM-130B), an open bilingual (English & Chinese) pre-trained language
-model wit 130 billion parameters based on the GLM framework.**
+**News: We release [ChatGLM-6B](https://github.com/THUDM/ChatGLM-6B), an open pre-trained language model with 6 billion parameters optimized for Chinese QA and dialogue based on the GLM framework.**
+
+[//]: # (**We release [GLM-130B]&#40;https://github.com/THUDM/GLM-130B&#41;, an open bilingual &#40;English & Chinese&#41; pre-trained language model with 130 billion parameters based on the GLM framework.**)
 
 ## Pretrained Models
 
