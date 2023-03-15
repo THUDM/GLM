@@ -1,0 +1,13 @@
+transformers
+datasets
+sentencepiece
+pytorch-ignite
+
+promptsource
+
+einops
+
+wandb
+loguru
+hydra-core
+omegaconf

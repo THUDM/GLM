@@ -1,0 +1,46 @@
+defaults:
+  - _self_
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+debug: False
+jobname: test
+task: "pc" # pg:generation, pc:choice
+model:
+  # for pg: BAAI/glm-roberta-large,t5-large
+  # for pc: BAAI/glm-roberta-large, bert-large-uncased, roberta-large
+  name: "BAAI/glm-roberta-large" 
+  max_length: 384 # dataset related
+  max_gen_length: 128 # dataset related
+data:
+  dataset: "multi_news" # currently support commonsense_qa, multi_news
+  # dataset: "commonsense_qa" # currently support commonsense_qa, multi_news
+  tokenizer: ${model.name} 
+  max_length: ${model.max_length} 
+  max_gen_length: ${model.max_gen_length} 
+  prompt_id: 0 # id in promptsource original_task=True name_l 
+  answer_prompt: "Answer:"
+optimizer:
+  lr: 1e-5
+  beta1: 0.9
+  beta2: 0.999
+  wd: 0.01
+trainer:
+  batch: 64 # batch in total
+  accumulate_steps: 1
+  epochs: 10
+  lrscheduler: cosine
+  warmup_start: 1e-7
+  warmup_epochs: 1
+  num_workers: 1 # num_workers in total
+  pin_memory: True
+  log_interval: 100
+  qualitative_num: 5
+  checkpoint_dir: "./checkpoints" # path for ckps
+distributed:
+  backend: "nccl"
