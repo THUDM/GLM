@@ -1,0 +1,7 @@
+transformers
+scipy
+datasets
+promptsource
+scikit_learn
+sentencepiece
+tqdm
