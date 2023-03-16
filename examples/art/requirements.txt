@@ -1,0 +1,11 @@
+python==3.9.13
+pytorch==1.13.1
+cuda-toolkit==11.6.1
+transformers==4.24.0 
+scipy==1.5.0 
+datasets==2.7.0 
+promptsource==0.2.3 
+sentencepiece 
+scikit-learn 
+tqdm 
+jupyterlab
