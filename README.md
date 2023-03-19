@@ -80,7 +80,7 @@ test set, zero-shot
 
 ### Hugging Face Hub
 
-You can access GLM models via HuggingFace Hub. Please
+You can access GLM models via Hugging Face Hub. Please
 install `transformers>=4.23.1` and find all the available models [here](https://huggingface.co/models?filter=glm,thudm).
 
 #### Generation
