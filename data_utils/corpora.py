@@ -349,6 +349,11 @@ class wikipedia(PromptReader):
 
 
 class TestDataset(PromptReader):
+    """
+    当 Dataset 有 2 条数据时，/root/data/test.json 的内容应该形似
+    {"prompt":"", "text":""}
+    {"prompt":"", "text":""}
+    """
     PATH = '/root/data/test.json'
     assert_str = "make sure to set PATH for wikipedia data_utils/corpora.py"
 
