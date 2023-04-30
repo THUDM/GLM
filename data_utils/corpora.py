@@ -97,7 +97,16 @@ class DataReader:
     TASK_QUEUE_LIMIT = 10000000
     DONE_QUEUE_LIMIT = 10000000
 
-    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
+    def tokenize_worker(self, q_in: Queue, q_out: Queue, q_info: Queue, tokenizer, tokenize: bool):
+        """
+        此函数为多进程的主入口
+        Args:
+            q_in: 输入队列，一个 item 为一行数据
+            q_out: 结果队列，item 同上
+            q_info: 日志队列，一个 item 为一条日志
+            tokenizer: 来自 configure_data.prepare_tokenizer 的返回值，class 为 data_utils.tokenization.Tokenizer
+            tokenize: 来自 args 的 --no-pre-tokenize
+        """
         raise NotImplementedError
 
     def print_info(self, info):
@@ -111,6 +120,9 @@ class DataReader:
         self.writers = writers
 
     def process(self):
+        """
+        采用生产者、消费者的逻辑，将数据文件按照条进行拆分，详细的逻辑在下面
+        """
         if os.path.isdir(self.PATH):
             paths = [os.path.join(top, name) for top, _, names in os.walk(self.PATH) for name in names]
             # paths = [entry.path for entry in os.scandir(self.PATH) if
@@ -120,6 +132,7 @@ class DataReader:
         task_queue, done_queue, info_queue = Queue(maxsize=self.TASK_QUEUE_LIMIT), Queue(
             maxsize=self.DONE_QUEUE_LIMIT), Queue()
         processes = []
+        # 定义消费者
         for i in range(NUM_PROCESSES):
             process = Process(target=self.tokenize_worker,
                               args=(task_queue, done_queue, info_queue, self.tokenizer, self.tokenize))
@@ -141,11 +154,13 @@ class DataReader:
             for i in range(len(processes)):
                 task_queue.put('STOP')
 
+        # 定义生产者
         process = Process(target=read_input_to_queue)
         process.start()
         count = len(processes)
         progress_bar = tqdm.tqdm()
         while True:
+            # 将消费者处理好的数据写至 writer
             data = done_queue.get()
             if data == 'COMPLETE':
                 count -= 1
@@ -187,16 +202,20 @@ class DataReader:
 class PromptReader(DataReader):
     is_json = True
 
-    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
-        for row in iter(input.get, 'STOP'):
+    def tokenize_worker(self, q_in, q_out, q_info, tokenizer, tokenize):
+        """
+        对于 PromptReader 这个类来说，每行为一个 JSON String
+        """
+        for row in iter(q_in.get, 'STOP'):
             if row:
                 if self.is_json:
                     row = row.rstrip()
                     row = json.loads(row)
+                # 处理每行数据，需要子类实现
                 prompts, texts = self.process_line(row, tokenizer, tokenize)
                 for prompt, text in zip(prompts, texts):
-                    output.put((prompt, text))
-        output.put("COMPLETE")
+                    q_out.put((prompt, text))
+        q_out.put("COMPLETE")
 
     @staticmethod
     def write_result(data, writers):
@@ -230,12 +249,12 @@ class KeyReader(DataReader):
             text_mask.append(len(content))
         return (summary, summary_mask), (text, text_mask)
 
-    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
-        for row in iter(input.get, 'STOP'):
+    def tokenize_worker(self, q_in, q_out, q_info, tokenizer, tokenize):
+        for row in iter(q_in.get, 'STOP'):
             data = json.loads(row)
             summary, content = self.process_line(data, tokenizer, tokenize)
-            output.put((summary, content))
-        output.put("COMPLETE")
+            q_out.put((summary, content))
+        q_out.put("COMPLETE")
 
     @staticmethod
     def write_result(data, writers):
@@ -438,9 +457,9 @@ class Pile(PromptReader):
                 break
         print_rank_0(total_dict)
 
-    def tokenize_worker(self, input, output, info, tokenizer, tokenize):
+    def tokenize_worker(self, q_in, q_out, q_info, tokenizer, tokenize):
         source_dict = defaultdict(int)
-        for row in iter(input.get, 'STOP'):
+        for row in iter(q_in.get, 'STOP'):
             row = row.rstrip()
             if row:
                 if self.is_json:
@@ -449,11 +468,11 @@ class Pile(PromptReader):
                 length = 0
                 for prompt, text in zip(prompts, texts):
                     length += len(text)
-                    output.put((prompt, text))
+                    q_out.put((prompt, text))
                 if source:
                     source_dict[source] += length
-        output.put("COMPLETE")
-        info.put(source_dict)
+        q_out.put("COMPLETE")
+        q_info.put(source_dict)
 
     def process_line(self, data, tokenizer, tokenize):
         source = data["meta"].get("pile_set_name", None)
@@ -516,6 +535,7 @@ class WuDaoCorpus(PromptReader):
         return prompts, texts
 
 
+# 数据集的字典
 NAMED_CORPORA = {
     'wikipedia': wikipedia,
     'wikipedia-key': KeyReader,
