@@ -9,7 +9,7 @@ gpt_options=" \
        --bert-prob 1.0 \
        --experiment-name blocklm-blank \
        --model-parallel-size ${MP_SIZE} \
-       --num-layers 12 \
+       --num-layers 4 \
        --hidden-size 768 \
        --num-attention-heads 12 \
        --seq-length 512 \
@@ -17,7 +17,7 @@ gpt_options=" \
        --save /root/data/checkpoints \
        --train-iters 150000 \
        --resume-dataloader \
-       --train-data bert-base \
+       --train-data test \
        --no-lazy-loader \
        --tokenizer-type BertWordPieceTokenizer \
        --tokenizer-model-type bert-base-uncased \
